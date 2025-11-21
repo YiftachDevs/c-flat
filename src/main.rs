@@ -21,6 +21,20 @@ pub struct Function {
     return_type: VarType,
 }
 
+pub enum Operator {
+    Add("+", 0),
+    Mul("*", 1)
+}
+
+pub enum ExprValue {
+    Expr(Expression)
+}
+
+pub enum ExprNode {
+    Opr(Operator),
+    Value(ExprValue)
+}
+
 pub struct Expression {
     var_type: VarType
 }

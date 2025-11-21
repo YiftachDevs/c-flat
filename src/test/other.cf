@@ -2,6 +2,14 @@ class Num(var value: Unit) {
     inline infix func +(other: Num) -> Num = Num(this.value + other.value)
 }
 
+trait Additive {
+    infix fun<T> +(other: T) -> T;
+}
+
+impl Additive for Int {
+    infix inline fun +(other: Int) -> Int = #
+}
+
 open class Widget(var rect: Rect) {
     open func render(screen: Screen) {
 
