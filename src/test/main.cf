@@ -1,13 +1,3 @@
-
-module hiii {
-    module sup {
-    module how_are_u 6
-        module fine {
-    
-        }
-    }
-}
-module cool {
-
-}
-}
+val a = 0;
+var b: Bool = 0;
+var c;
