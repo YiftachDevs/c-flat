@@ -21,18 +21,55 @@ pub struct Function {
     return_type: VarType,
 }
 
-pub enum Operator {
-    Add("+", 0),
-    Mul("*", 1)
+pub enum Statement {
+    VarDecleration,
+    Expression,
+    WhileLoop,
 }
 
-pub enum ExprValue {
-    Expr(Expression)
+pub enum InfixOpr {
+    Mul,
+    Div,
+    Mod,
+    Add,
+    Sub,
+    Shl,
+    Shr,
+    Lss,
+    Leq,
+    Gtr,
+    Geq,
+    Eq,
+    Neq,
+    And,
+    Xor,
+    Or,
+    Land,
+    Lor,
+    Asn,
+    Com
+}
+
+pub enum PrefixOpr {
+    Not,
+    Lnot,
+    Addr,
+    Deref
+}
+
+pub enum PostfixOpr {
+    Inv,
+    Idx,
+    Mem,
 }
 
 pub enum ExprNode {
-    Opr(Operator),
-    Value(ExprValue)
+    InfixOpr(InfixOpr, Box<ExprNode>, Box<ExprNode>),
+    PrefixOpr(PrefixOpr, Box<ExprNode>),
+    PostfixOpr(PostfixOpr, Box<ExprNode>, Box<ExprNode>),
+    Const(String),
+    Variable(String),
+    Member(String)
 }
 
 pub struct Expression {
@@ -42,10 +79,29 @@ pub struct Expression {
 pub struct Object {
     name: String,
     globals: Vec<Variable>,
-    expressions: Vec<Expression>,
+    statements: Vec<Statement>,
     functions: Vec<Function>,
     objects: Vec<Object>,
     templates: Vec<String>
+}
+
+impl InfixOpr {
+    pub fn precedence(&self) -> i32 {
+        match self {
+            InfixOpr::Mul | InfixOpr::Div | InfixOpr::Mod => 1,
+            InfixOpr::Add | InfixOpr::Sub => 2,
+            InfixOpr::Shl | InfixOpr::Shr => 3,
+            InfixOpr::Lss | InfixOpr::Leq | InfixOpr::Gtr | InfixOpr::Geq => 4,
+            InfixOpr::Eq | InfixOpr::Neq => 5,
+            InfixOpr::And => 6,
+            InfixOpr::Xor => 7,
+            InfixOpr::Or => 8,
+            InfixOpr::Land => 9,
+            InfixOpr::Lor => 10,
+            InfixOpr::Asn => 11,
+            InfixOpr::Com => 12
+        }
+    }
 }
 
 impl VarType {
@@ -79,15 +135,19 @@ impl VarType {
     }
 }
 
-impl Expression {
-    pub fn from_def(parser: &mut Parser) -> Self {
+impl ExprNode {
+    pub fn binary_from_def(parser: &mut Parser) -> Self {
         parser.ensure_next("0");
         Expression { var_type: VarType::Int }
+    }
+
+    pub fn primary_from_def(parser: &mut Parser) -> Self {
+
     }
 }
 
 impl Variable {
-    pub fn from_def(parser: &mut Parser) -> (Variable, Option<Expression>) {
+    pub fn from_def(parser: &mut Parser) -> (Variable, Option<ExprNode>) {
         let name: String = parser.next_word();
         let mut result_var: Variable = Variable { name, var_type: VarType::Void };
         let mut optional_expression = None;
@@ -97,7 +157,7 @@ impl Variable {
             known_type = true;
         }
         if parser.is_next("=") {
-            let expr: Expression = Expression::from_def(parser);
+            let expr: ExprNode = ExprNode::from_def(parser);
             if known_type {
                 if result_var.var_type != expr.var_type {
                     parser.error(format!("Type mismatch during variable creation, expected '{}', got '{}'", result_var.var_type.to_script(), expr.var_type.to_script()).as_str());
@@ -118,7 +178,7 @@ impl Object {
         Object {
             name: String::new(),
             globals: Vec::new(),
-            expressions: Vec::new(),
+            statements: Vec::new(),
             functions: Vec::new(),
             objects: Vec::new(),
             templates: Vec::new()
@@ -137,18 +197,18 @@ impl Object {
     }
 
     pub fn parse_next(&mut self, parser: &mut Parser) {
-        let is_var = parser.is_next("var");
-        let is_val = parser.is_next("val");
-        let is_new_var = is_var ^ is_val;
+        let is_var: bool = parser.is_next("var");
+        let is_val: bool = parser.is_next("val");
+        let is_new_var: bool = is_var ^ is_val;
 
         if parser.is_next("object") {
             self.objects.push(Object::from_def(parser));
         } else if is_new_var {
-            let new_var = Variable::from_def(parser);
+            let new_var: (Variable, Option<ExprNode>) = Variable::from_def(parser);
             parser.ensure_next(";");
         }
         else {
-            parser.error("Unknown expression");
+            parser.error("Unknown statement");
         }
     }
 }
@@ -201,6 +261,7 @@ impl Parser {
     }
 
     pub fn parse(&mut self, main_object: &mut Object) {
+        self.skip_whitespace();
         while self.is_next("import") {
             let path: String = self.next_until(';');
             self.parse_file(path.as_str(), main_object);
@@ -216,7 +277,6 @@ impl Parser {
     }
 
     pub fn next_until(&mut self, end: char) -> String {
-        self.skip_whitespace();
         let start_index: usize = self.index;
         while let Some(ch) = self.cur_char() {
             if ch == end {
@@ -226,11 +286,11 @@ impl Parser {
         }
         let result: String = self.cur_file()[start_index..self.index].iter().collect();
         self.index += 1;
+        self.skip_whitespace();
         result
     }
 
     pub fn next_word(&mut self) -> String {
-        self.skip_whitespace();
         let start_index: usize = self.index;
         while let Some(ch) = self.cur_char() {
             if !ch.is_alphabetic() && ch != '_' {
@@ -239,12 +299,16 @@ impl Parser {
             }
             self.index += 1;
         }
+        self.skip_whitespace();
         let result: String = self.cur_file()[start_index..self.index].iter().collect();
         result
     }
 
     pub fn skip_whitespace(&mut self) {
         while let Some(ch) = self.cur_char() {
+            if ch == '/' {
+                self.skip_if_comment();
+            }
             if !ch.is_whitespace() { 
                 break;
             }
@@ -257,8 +321,46 @@ impl Parser {
     }
 
     pub fn is_finished(&mut self) -> bool {
-        self.skip_whitespace();
-        self.index == self.cur_file().len()
+        self.index >= self.cur_file().len()
+    }
+
+    pub fn skip_if_comment(&mut self) {
+        if let Some(ch) = self.cur_char() {
+            if ch != '/' {
+                return;
+            }
+            self.index += 1;
+        }
+        if let Some(ch) = self.cur_char() {
+            if ch == '/' {
+                while let Some(ch) = self.cur_char() {
+                    if ch == '\n' {
+                        break;
+                    }
+                    self.index += 1;
+                }          
+            } 
+        }
+        let s_chars: Vec<char> = "//".chars().collect();
+        let end: usize = self.index + s_chars.len();
+        if end > self.cur_file().len() {
+            return;
+        }
+        let is_comment: bool = self.cur_file()[self.index..end] == s_chars;
+        if !is_comment {
+            return;
+        }
+        self.index = end;
+        let start_index: usize = self.index;
+        while let Some(ch) = self.cur_char() {
+            if ch == '\n' {
+                break;
+            }
+            self.index += 1;
+        }
+        let comment: String = self.cur_file()[start_index..self.index].iter().collect();
+        self.index += 1;
+        println!("comment: {}", comment);
     }
 
     pub fn is_next(&mut self, s: &str) -> bool {
@@ -274,6 +376,7 @@ impl Parser {
         if result {
             self.index = end;
         }
+        self.skip_whitespace();
         result
     }
 
@@ -307,4 +410,5 @@ fn main() {
     main_object.name = "main_object".to_string();
 
     parser.parse_file("main.cf", &mut main_object);
+    println!("done!");
 }
