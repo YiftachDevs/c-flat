@@ -4,10 +4,23 @@ use std::{collections::HashMap, env, fs, path::Path, process};
 pub enum VarType {
     Void,
     Int,
+    Size,
+    Byte,
     Num,
     Bool,
-    Char,
-    Callback(Vec<VarType>, Box<VarType>)
+    Char
+    // Array(Box<VarType>, u32),
+    // Tuple(Vec<VarType>),
+    // Callback(Vec<VarType>, Box<VarType>)
+}
+
+pub enum ConstValue {
+    Int(i32),
+    Size(u32),
+    Byte(u32),
+    Num(f32),
+    Bool(bool),
+    Char(char)
 }
 
 pub struct Variable {
@@ -22,12 +35,14 @@ pub struct Function {
 }
 
 pub enum Statement {
+    Unknown,
     VarDecleration,
     Expression,
     WhileLoop,
 }
 
 pub enum InfixOpr {
+    Unknown,
     Mul,
     Div,
     Mod,
@@ -44,20 +59,23 @@ pub enum InfixOpr {
     And,
     Xor,
     Or,
-    Land,
-    Lor,
+    LAnd,
+    LOr,
     Asn,
     Com
 }
 
+#[derive(PartialEq)]
 pub enum PrefixOpr {
+    Unknown,
     Not,
-    Lnot,
+    LNot,
     Addr,
     Deref
 }
 
 pub enum PostfixOpr {
+    Unknown,
     Inv,
     Idx,
     Mem,
@@ -81,8 +99,7 @@ pub struct Object {
     globals: Vec<Variable>,
     statements: Vec<Statement>,
     functions: Vec<Function>,
-    objects: Vec<Object>,
-    templates: Vec<String>
+    objects: Vec<Object>
 }
 
 impl InfixOpr {
@@ -96,16 +113,31 @@ impl InfixOpr {
             InfixOpr::And => 6,
             InfixOpr::Xor => 7,
             InfixOpr::Or => 8,
-            InfixOpr::Land => 9,
-            InfixOpr::Lor => 10,
+            InfixOpr::LAnd => 9,
+            InfixOpr::LOr => 10,
             InfixOpr::Asn => 11,
             InfixOpr::Com => 12
         }
     }
 }
 
+impl PrefixOpr {
+    pub fn from_def(parser: &mut Parser) -> Option<Self> {
+        let mut result: PrefixOpr = PrefixOpr::Unknown;
+        let ch: char = parser.cur_char();
+        result = match ch {
+            '~' => PrefixOpr::Not,
+            '!' => PrefixOpr::LNot,
+            '&' => PrefixOpr::Addr,
+            '*' => PrefixOpr::Deref,
+            _ => { return None; }
+        }
+        Some(result)
+    }
+}
+
 impl VarType {
-    pub fn from_def(parser: &mut Parser) -> Self {
+    pub fn from_def(parser: &mut Parser, main_object: &Object) -> Self {
         if parser.is_next("Int") {
             return VarType::Int;
         }
@@ -114,6 +146,12 @@ impl VarType {
         }
         if parser.is_next("Bool") {
             return VarType::Bool;
+        }
+        if parser.is_next("Size") {
+            return VarType::Size;
+        }
+        if parser.is_next("Byte") {
+            return VarType::Byte;
         }
         if parser.is_next("Char") {
             return VarType::Char;
@@ -127,37 +165,119 @@ impl VarType {
             VarType::Void => "Void".to_string(),
             VarType::Int => "Int".to_string(),
             VarType::Num => "Num".to_string(),
+            VarType::Size => "UInt".to_string(),
+            VarType::Byte => "Byte".to_string(),
             VarType::Bool => "Bool".to_string(),
             VarType::Char => "Char".to_string(),
-            _ => "e".to_string()
+            _ => "Unknown".to_string()
             // VarType::Callback(args, return_type) => format!("({}) -> {}", args.iter().map(|x| x.to_script()), return_type.to_script())
         }
     }
 }
 
+impl ConstValue {
+    pub fn from_def(parser: &mut Parser, main_object: &Object) -> Option<Self> {
+        if parser.is_next("false") {
+            return Some(ConstValue::Bool(false));
+        } else if parser.is_next("true") {
+            return Some(ConstValue::Bool(true));
+        }
+        let mut negated = false;
+        if parser.cur_char() == '-' {
+            negated = true;
+            parser.index += 1;
+        }
+        if let Some(num) = parser.next_numeral() {
+
+        }
+        None
+    }
+
+    fn numeral_from_def(&mut self, parser: &mut Parser) -> Option<Self> {
+        let start_index: usize = parser.index;
+        let ch: char = parser.cur_char();
+        if !(ch >= '0' && ch <= '9') {
+            return None;
+        }
+        enum NumType { Dec, Hex, Bin }
+        let mut num_type: NumType = NumType::Dec;
+        if ch == '0' {
+            parser.index += 1;
+            let ch: char = parser.cur_char();
+            if ch == 'x' {
+                num_type = NumType::Hex; 
+                parser.index += 1;
+            } else if ch == 'b' {
+                num_type = NumType::Bin;
+                parser.index += 1;
+            } else {
+                parser.index -= 1;
+            }
+        }
+        let mut value: u32 = 0;
+        while let ch = parser.cur_char() {
+            match num_type {
+                NumType::Dec => {
+                    if ch >= '0' && ch <= '9' {
+                        value = value * 10 + (ch as u32 - '0' as u32);
+                    } else {
+                        break
+                    }
+                }
+                NumType::Hex => {
+                    if ch >= '0' && ch <= '9' {
+                        value = value * 16 + (ch as u32 - '0' as u32);
+                    } else if ch >= 'a' && ch <= 'f' {
+                        value = value * 16 + (ch as u32 - 'a' as u32);
+                    } else if ch >= 'A' && ch <= 'F' {
+                        value = value * 16 + (ch as u32 - 'A' as u32);
+                    } else {
+                        break
+                    }
+                }
+                NumType::Bin => {
+                    if ch >= '0' && ch <= '1' {
+                        value = value * 2 + (ch as u32 - '0' as u32);
+                    } else {
+                        break
+                    }
+                }
+            }
+            parser.index += 1;
+        }
+        parser.skip_whitespace();
+        value
+    }
+}
+
 impl ExprNode {
-    pub fn binary_from_def(parser: &mut Parser) -> Self {
+    pub fn from_def(parser: &mut Parser, main_object: &Object) -> Self {
         parser.ensure_next("0");
         Expression { var_type: VarType::Int }
     }
 
-    pub fn primary_from_def(parser: &mut Parser) -> Self {
+    pub fn primary_from_def(parser: &mut Parser, main_object: &Object) -> Self {
+        if let Some(prefix_opr) = PrefixOpr::from_def(parser) {
+            return ExprNode::PrefixOpr(prefix_opr, Box::new(ExprNode::primary_from_def(parser, main_object)));
+        } else if let Some(const_value) = ConstValue::from_def(parser, main_object) {
 
+        }
+        return ExprNode::Variable("".to_string());
     }
 }
 
 impl Variable {
-    pub fn from_def(parser: &mut Parser) -> (Variable, Option<ExprNode>) {
+    pub fn from_def(parser: &mut Parser, main_object: &Object) -> (Variable, Option<ExprNode>) {
         let name: String = parser.next_word();
         let mut result_var: Variable = Variable { name, var_type: VarType::Void };
         let mut optional_expression = None;
         let mut known_type: bool = false;
         if parser.is_next(":") {
-            result_var.var_type = VarType::from_def(parser);
+            result_var.var_type = VarType::from_def(parser, main_object);
             known_type = true;
         }
         if parser.is_next("=") {
-            let expr: ExprNode = ExprNode::from_def(parser);
+            let expr: ExprNode = ExprNode::from_def(parser, main_object);
             if known_type {
                 if result_var.var_type != expr.var_type {
                     parser.error(format!("Type mismatch during variable creation, expected '{}', got '{}'", result_var.var_type.to_script(), expr.var_type.to_script()).as_str());
@@ -180,12 +300,11 @@ impl Object {
             globals: Vec::new(),
             statements: Vec::new(),
             functions: Vec::new(),
-            objects: Vec::new(),
-            templates: Vec::new()
+            objects: Vec::new()
         }
     }
 
-    pub fn from_def(parser: &mut Parser) -> Self {
+    pub fn from_def(parser: &mut Parser, main_object: &Object) -> Self {
         let mut result: Object = Self::new();
         let name: String = parser.next_word();
         result.name = name;
@@ -196,15 +315,16 @@ impl Object {
         result
     }
 
-    pub fn parse_next(&mut self, parser: &mut Parser) {
+    pub fn parse_next(&mut self, parser: &mut Parser, main_object_box: Option<&Object>) {
+        let main_object: &Object = main_object_box.unwrap_or(self);
         let is_var: bool = parser.is_next("var");
         let is_val: bool = parser.is_next("val");
         let is_new_var: bool = is_var ^ is_val;
 
         if parser.is_next("object") {
-            self.objects.push(Object::from_def(parser));
+            self.objects.push(Object::from_def(parser, main_object));
         } else if is_new_var {
-            let new_var: (Variable, Option<ExprNode>) = Variable::from_def(parser);
+            let new_var: (Variable, Option<ExprNode>) = Variable::from_def(parser, main_object);
             parser.ensure_next(";");
         }
         else {
@@ -267,18 +387,22 @@ impl Parser {
             self.parse_file(path.as_str(), main_object);
         }
         while !self.is_finished() {
-            main_object.parse_next(self);
+            main_object.parse_next(self, None);
         }
     }
 
-    pub fn cur_char(&self) -> Option<char> {
+    pub fn cur_char(&self) -> char {
         let file_text: &Vec<char> = self.files.get(&self.cur_file_path)?;
-        file_text.get(self.index).copied()
+        if let Some(ch) = file_text.get(self.index).copied() {
+            return ch;
+        }
+        self.error("Script ended too early");
+        return 'e';
     }
 
     pub fn next_until(&mut self, end: char) -> String {
         let start_index: usize = self.index;
-        while let Some(ch) = self.cur_char() {
+        while let ch = self.cur_char() {
             if ch == end {
                 break;
             }
@@ -292,20 +416,26 @@ impl Parser {
 
     pub fn next_word(&mut self) -> String {
         let start_index: usize = self.index;
-        while let Some(ch) = self.cur_char() {
-            if !ch.is_alphabetic() && ch != '_' {
+        let ch: char = self.cur_char();
+        if !ch.is_alphabetic() && ch != '_' {
+            self.error("Expected a word");
+            return "".to_string();
+        }
+        self.index += 1;
+        while let ch = self.cur_char() {
+            if !ch.is_alphabetic() && ch != '_' && !(ch >= '0' && ch <= '9') {
                 break
                 // self.error(format!("Char {} is not a valid char for a name", ch).as_str());
             }
             self.index += 1;
         }
-        self.skip_whitespace();
         let result: String = self.cur_file()[start_index..self.index].iter().collect();
+        self.skip_whitespace();
         result
     }
 
     pub fn skip_whitespace(&mut self) {
-        while let Some(ch) = self.cur_char() {
+        while let ch = self.cur_char() {
             if ch == '/' {
                 self.skip_if_comment();
             }
@@ -325,15 +455,15 @@ impl Parser {
     }
 
     pub fn skip_if_comment(&mut self) {
-        if let Some(ch) = self.cur_char() {
+        if let ch = self.cur_char() {
             if ch != '/' {
                 return;
             }
             self.index += 1;
         }
-        if let Some(ch) = self.cur_char() {
+        if let ch = self.cur_char() {
             if ch == '/' {
-                while let Some(ch) = self.cur_char() {
+                while let ch = self.cur_char() {
                     if ch == '\n' {
                         break;
                     }
@@ -352,7 +482,7 @@ impl Parser {
         }
         self.index = end;
         let start_index: usize = self.index;
-        while let Some(ch) = self.cur_char() {
+        while let ch = self.cur_char() {
             if ch == '\n' {
                 break;
             }
