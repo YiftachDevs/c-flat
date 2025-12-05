@@ -1,1 +1,1 @@
-var a: bool = 34;
+var a: int = my_var.foo<int>.membrain();
