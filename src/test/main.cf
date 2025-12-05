@@ -1,3 +1,1 @@
-val a = 0;
-var b: Bool = 0;
-var c;
+var a: bool = 34;
