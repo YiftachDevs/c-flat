@@ -1,1 +1,13 @@
-var a = a;
+var a = if (cond1) {
+    34
+} else while (cond2) {
+    if (cond3) {
+        break 27;
+    }
+} else for (item in items) {
+    if (item is Some(v)) {
+        break v;
+    }
+} else {
+    -1
+};
