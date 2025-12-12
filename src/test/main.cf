@@ -1,5 +1,18 @@
-fun main(a: int, args: Vec<String>) -> int {
+let arr: [[char; 5]; 3] = [1, 2, 3];
+let callback: (a: int, args: int) -> int = main;
+
+struct Array<T, const S: size>(array: [T; S]);
+
+impl<T, const S: size> Array<Te, S> for ToString {
+    fun sum() {
+
+    }
+}
+
+fun main(a: int, args: int) -> int {
     let mut a = Vec_43(4, 3);
-    let b = if a.abs() > 4 { 4 } else { 1 };
+    let b = if let atr = a {
+        atr.to_string()
+    } else { "" };
     parse();
 }

@@ -88,22 +88,28 @@ impl ToString for Template {
 }
 
 pub struct TemplatesValues {
-    templates: Box<ExprNode>
+    templates: Vec<ExprNode>
 }
 
 
 impl ToString for TemplatesValues {
     fn to_string(&self) -> String {
-        return format!("<{}>", self.templates.to_string());
+        format!("<{}>", self.templates.iter().map(|v: &ExprNode| v.to_string()).collect::<Vec<String>>().join(", ").as_str())
     }
 }
 
 impl TemplatesValues {
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
         if !parser.is_next("<") { return Ok(None); }
-        let result: TemplatesValues = TemplatesValues { templates: Box::new(ExprNode::from_def(parser)?) };
-        parser.ensure_next(">")?;
-        return Ok(Some(result));
+        let mut templates: Vec<ExprNode> = Vec::new();
+        if !parser.is_next(">") {
+            templates.push(ExprNode::primary_from_def(parser)?);
+            while parser.is_next(",") {
+                templates.push(ExprNode::primary_from_def(parser)?);
+            }
+            parser.ensure_next(">")?;
+        }
+        Ok(Some(TemplatesValues { templates }))
     }
 }
 
@@ -136,6 +142,8 @@ pub enum VarType {
     Unresolved { name_path: NamePath },
     Primitive(PrimitiveType),
     Pointer { ptr_type: Box<VarType>, is_ref: bool },
+    Array { arr_type: Box<VarType>, size_expr: Box<ExprNode> },
+    Callback { args: Variables, return_type: Box<VarType> }
     // Pointer(Box<VarType>)
     // Array(Box<VarType>, u32),
     // Tuple(Vec<VarType>),
@@ -288,7 +296,9 @@ pub struct Scope {
     statements: Vec<Statement>,
     functions: Vec<Function>,
     structs: Vec<Struct>,
+    enums: Vec<Enum>,
     objects: Vec<Object>,
+    implementations: Vec<Implementation>,
     return_type: Option<VarType>
 }
 
@@ -300,7 +310,8 @@ pub enum ExprNode {
     ConstValue(ConstValue),
     VarDeclaration(Box<Variable>),
     Scope(Scope),
-    ConditionalChain(Box<ConditionalChain>)
+    ConditionalChain(Box<ConditionalChain>),
+    Array(Vec<ExprNode>, bool) // is_duplicate [1, 2, 3] or [4; 5]
 }
 
 pub struct Object {
@@ -310,7 +321,27 @@ pub struct Object {
 
 pub struct Struct {
     name: String,
-    vars: Vec<Variable>
+    templates: Option<Templates>,
+    vars: Option<Variables>
+}
+
+pub struct Enum {
+    name: String,
+    templates: Option<Templates>,
+    structs: Structs
+}
+
+pub struct Implementation {
+    templates: Option<Templates>,
+    opt_trait: Option<VarType>,
+    target_type: VarType,
+    scope: Scope
+}
+
+pub struct Trait {
+    name: String,
+    templates: Option<Templates>,
+    scope: Scope
 }
 
 impl ConditionalChain {
@@ -549,6 +580,19 @@ impl VarType {
         if parser.is_next("&") {
             return Ok(VarType::Pointer { ptr_type: Box::new(VarType::from_def(parser)?), is_ref: true });
         }
+        if parser.is_next("[") {
+            let arr_type: VarType = VarType::from_def(parser)?;
+            parser.ensure_next(";")?;
+            let size_expr: ExprNode = ExprNode::primary_from_def(parser)?;
+            parser.ensure_next("]")?;
+            return Ok(VarType::Array { arr_type: Box::new(arr_type), size_expr: Box::new(size_expr) });
+        }
+        if parser.cur_char()? == '(' {
+            let args: Variables = Variables::from_def(parser)?;
+            parser.ensure_next("->")?;
+            let return_type: Box<VarType> = Box::new(VarType::from_def(parser)?);
+            return Ok(VarType::Callback { args, return_type })
+        }
         if let Some(name_path) = NamePath::is_from_def(parser)? {
             return Ok(VarType::Unresolved { name_path: name_path });
         }
@@ -566,7 +610,10 @@ impl ToString for VarType {
                     format!("*{}", ptr_type.to_string())
                 },
             VarType::Unresolved { name_path } => name_path.to_string(),
-            VarType::Primitive(primitive_type) => primitive_type.to_string()
+            VarType::Primitive(primitive_type) => primitive_type.to_string(),
+            VarType::Array { arr_type, size_expr } => format!("[{}; {}]", arr_type.to_string(), size_expr.to_string()),
+            VarType::Callback { args, return_type } => 
+                format!("{} -> {}", args.to_string(), return_type.to_string())
         }
     }
 }
@@ -595,13 +642,41 @@ impl ConstValue {
         let mut result: String = String::new();
         loop {
             let ch: char = ConstValue::char_from_def(parser)?;
-            parser.index += 1;
             if ch == '\"' {
+                parser.skip_whitespace()?;
                 break;
             }
             result.push(ch);
         }
         return Ok(result);
+    }
+
+    fn char_to_string(ch: char) -> String {
+        const _r: char = 0x0D as char;
+        const _b: char = 0x08 as char;
+        const _a: char = 0x07 as char;
+        const _n: char = 0x0A as char;
+        const _t: char = 0x09 as char;
+        const _v: char = 0x0B as char;
+        const _0: char = 0x00 as char;
+        let str_ch: String = ch.to_string();
+        match ch {
+            _r => "\\r",
+            _b => "\\b",
+            _a => "\\a",
+            _n => "\\n",
+            _t => "\\t",
+            _v => "\\v",
+            _0 => "\\0",
+            '\\' => "\\\\",
+            '\'' => "\\\'",
+            '\"' => "\\\"",
+            _ => str_ch.as_str()
+        }.to_string()
+    }
+
+    fn string_to_string(str: String) -> String {
+        str.into_bytes().iter().map(|ch| Self::char_to_string(*ch as char)).collect::<Vec<String>>().join("")
     }
 
     fn char_from_def(parser: &mut Parser) -> Result<char, CompilerError> {
@@ -711,15 +786,16 @@ impl ConstValue {
 
 impl ToString for ConstValue {
     fn to_string(&self) -> String {
-        match *self {
-            ConstValue::Bool(b) => (if b { "true" } else { "false" }).to_string(),
-            ConstValue::Char(ch) => ch.to_string(),
+        match self {
+            ConstValue::Bool(b) => (if *b { "true" } else { "false" }).to_string(),
+            ConstValue::Char(ch) => format!("'{}'", Self::char_to_string(*ch)),
             ConstValue::UnresolvedInteger(int) => int.to_string(),
             ConstValue::Int(int) => int.to_string(),
             ConstValue::Float(num) => num.to_string(),
             ConstValue::Size(size) => size.to_string(),
             ConstValue::Void => "()".to_string(),
-            _ => "?".to_string()
+            ConstValue::String(str) => format!("\"{}\"", Self::string_to_string(str.clone())),
+            _ => "?unknown?".to_string()
         }
     }
 }
@@ -796,6 +872,20 @@ impl ExprNode {
             let inner_expr: ExprNode = ExprNode::from_def(parser)?;
             parser.ensure_next(")")?;
             result = inner_expr;
+        } else if parser.is_next("[") {
+            let first_expr: ExprNode = ExprNode::from_def(parser)?;
+            result = if parser.is_next(";") {
+                let count_expr: ExprNode = ExprNode::primary_from_def(parser)?;
+                parser.ensure_next("]")?;
+                ExprNode::Array(Vec::from([first_expr, count_expr]), true)
+            } else {
+                let mut vec: Vec<ExprNode> = Vec::from([first_expr]);
+                while !parser.is_next("]") {
+                    parser.ensure_next(",")?;
+                    vec.push(ExprNode::from_def(parser)?);
+                }
+                ExprNode::Array(vec, false)
+            }
         } else {
             return Err(CompilerError::SyntaxError("Missing / Unknown primary expression".to_string()));
         }
@@ -830,9 +920,13 @@ impl ToString for ExprNode {
                     PostfixOpr::Mem => format!("{}.{}", left.to_string(), right_str)
                 }
             },
-            ExprNode::VarDeclaration(var_box) => var_box.to_string(),
+            ExprNode::VarDeclaration(var_box) => format!("let {}", var_box.to_string()),
             ExprNode::Scope(scope) => scope.to_string(),
-            ExprNode::ConditionalChain(cond_chain) => cond_chain.to_string()
+            ExprNode::ConditionalChain(cond_chain) => cond_chain.to_string(),
+            ExprNode::Array(values, is_dup) => {
+                let sep: &str = if *is_dup { "; " } else { ", " };
+                format!("[{}]", values.iter().map(|v: &ExprNode| v.to_string()).collect::<Vec<String>>().join(sep))
+            }
         }
     }
 }
@@ -864,13 +958,13 @@ impl Variable {
 
 impl ToString for Variable {
     fn to_string(&self) -> String {
-        let mut result: String = (if self.is_mut { "let mut " } else { "let " }).to_string();
+        let mut result: String = (if self.is_mut { "mut " } else { "" }).to_string();
         result += self.name.as_str();
         if let Some(var_type) = &self.var_type {
             result += format!(": {}", var_type.to_string()).as_str();
         }
         if let Some(init_expr) = &self.init_expr {
-            result += format!(" = {};", init_expr.to_string()).as_str();
+            result += format!(" = {}", init_expr.to_string()).as_str();
         }
         result
     }
@@ -881,6 +975,13 @@ struct Variables {
 }
 
 impl Variables {
+    pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
+        if parser.cur_char()? != '(' {
+            return Ok(None);
+        }
+        Ok(Some(Self::from_def(parser)?))
+    }
+
     pub fn from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
         let mut variables: Vec<Variable> = Vec::new();
         parser.ensure_next("(")?;
@@ -898,6 +999,39 @@ impl Variables {
 impl ToString for Variables {
     fn to_string(&self) -> String {
         format!("({})", self.variables.iter().map(|v: &Variable| v.to_string()).collect::<Vec<String>>().join(", ").as_str())
+    }
+}
+
+
+struct Structs {
+    structs: Vec<Struct>
+}
+
+impl Structs {
+    pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
+        if !parser.is_next("(") {
+            return Ok(None);
+        }
+        Ok(Some(Self::from_def(parser)?))
+    }
+
+    pub fn from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
+        let mut structs: Vec<Struct> = Vec::new();
+        parser.ensure_next("(")?;
+        if !parser.is_next(")") {
+            structs.push(Struct::from_after_def(parser)?);
+            while parser.is_next(",") {
+                structs.push(Struct::from_after_def(parser)?);                 
+            }
+            parser.ensure_next(")")?;
+        }
+        Ok(Self { structs })
+    }
+}
+
+impl ToString for Structs {
+    fn to_string(&self) -> String {
+        format!("(\n\t{}\n)", self.structs.iter().map(|v: &Struct| v.to_string()).collect::<Vec<String>>().join(",\n\t").as_str())
     }
 }
 
@@ -931,6 +1065,101 @@ impl ToString for Function {
     }
 }
 
+impl Struct {
+    pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
+        if !parser.is_next("struct") {
+            return Ok(None);
+        }
+        Ok(Some(Self::from_after_def(parser)?))
+    }
+
+    pub fn from_after_def(parser: &mut Parser) -> Result<Self, CompilerError> {
+        let name: String = parser.next_name()?;
+        let templates: Option<Templates> = Templates::is_from_def(parser)?;
+        let vars: Option<Variables> = Variables::is_from_def(parser)?;
+        Ok(Self { name, templates, vars })
+    }
+}
+
+impl ToString for Struct {
+    fn to_string(&self) -> String {
+        return format!("{}{}{}",
+            self.name,
+            if let Some(templates) = self.templates.as_ref() { templates.to_string() } else { String::new() },
+            if let Some(vars) = self.vars.as_ref() { vars.to_string() } else { String::new() }
+        )
+    }
+}
+
+impl Enum {
+    pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
+        if !parser.is_next("enum") {
+            return Ok(None);
+        }
+        let name: String = parser.next_name()?;
+        let templates: Option<Templates> = Templates::is_from_def(parser)?;
+        let structs: Structs = Structs::from_def(parser)?;
+        Ok(Some(Self { name, templates, structs }))
+    }
+}
+
+impl ToString for Enum {
+    fn to_string(&self) -> String {
+        return format!("enum {}{}{};",
+            self.name,
+            if let Some(templates) = self.templates.as_ref() { templates.to_string() } else { String::new() },
+            self.structs.to_string()
+        )
+    }
+}
+
+impl Implementation {
+    pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
+        if !parser.is_next("impl") {
+            return Ok(None);
+        }
+        let templates: Option<Templates> = Templates::is_from_def(parser)?;
+        let mut target_type: VarType = VarType::from_def(parser)?;
+        let mut opt_trait: Option<VarType> = None;
+        if parser.is_next("for") {
+            opt_trait = Some(target_type);
+            target_type = VarType::from_def(parser)?;
+        }
+        let scope: Scope = Scope::from_def(parser)?;
+        Ok(Some(Self{templates, opt_trait, target_type, scope}))
+    }
+}
+
+impl ToString for Implementation {
+    fn to_string(&self) -> String {
+        let mut result: String = format!("impl{} ", if let Some(templates) = self.templates.as_ref() { templates.to_string() } else { String::new() });
+        result = if let Some(opt_trait) = self.opt_trait.as_ref() {
+           format!("{}{} for {} {}", result, opt_trait.to_string(), self.target_type.to_string(), self.scope.to_string())
+        } else {
+            format!("{}{} {}", result, self.target_type.to_string(), self.scope.to_string())
+        };
+        result
+    }
+}
+
+impl Trait {
+    pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
+        if !parser.is_next("trait") {
+            return Ok(None);
+        }
+        let name: String = parser.next_name()?;
+        let templates: Option<Templates> = Templates::is_from_def(parser)?;
+        let scope: Scope = Scope::from_def(parser)?;
+        Ok(Some(Self{name, templates, scope}))
+    }
+}
+
+impl ToString for Trait {
+    fn to_string(&self) -> String {
+        format!("trait {}{} {}", self.name, if let Some(templates) = self.templates.as_ref() { templates.to_string() } else { String::new() }, self.scope.to_string())
+    }
+}
+
 impl Statement {
     pub fn from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
         if let Some(new_var) = Variable::is_from_def(parser)? {
@@ -956,6 +1185,8 @@ impl Scope {
             statements: Vec::new(),
             functions: Vec::new(),
             structs: Vec::new(),
+            enums: Vec::new(),
+            implementations: Vec::new(),
             objects: Vec::new(),
             return_type: None
         }
@@ -980,6 +1211,14 @@ impl Scope {
     pub fn parse_next(&mut self, parser: &mut Parser) -> Result<(), CompilerError> {
         if let Some(obj) = Object::is_from_def(parser)? {
             self.objects.push(obj);
+        } else if let Some(strct) = Struct::is_from_def(parser)? {
+            parser.ensure_next(";")?;
+            self.structs.push(strct);
+        } else if let Some(enm) = Enum::is_from_def(parser)? {
+            parser.ensure_next(";")?;
+            self.enums.push(enm);
+        } else if let Some(imp) = Implementation::is_from_def(parser)? {
+            self.implementations.push(imp);
         } else if let Some(fun) = Function::is_from_def(parser)? {
             self.functions.push(fun);
         } else {
@@ -1005,7 +1244,7 @@ impl ToString for Statement {
     fn to_string(&self) -> String {
         match self {
             Statement::VarDeclaration(variable) => {
-                variable.to_string()
+                format!("let {};", variable.to_string())
             }
             Statement::Expression { expr, is_final_value } => {
                 expr.to_string() + if *is_final_value { "" } else { ";" }
@@ -1023,15 +1262,29 @@ impl ToString for Statement {
 impl ToString for Scope {
     fn to_string(&self) -> String {
         let mut indented_str: String = String::new();
+        if !self.structs.is_empty() {
+            indented_str += self.structs.iter().map(|strct: &Struct| format!("struct {};", strct.to_string())).collect::<Vec<String>>().join("\n").as_str();
+            indented_str += "\n";
+        }
+        if !self.enums.is_empty() {
+            indented_str += self.enums.iter().map(|enm: &Enum| enm.to_string()).collect::<Vec<String>>().join("\n").as_str();
+            indented_str += "\n";
+        }
+        if !self.implementations.is_empty() {
+            indented_str += self.implementations.iter().map(|imp: &Implementation| imp.to_string()).collect::<Vec<String>>().join("\n").as_str();
+            indented_str += "\n";
+        }
+        if !self.statements.is_empty() {
+            indented_str += self.statements.iter().map(|stat: &Statement| stat.to_string()).collect::<Vec<String>>().join("\n").as_str();
+            indented_str += "\n";
+        }
         if !self.objects.is_empty() {
             indented_str += self.objects.iter().map(|obj: &Object| obj.to_string()).collect::<Vec<String>>().join("\n").as_str();
             indented_str += "\n";
         }
         if !self.functions.is_empty() {
             indented_str += self.functions.iter().map(|fun: &Function| fun.to_string()).collect::<Vec<String>>().join("\n").as_str();
-            indented_str += "\n";
         }
-        indented_str += self.statements.iter().map(|stat: &Statement| stat.to_string()).collect::<Vec<String>>().join("\n").as_str();
         return format!("{{\n{}\n}}", indent_each_line(indented_str.as_str()));
     }
 }
