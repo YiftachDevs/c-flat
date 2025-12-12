@@ -3,7 +3,6 @@ use std::{collections::HashMap, env, fs, path::Path};
 use crate::errors::CompilerError;
 mod errors;
 
-#[derive(PartialEq, Clone)]
 pub struct NamePath {
     path: Vec<String>, // Game.Player.get_pos;
     templates: Option<TemplatesValues>
@@ -35,27 +34,74 @@ impl ToString for NamePath {
     }
 }
 
-#[derive(PartialEq, Clone)]
-pub struct TemplatesValues {
-    templates: Vec<VarType>
+pub struct Templates {
+    templates: Vec<Template>
 }
 
+impl Templates {
+    pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
+        if !parser.is_next("<") { return Ok(None); }
+        let mut templates: Vec<Template> = Vec::new();
+        loop {
+            templates.push(Template::from_def(parser)?);
+            if parser.is_next(">") { break; }
+            parser.ensure_next(",")?;
+        }
+        return Ok(Some(Templates { templates }));   
+    }
+}
 
-impl ToString for TemplatesValues {
+impl ToString for Templates {
     fn to_string(&self) -> String {
         let str_vec: Vec<String> = self.templates.iter().map(|v| v.to_string()).collect();
         return format!("<{}>", str_vec.join(", "));
     }
 }
 
+pub enum Template {
+    ConstValue(String, VarType),
+    VarType(String)
+}
+
+impl Template {
+    pub fn from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
+        if parser.is_next("const") {
+            let arg: Variable = Variable::arg_from_def(parser)?;
+            if let Some(var_type) = arg.var_type {
+                return Ok(Template::ConstValue(arg.name, var_type));
+            } else {
+                return Err(CompilerError::SyntaxError("Expected a type for a const template".to_string()));
+            }
+        } else {
+            return Ok(Template::VarType(parser.next_name()?));
+        }
+    }
+}
+
+impl ToString for Template {
+    fn to_string(&self) -> String {
+        match self {
+            Template::ConstValue(name, var_type) => format!("const {}: {}", name, var_type.to_string()),
+            Template::VarType(name) => name.clone()
+        }
+    }
+}
+
+pub struct TemplatesValues {
+    templates: Box<ExprNode>
+}
+
+
+impl ToString for TemplatesValues {
+    fn to_string(&self) -> String {
+        return format!("<{}>", self.templates.to_string());
+    }
+}
+
 impl TemplatesValues {
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
         if !parser.is_next("<") { return Ok(None); }
-        let mut result: TemplatesValues = TemplatesValues { templates: Vec::from([VarType::from_def(parser)?]) };
-        while parser.is_next(",") {
-            let var_type: VarType = VarType::from_def(parser)?;
-            result.templates.push(var_type);
-        }
+        let result: TemplatesValues = TemplatesValues { templates: Box::new(ExprNode::from_def(parser)?) };
         parser.ensure_next(">")?;
         return Ok(Some(result));
     }
@@ -86,7 +132,6 @@ impl ToString for PrimitiveType {
     }
 }
 
-#[derive(Clone, PartialEq)]
 pub enum VarType {
     Unresolved { name_path: NamePath },
     Primitive(PrimitiveType),
@@ -113,21 +158,23 @@ pub struct Variable {
     name: String,
     var_type: Option<VarType>,
     init_expr: Option<ExprNode>,
-    is_val: bool,
+    is_mut: bool,
     is_resolved: bool
 }
 
 pub struct Function {
     name: String,
-    args: Vec<Variable>,
-    return_type: VarType,
+    templates: Option<Templates>,
+    args: Variables,
+    return_type: Option<VarType>,
+    scope: Option<Scope>
 }
 
 pub enum Statement {
     Expression{ expr: ExprNode, is_final_value: bool},
     VarDeclaration(Variable),
-    IfElseChain(IfElseNode),
-    Loop(Loop)
+    ConditionalChain(ConditionalChain),
+    ControlFlow(ControlFlow)
 }
 
 #[derive(PartialEq, Clone, Copy)]
@@ -172,57 +219,66 @@ pub enum PostfixOpr {
     Mem
 }
 
-pub enum IfElseNode {
-    If{cond_expr: ExprNode, then_scope: Scope, else_node: Option<Box<IfElseNode>>},
-    Else{then_scope: Scope}
+pub enum Conditional {
+    If,
+    For,
+    While,
+    When,
+    Else
 }
 
-pub struct ConditionalChain {
-    // TODO REALLY COOL REALLY REALLY COOL
-    // ALSO (continue -> skip, break -> stop, return -> return)
-    // EXAMPLE:
-
+pub struct  ConditionalChain {
+    kind: Conditional,
+    cond_expr: Option<ExprNode>,
+    then_scope: Scope,
+    else_node: Option<Box<ConditionalChain>>
 }
 
-impl ToString for IfElseNode {
+impl ToString for ConditionalChain {
     fn to_string(&self) -> String {
-        match self {
-            IfElseNode::If { cond_expr, then_scope, else_node } => {
-                let base_str: String = format!("if ({}) {}", cond_expr.to_string(), then_scope.to_string());
-                let next_str: String = if let Some(else_node_res) = else_node {
-                    format!(" else {}", else_node_res.to_string())
-                } else {
-                    "".to_string()
-                };
-                return base_str + next_str.as_str();
-            }
-            IfElseNode::Else { then_scope } => {
-                then_scope.to_string()
-            }
+        let kind_str = match self.kind {
+            Conditional::If => "if",
+            Conditional::For => "for",
+            Conditional::While => "while",
+            Conditional::When => "when",
+            Conditional::Else => ""
+        };
+        let mut result = kind_str.to_string();
+        if let Some(cond_expr) = self.cond_expr.as_ref() {
+            result += format!(" {} ", cond_expr.to_string()).as_str();
         }
+        result += self.then_scope.to_string().as_str();
+        if let Some(else_node) = self.else_node.as_ref() {
+            result += format!(" else {}", else_node.to_string()).as_str();
+        }
+        result
     }
 }
 
-pub enum Loop {
-    While {cond_expr: ExprNode, then_scope: Scope, },
-    For {cond_expr: ExprNode, then_scope: Scope}
+pub enum ControlFlow {
+    Return(Option<ExprNode>),
+    Skip,
+    Stop(Option<ExprNode>)
 }
 
-impl ToString for Loop {
+impl ToString for ControlFlow {
     fn to_string(&self) -> String {
         match self {
-            Loop::If { cond_expr, then_scope, else_node } => {
-                let base_str: String = format!("if ({}) {}", cond_expr.to_string(), then_scope.to_string());
-                let next_str: String = if let Some(else_node_res) = else_node {
-                    format!(" else {}", else_node_res.to_string())
-                } else {
-                    "".to_string()
-                };
-                return base_str + next_str.as_str();
+            ControlFlow::Return(expr_node_opt) => {
+                let mut result: String = "return".to_string();
+                if let Some(expr_node) = expr_node_opt {
+                    result += format!(" {}", expr_node.to_string()).as_str();
+                }
+                result
             }
-            IfElseNode::Else { then_scope } => {
-                then_scope.to_string()
+            ControlFlow::Stop(expr_node_opt) => {
+                let mut result: String = "stop".to_string();
+                if let Some(expr_node) = expr_node_opt {
+                    result += format!(" {}", expr_node.to_string()).as_str();
+                }
+                result
             }
+            ControlFlow::Skip => "skip".to_string()
         }
     }
 }
@@ -244,7 +300,7 @@ pub enum ExprNode {
     ConstValue(ConstValue),
     VarDeclaration(Box<Variable>),
     Scope(Scope),
-    IfElseNode(Box<IfElseNode>)
+    ConditionalChain(Box<ConditionalChain>)
 }
 
 pub struct Object {
@@ -257,48 +313,46 @@ pub struct Struct {
     vars: Vec<Variable>
 }
 
-impl IfElseNode {
+impl ConditionalChain {
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
-        if !parser.is_next("if") {
+        let kind: Conditional = if parser.is_next("if") {
+            Conditional::If
+        } else if parser.is_next("for") {
+            Conditional::For
+        } else if parser.is_next("while") {
+            Conditional::While
+        } else if parser.is_next("when") {
+            Conditional::When
+        } else {
             return Ok(None);
-        }
-        parser.ensure_next("(")?;
-        let cond_expr: ExprNode = ExprNode::from_def(parser)?;
-        parser.ensure_next(")")?;
+        };
+
+        let cond_expr: Option<ExprNode> = Some(ExprNode::from_def(parser)?);
         let then_scope: Scope = Scope::from_def(parser)?;
-        let else_node: Option<Box<IfElseNode>> = if parser.is_next("else") {
-            if let Some(if_node) = IfElseNode::is_from_def(parser)? {
-                Some(Box::new(if_node))
+        let else_node: Option<Box<ConditionalChain>> = if parser.is_next("else") {
+            if let Some(cond_chain) = ConditionalChain::is_from_def(parser)? {
+                Some(Box::new(cond_chain))
             } else {
                 let else_scope: Scope = Scope::from_def(parser)?;
-                Some(Box::new(IfElseNode::Else { then_scope: else_scope }))
+                Some(Box::new(ConditionalChain { kind: Conditional::Else, cond_expr: None, then_scope: else_scope, else_node: None }))
             }
         } else { None };
-        return Ok(Some(IfElseNode::If { cond_expr, then_scope, else_node }));
+        return Ok(Some(ConditionalChain { kind, cond_expr, then_scope, else_node }));
     }
 }
 
-impl Loop {
+impl ControlFlow {
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
-        let is_for: bool = parser.is_next("for");
-        let is_while: bool = parser.is_next("while");
-        if !is_for && !is_while {
+        let result: ControlFlow = if parser.is_next("skip") {
+            ControlFlow::Skip
+        } else if parser.is_next("return") {
+            ControlFlow::Return(ExprNode::is_from_def(parser)?)
+        } else if parser.is_next("stop") {
+            ControlFlow::Stop(ExprNode::is_from_def(parser)?)
+        } else {
             return Ok(None);
-        }
-        if is_for && is_while {
-            return Err(CompilerError::SyntaxError("Expected either a 'while' loop or a 'for' loop, not both".to_string()));
-        }
-        parser.ensure_next("(")?;
-        let cond_expr: ExprNode = ExprNode::from_def(parser)?;
-        parser.ensure_next(")")?;
-        let then_scope: Scope = Scope::from_def(parser)?;
-        return Ok(Some(
-            if is_for {
-                Loop::For { cond_expr, then_scope }
-            } else {
-                Loop::While { cond_expr, then_scope }
-            }
-        ));
+        };
+        Ok(Some(result))
     }
 }
 
@@ -397,7 +451,7 @@ impl InfixOpr {
     }
 
     pub fn is_left_to_right(&self) -> bool {
-        if *self == InfixOpr::Asn { false } else { true }
+        if *self == InfixOpr::Asn || *self == InfixOpr::Com { false } else { true }
     }
 }
 
@@ -470,7 +524,7 @@ impl PostfixOpr {
                 PostfixOpr::Idx
             }
             '(' => {
-                expr_result = if parser.cur_char()? == ')' { None } else { Some(ExprNode::from_def(parser)?) };
+                expr_result = ExprNode::is_from_def(parser)?;
                 parser.ensure_next(")")?;
                 PostfixOpr::Inv
             }
@@ -671,6 +725,14 @@ impl ToString for ConstValue {
 }
 
 impl ExprNode {
+    pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
+        let ch: char = parser.cur_char()?;
+        if ch == ';' || ch == ')' {
+            return Ok(None);
+        }
+        return Ok(Some(ExprNode::from_def(parser)?));
+    }
+
     pub fn from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
         let mut root: Box<ExprNode> = Box::new(ExprNode::primary_from_def(parser)?);
         if let Some(infix_opr) = InfixOpr::is_from_def(parser)? {
@@ -724,8 +786,8 @@ impl ExprNode {
             result = ExprNode::VarDeclaration(Box::new(new_var));
         } else if let Some(const_value) = ConstValue::is_from_def(parser)? {
             result = ExprNode::ConstValue(const_value);
-        } else if let Some(if_else_node) = IfElseNode::is_from_def(parser)? {
-            result = ExprNode::IfElseNode(Box::new(if_else_node));
+        } else if let Some(cond_chain) = ConditionalChain::is_from_def(parser)? {
+            result = ExprNode::ConditionalChain(Box::new(cond_chain));
         } else if let Some(name_path) = NamePath::is_from_def(parser)? {
             result = ExprNode::NamePath(name_path);
         } else if let Some(scope) = Scope::is_from_def(parser)? {
@@ -770,21 +832,14 @@ impl ToString for ExprNode {
             },
             ExprNode::VarDeclaration(var_box) => var_box.to_string(),
             ExprNode::Scope(scope) => scope.to_string(),
-            ExprNode::IfElseNode(if_else_node) => if_else_node.to_string()
+            ExprNode::ConditionalChain(cond_chain) => cond_chain.to_string()
         }
     }
 }
 
 impl Variable {
-    pub fn is_from_def(parser: &mut Parser) -> Result<Option<Variable>, CompilerError> {
-        let is_var: bool = parser.is_next("var");
-        let is_val: bool = parser.is_next("val");
-        if !is_var && !is_val {
-            return Ok(None);
-        }
-        if is_var && is_val {
-            return Err(CompilerError::SyntaxError("Declare a variable with either 'var' or 'val', not both".to_string()));
-        }
+    pub fn arg_from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
+        let is_mut: bool = parser.is_next("mut");
         let name: String = parser.next_name()?;
         let mut var_type: Option<VarType> = None;
         let mut init_expr: Option<ExprNode> = None;
@@ -794,16 +849,22 @@ impl Variable {
         if parser.is_next("=") {
             let expr: ExprNode = ExprNode::from_def(parser)?;
             init_expr = Some(expr);
-        } else if var_type == None {
+        } else if let None = var_type {
             return Err(CompilerError::SyntaxError("Expected either a type decleration ':' or expression assigment '='".to_string()));
         }
-        return Ok(Some(Variable { name: name, var_type: var_type, init_expr: init_expr, is_val: is_val, is_resolved: false }));
+        return Ok(Self { name: name, var_type: var_type, init_expr: init_expr, is_mut: is_mut, is_resolved: false });
+    }
+    pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
+        if !parser.is_next("let") {
+            return Ok(None);
+        }
+        Ok(Some(Self::arg_from_def(parser)?))
     }
 }
 
 impl ToString for Variable {
     fn to_string(&self) -> String {
-        let mut result: String = (if self.is_val { "val " } else { "var " }).to_string();
+        let mut result: String = (if self.is_mut { "let mut " } else { "let " }).to_string();
         result += self.name.as_str();
         if let Some(var_type) = &self.var_type {
             result += format!(": {}", var_type.to_string()).as_str();
@@ -815,13 +876,71 @@ impl ToString for Variable {
     }
 }
 
+struct Variables {
+    variables: Vec<Variable>
+}
+
+impl Variables {
+    pub fn from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
+        let mut variables: Vec<Variable> = Vec::new();
+        parser.ensure_next("(")?;
+        if !parser.is_next(")") {
+            variables.push(Variable::arg_from_def(parser)?);
+            while parser.is_next(",") {
+                variables.push(Variable::arg_from_def(parser)?);                 
+            }
+            parser.ensure_next(")")?;
+        }
+        Ok(Self { variables })
+    }
+}
+
+impl ToString for Variables {
+    fn to_string(&self) -> String {
+        format!("({})", self.variables.iter().map(|v: &Variable| v.to_string()).collect::<Vec<String>>().join(", ").as_str())
+    }
+}
+
+impl Function {
+    pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
+        if !parser.is_next("fun") {
+            return Ok(None);
+        }
+        let name: String = parser.next_name()?;
+        let templates: Option<Templates> = Templates::is_from_def(parser)?;
+        let args: Variables = Variables::from_def(parser)?;
+        let return_type = if parser.is_next("->") {
+            Some(VarType::from_def(parser)?)
+        } else {
+            None
+        };
+        let scope: Option<Scope> = if parser.is_next(";") { None } else { Some(Scope::from_def(parser)?) };
+        Ok(Some(Self { name, templates, args, return_type, scope }))
+    }
+}
+
+impl ToString for Function {
+    fn to_string(&self) -> String {
+        return format!("fun {}{}{} {}{}",
+            self.name,
+            if let Some(templates) = self.templates.as_ref() { templates.to_string() } else { String::new() },
+            self.args.to_string(),
+            if let Some(return_type) = self.return_type.as_ref() { format!("-> {} ", return_type.to_string()) } else { String::new() },
+            if let Some(scope) = self.scope.as_ref() { scope.to_string() } else { String::new() }
+        )
+    }
+}
+
 impl Statement {
     pub fn from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
         if let Some(new_var) = Variable::is_from_def(parser)? {
             parser.ensure_next(";")?;
             return Ok(Statement::VarDeclaration(new_var));
-        } else if let Some(if_else_node) = IfElseNode::is_from_def(parser)? {
-            return Ok(Statement::IfElseChain(if_else_node));
+        } else if let Some(cond_chain) = ConditionalChain::is_from_def(parser)? {
+            return Ok(Statement::ConditionalChain(cond_chain));
+        } else if let Some(control_flow) = ControlFlow::is_from_def(parser)? {
+            parser.ensure_next(";")?;
+            return Ok(Statement::ControlFlow(control_flow));
         } else {
             let expr: ExprNode = ExprNode::from_def(parser)?;
             let is_final_value: bool = !parser.is_next(";");
@@ -861,6 +980,8 @@ impl Scope {
     pub fn parse_next(&mut self, parser: &mut Parser) -> Result<(), CompilerError> {
         if let Some(obj) = Object::is_from_def(parser)? {
             self.objects.push(obj);
+        } else if let Some(fun) = Function::is_from_def(parser)? {
+            self.functions.push(fun);
         } else {
             let statement: Statement = Statement::from_def(parser)?;
             self.statements.push(statement);
@@ -889,11 +1010,11 @@ impl ToString for Statement {
             Statement::Expression { expr, is_final_value } => {
                 expr.to_string() + if *is_final_value { "" } else { ";" }
             }
-            Statement::IfElseChain(if_else_node) => {
-                if_else_node.to_string()
+            Statement::ConditionalChain(cond_chain) => {
+                cond_chain.to_string()
             }
-            Statement::Loop(loop_stat) => {
-                loop_stat.to_string()
+            Statement::ControlFlow(control_flow) => {
+                control_flow.to_string() + ";"
             }
         }
     }
@@ -904,6 +1025,10 @@ impl ToString for Scope {
         let mut indented_str: String = String::new();
         if !self.objects.is_empty() {
             indented_str += self.objects.iter().map(|obj: &Object| obj.to_string()).collect::<Vec<String>>().join("\n").as_str();
+            indented_str += "\n";
+        }
+        if !self.functions.is_empty() {
+            indented_str += self.functions.iter().map(|fun: &Function| fun.to_string()).collect::<Vec<String>>().join("\n").as_str();
             indented_str += "\n";
         }
         indented_str += self.statements.iter().map(|stat: &Statement| stat.to_string()).collect::<Vec<String>>().join("\n").as_str();
@@ -1017,7 +1142,7 @@ impl Parser {
         }
         self.index += 1;
         while let Ok(ch) = self.cur_char() {
-            if !(ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z') && ch != '_' {
+            if !(ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9') && ch != '_' {
                 break;
             }
             self.index += 1;

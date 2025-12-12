@@ -1,13 +1,5 @@
-var a = if (cond1) {
-    34
-} else while (cond2) {
-    if (cond3) {
-        break 27;
-    }
-} else for (item in items) {
-    if (item is Some(v)) {
-        break v;
-    }
-} else {
-    -1
-};
+fun main(a: int, args: Vec<String>) -> int {
+    let mut a = Vec_43(4, 3);
+    let b = if a.abs() > 4 { 4 } else { 1 };
+    parse();
+}
