@@ -1,3 +1,17 @@
 fun main() {
-    let a = 34;
+    
+}
+
+fun foo(a: num) -> num {
+    foo(a)
+}
+
+module Thing {
+    module Thing_2 {
+        fun aoe() {
+            aoe();
+            Thing.Thing_2.aoe();
+            Thing_2.aoe();
+        }
+    }
 }

@@ -1,9 +1,10 @@
-use std::{collections::HashMap, fs};
+use std::{collections::HashMap, env::var, fs};
 use crate::errors::*;
 
+#[derive(PartialEq, Clone)]
 pub struct NamePath {
-    path: Vec<String>, // Game.Player.get_pos;
-    templates: Option<TemplatesValues>
+    pub path: Vec<String>, // Game.Player.get_pos;
+    pub templates: Option<TemplatesValues>
 }
 
 impl NamePath {
@@ -12,6 +13,10 @@ impl NamePath {
         return Ok(Some(NamePath::from_def(parser)?));
     }
     
+    pub fn new(path: Vec<String>, templates: Option<TemplatesValues>) -> Self {
+        Self { path, templates }
+    }
+
     pub fn from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
         let mut path: Vec<String> = Vec::from([parser.next_name()?]);
         while parser.is_next(".") {
@@ -19,6 +24,10 @@ impl NamePath {
         }
         let templates: Option<TemplatesValues> = TemplatesValues::is_from_def(parser)?;
         return Ok(NamePath { path, templates });
+    }
+
+    pub fn clone_pop(&self) -> NamePath {
+        NamePath { path: self.path[1..].to_vec(), templates: None }
     }
 }
 
@@ -32,6 +41,7 @@ impl ToString for NamePath {
     }
 }
 
+#[derive(PartialEq, Clone)]
 pub struct Templates {
     templates: Vec<Template>
 }
@@ -56,6 +66,7 @@ impl ToString for Templates {
     }
 }
 
+#[derive(PartialEq, Clone)]
 pub enum Template {
     ConstValue(String, VarType),
     VarType(String)
@@ -65,8 +76,8 @@ impl Template {
     pub fn from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
         if parser.is_next("const") {
             let arg: Variable = Variable::arg_from_def(parser)?;
-            if let Some(var_type) = arg.var_type {
-                return Ok(Template::ConstValue(arg.name, var_type));
+            if arg.var_type != VarType::UnresolvedExpr {
+                return Ok(Template::ConstValue(arg.name, arg.var_type));
             } else {
                 return Err(CompilerError::SyntaxError("Expected a type for a const template".to_string()));
             }
@@ -85,6 +96,7 @@ impl ToString for Template {
     }
 }
 
+#[derive(PartialEq, Clone)]
 pub struct TemplatesValues {
     templates: Vec<ExprNode>
 }
@@ -111,7 +123,7 @@ impl TemplatesValues {
     }
 }
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(Eq, PartialEq, Clone, Hash, Copy)]
 pub enum PrimitiveType {
     Int,
     Size,
@@ -136,12 +148,15 @@ impl ToString for PrimitiveType {
     }
 }
 
+#[derive(PartialEq, Clone)]
 pub enum VarType {
+    UnresolvedExpr,
     Unresolved { name_path: NamePath },
     Primitive(PrimitiveType),
     Pointer { ptr_type: Box<VarType>, is_ref: bool },
     Array { arr_type: Box<VarType>, size_expr: Box<ExprNode> },
-    Callback { args: Variables, return_type: Box<VarType> }
+    Callback { args: Variables, return_type: Box<VarType> },
+    Struct { args: Variables, templates: Templates }
     // Pointer(Box<VarType>)
     // Array(Box<VarType>, u32),
     // Tuple(Vec<VarType>),
@@ -160,14 +175,16 @@ pub enum ConstValue {
     Void
 }
 
+#[derive(PartialEq, Clone)]
 pub struct Variable {
-    name: String,
-    var_type: Option<VarType>,
-    init_expr: Option<ExprNode>,
-    is_mut: bool,
-    is_resolved: bool
+    pub name: String,
+    pub var_type: VarType,
+    pub init_expr: Option<ExprNode>,
+    pub is_mut: bool,
+    pub is_resolved: bool
 }
 
+#[derive(PartialEq, Clone)]
 pub struct Function {
     pub name: String,
     pub templates: Option<Templates>,
@@ -176,6 +193,7 @@ pub struct Function {
     pub scope: Option<Scope>
 }
 
+#[derive(PartialEq, Clone)]
 pub enum Statement {
     Expression{ expr: ExprNode, is_final_value: bool},
     VarDeclaration(Variable),
@@ -183,7 +201,7 @@ pub enum Statement {
     ControlFlow(ControlFlow)
 }
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(Eq, PartialEq, Clone, Copy)]
 pub enum InfixOpr {
     As,
     Is,
@@ -209,7 +227,7 @@ pub enum InfixOpr {
     Com
 }
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(Eq, PartialEq, Clone, Copy)]
 pub enum PrefixOpr {
     Not,
     Addr,
@@ -218,13 +236,14 @@ pub enum PrefixOpr {
     UMin
 }
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(Eq, PartialEq, Clone, Copy)]
 pub enum PostfixOpr {
     Inv,
     Idx,
     Mem
 }
 
+#[derive(Eq, PartialEq, Clone, Hash)]
 pub enum Conditional {
     If,
     For,
@@ -233,7 +252,8 @@ pub enum Conditional {
     Else
 }
 
-pub struct  ConditionalChain {
+#[derive(PartialEq, Clone)]
+pub struct ConditionalChain {
     kind: Conditional,
     cond_expr: Option<ExprNode>,
     then_scope: Scope,
@@ -261,6 +281,7 @@ impl ToString for ConditionalChain {
     }
 }
 
+#[derive(PartialEq, Clone)]
 pub enum ControlFlow {
     Return(Option<ExprNode>),
     Skip,
@@ -289,18 +310,20 @@ impl ToString for ControlFlow {
     }
 }
 
+#[derive(PartialEq, Clone)]
 pub struct Scope {
     pub variables: Vec<Variable>,
     pub statements: Vec<Statement>,
     pub functions: Vec<Function>,
     pub structs: Vec<Struct>,
     pub enums: Vec<Enum>,
-    pub objects: Vec<Object>,
+    pub modules: Vec<Module>,
     pub implementations: Vec<Implementation>,
     pub traits: Vec<Trait>,
     pub return_type: Option<VarType>
 }
 
+#[derive(PartialEq, Clone)]
 pub enum ExprNode {
     InfixOpr(InfixOpr, Box<ExprNode>, Box<ExprNode>),
     PrefixOpr(PrefixOpr, Box<ExprNode>),
@@ -313,23 +336,27 @@ pub enum ExprNode {
     Array(Vec<ExprNode>, bool) // is_duplicate [1, 2, 3] or [4; 5]
 }
 
-pub struct Object {
-    name: String,
-    scope: Scope
+#[derive(PartialEq, Clone)]
+pub struct Module {
+    pub name: String,
+    pub scope: Scope
 }
 
+#[derive(PartialEq, Clone)]
 pub struct Struct {
     name: String,
     templates: Option<Templates>,
     vars: Option<Variables>
 }
 
+#[derive(PartialEq, Clone)]
 pub struct Enum {
     name: String,
     templates: Option<Templates>,
     structs: Structs
 }
 
+#[derive(PartialEq, Clone)]
 pub struct Implementation {
     templates: Option<Templates>,
     opt_trait: Option<VarType>,
@@ -337,6 +364,7 @@ pub struct Implementation {
     scope: Scope
 }
 
+#[derive(PartialEq, Clone)]
 pub struct Trait {
     name: String,
     templates: Option<Templates>,
@@ -597,6 +625,13 @@ impl VarType {
         }
         Err(CompilerError::SyntaxError(format!("Type cannot start with char {}", parser.cur_char()?)))
     }  
+
+    pub fn is_void(&self) -> bool {
+        if let VarType::Primitive(primitive) = self && *primitive == PrimitiveType::Void {
+            return true;
+        }
+        return false;
+    }
 }
 
 impl ToString for VarType {
@@ -612,7 +647,9 @@ impl ToString for VarType {
             VarType::Primitive(primitive_type) => primitive_type.to_string(),
             VarType::Array { arr_type, size_expr } => format!("[{}; {}]", arr_type.to_string(), size_expr.to_string()),
             VarType::Callback { args, return_type } => 
-                format!("{} -> {}", args.to_string(), return_type.to_string())
+                format!("{} -> {}", args.to_string(), return_type.to_string()),
+            VarType::Struct { args, templates } => "Huh??? How???".to_string(),
+            VarType::UnresolvedExpr => "<Unresolved Expression>".to_string()
         }
     }
 }
@@ -709,7 +746,7 @@ impl ConstValue {
         if !(ch >= '0' && ch <= '9') {
             return Err(CompilerError::SyntaxError(format!("Expected a numeral, found char '{}'", ch)));
         }
-        #[derive(PartialEq)]
+        #[derive(PartialEq, Clone)]
         enum NumType { Dec, Hex, Bin }
         let mut num_type: NumType = NumType::Dec;
         if ch == '0' {
@@ -934,15 +971,15 @@ impl Variable {
     pub fn arg_from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
         let is_mut: bool = parser.is_next("mut");
         let name: String = parser.next_name()?;
-        let mut var_type: Option<VarType> = None;
+        let mut var_type: VarType = VarType::UnresolvedExpr;
         let mut init_expr: Option<ExprNode> = None;
         if parser.is_next(":") {
-            var_type = Some(VarType::from_def(parser)?);
+            var_type = VarType::from_def(parser)?;
         }
         if parser.is_next("=") {
             let expr: ExprNode = ExprNode::from_def(parser)?;
             init_expr = Some(expr);
-        } else if let None = var_type {
+        } else if var_type == VarType::UnresolvedExpr {
             return Err(CompilerError::SyntaxError("Expected either a type decleration ':' or expression assigment '='".to_string()));
         }
         return Ok(Self { name: name, var_type: var_type, init_expr: init_expr, is_mut: is_mut, is_resolved: false });
@@ -959,9 +996,7 @@ impl ToString for Variable {
     fn to_string(&self) -> String {
         let mut result: String = (if self.is_mut { "mut " } else { "" }).to_string();
         result += self.name.as_str();
-        if let Some(var_type) = &self.var_type {
-            result += format!(": {}", var_type.to_string()).as_str();
-        }
+        result += format!(": {}", self.var_type.to_string()).as_str();
         if let Some(init_expr) = &self.init_expr {
             result += format!(" = {}", init_expr.to_string()).as_str();
         }
@@ -969,8 +1004,9 @@ impl ToString for Variable {
     }
 }
 
-struct Variables {
-    variables: Vec<Variable>
+#[derive(PartialEq, Clone)]
+pub struct Variables {
+    pub variables: Vec<Variable>
 }
 
 impl Variables {
@@ -1001,6 +1037,7 @@ impl ToString for Variables {
     }
 }
 
+#[derive(PartialEq, Clone)]
 struct Structs {
     structs: Vec<Struct>
 }
@@ -1057,7 +1094,7 @@ impl ToString for Function {
             self.name,
             if let Some(templates) = self.templates.as_ref() { templates.to_string() } else { String::new() },
             self.args.to_string(),
-            if let Some(return_type) = self.return_type.as_ref() { format!("-> {} ", return_type.to_string()) } else { String::new() },
+            format!("-> {} ", self.return_type.to_string()),
             if let Some(scope) = self.scope.as_ref() { scope.to_string() } else { String::new() }
         )
     }
@@ -1186,7 +1223,7 @@ impl Scope {
             enums: Vec::new(),
             implementations: Vec::new(),
             traits: Vec::new(),
-            objects: Vec::new(),
+            modules: Vec::new(),
             return_type: None
         }
     }
@@ -1208,8 +1245,8 @@ impl Scope {
     }
 
     pub fn parse_next(&mut self, parser: &mut Parser) -> Result<(), CompilerError> {
-        if let Some(obj) = Object::is_from_def(parser)? {
-            self.objects.push(obj);
+        if let Some(obj) = Module::is_from_def(parser)? {
+            self.modules.push(obj);
         } else if let Some(strct) = Struct::is_from_def(parser)? {
             parser.ensure_next(";")?;
             self.structs.push(strct);
@@ -1228,16 +1265,25 @@ impl Scope {
         }
         Ok(())
     }
+
+    pub fn find_module(&self, name: String) -> Option<&Module> {
+        for module in self.modules.iter() {
+            if module.name == name {
+                return Some(module);
+            }
+        }
+        None
+    }
 }
 
-impl Object {
+impl Module {
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
-        if !parser.is_next("object") {
+        if !parser.is_next("module") {
             return Ok(None);
         }
         let name: String = parser.next_name()?;
         let scope: Scope = Scope::from_def(parser)?;
-        Ok(Some(Object { name, scope }))
+        Ok(Some(Module { name, scope }))
     }
 }
 
@@ -1283,8 +1329,8 @@ impl ToString for Scope {
             indented_str += self.statements.iter().map(|stat: &Statement| stat.to_string()).collect::<Vec<String>>().join("\n").as_str();
             indented_str += "\n";
         }
-        if !self.objects.is_empty() {
-            indented_str += self.objects.iter().map(|obj: &Object| obj.to_string()).collect::<Vec<String>>().join("\n").as_str();
+        if !self.modules.is_empty() {
+            indented_str += self.modules.iter().map(|obj: &Module| obj.to_string()).collect::<Vec<String>>().join("\n").as_str();
             indented_str += "\n";
         }
         if !self.functions.is_empty() {
@@ -1294,9 +1340,9 @@ impl ToString for Scope {
     }
 }
 
-impl ToString for Object {
+impl ToString for Module {
     fn to_string(&self) -> String {
-        return format!("object {} ", self.name) + self.scope.to_string().as_str();
+        return format!("module {} ", self.name) + self.scope.to_string().as_str();
     }
 }
 
