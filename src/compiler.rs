@@ -1,5 +1,6 @@
 use crate::errors::CompilerError;
 use crate::parser::*;
+use std::any::Any;
 use std::collections::{HashMap, VecDeque};
 use inkwell::context::Context;
 use inkwell::builder::Builder;
@@ -13,16 +14,6 @@ use inkwell::types::FunctionType;
 use inkwell::types::VoidType;
 use inkwell::values::FunctionValue;
 
-pub struct FunctionIdent {
-    name: String,
-    templates: Option<TemplatesValues>,
-    self_type: Option<VarType>
-}
-
-pub struct StructIdent {
-    ident: NamePath
-}
-
 #[derive(Copy, Clone, Hash, Eq, PartialEq)]
 struct FunctionId(usize);
 
@@ -30,49 +21,18 @@ struct FunctionId(usize);
 #[derive(Copy, Clone, Hash, Eq, PartialEq)]
 struct TypeId(usize);
 
-impl VarType {
-    pub fn build(&mut self, templates_values: &Option<TemplatesValues>) {
 
-    }
-
-    pub fn to_llvm_type<'ctx>(&self, context: &'ctx Context) -> BasicTypeEnum<'ctx> {
-        
-    }
-
-    pub fn to_fn_type<'ctx>(&self, args: &Variables, context: Context) -> FunctionType<'ctx> {
-        let llvm_args: Vec<BasicMetadataTypeEnum<'ctx>> = args.variables.iter().map(|var| var.var_type.to_llvm_type(context).into()).collect();
-        if self.is_void() {
-            return context.void_type().fn_type(llvm_args.as_slice(), false); 
-        }
-        return 3;
-    }
-}
-
-struct BuiltFunction<'ctx> {
+struct IRFunction<'ctx> {
     llvm_type: FunctionType<'ctx>,
     fun_value: Option<FunctionValue<'ctx>>,
-    templates_values: Option<TemplatesValues>,
-    args: Variables,
-    return_type: VarType,
-    def: &'ctx Function
-}
-
-impl<'ctx> BuiltFunction<'ctx> {
-    pub fn build_header(def: &'ctx Function, templates_values: &Option<TemplatesValues>, type_context: &'ctx mut TypeContext) -> BuiltFunction<'ctx> {
-        let mut return_type: VarType = def.return_type.clone();
-        return_type.build(templates_values);
-        let return_type_id: TypeId = type_context.get_type_id(return_type);
-        let mut args: Variables = def.args.clone();
-        for arg in args.variables.iter_mut() {
-            arg.var_type.build(&templates_values);
-        }
-        let fun_type = if return_type.to_llvm_type().fn_type(param_types, is_var_args)
-    }
+    args: IRVariables,
+    return_type_id: TypeId,
+    fun_def: &'ctx Function
 }
 
 struct FunctionContext<'ctx> {
-    ids: Vec<(NamePath, Option<NamePath>)>, // optional: [SomeModule.InnerMod.Struct<T1, 4>] value: Foo<5, 3>
-    infos: HashMap<FunctionId, BuiltFunction<'ctx>>,
+    ids: Vec<(NamePath, Option<TypeId>)>, // optional: [SomeModule.InnerMod.Struct<T1, 4>] value: Foo<5, 3>
+    infos: HashMap<FunctionId, IRFunction<'ctx>>,
     work: VecDeque<FunctionId>,
     cur_fun: FunctionId
 }
@@ -82,60 +42,56 @@ impl<'ctx> FunctionContext<'ctx> {
         Self { ids: Vec::new(), infos: HashMap::new(), work: VecDeque::new(), cur_fun: FunctionId(0) }
     }
 
-    fn find_fun_def(&self, scope: &'ctx Scope, fun_name: NamePath) -> Option<&'ctx Function> {
-        // TODO
-    }
-
-    pub fn get_id(&mut self, fun_name: NamePath, opt_self_type: Option<NamePath>, scope: &'ctx Scope) -> Result<FunctionId, CompilerError> {
+    pub fn next_id(&mut self, fun_name: NamePath, opt_self_type: Option<TypeId>) -> FunctionId {
         for (i, (cur_name, cur_opt_self_type)) in self.ids.iter().enumerate() {
             if *cur_name == fun_name && *cur_opt_self_type == opt_self_type {
-                return Ok(FunctionId(i));
-            }
-        }
-        let id: FunctionId = FunctionId(self.ids.len());
-        
-        let fun_def: &Function = self.find_fun_def(scope, fun_name).ok_or(CompilerError::SemanticError(format!("Missing function '{}'", fun_name.to_string())))?;
-
-
-        self.ids.push((fun_name, opt_self_type));
-        id
-    }
-
-    pub fn build_fun(&mut self, name: NamePath, scope_path: NamePath, opt_self_type: Option<NamePath>, main_scope: &'ctx Scope, type_context: &'ctx mut TypeContext) -> FunctionId {
-        for (i, (cur_name, cur_opt_self_type)) in self.ids.iter().enumerate() {
-            if *cur_name == name && *cur_opt_self_type == opt_self_type {
                 return FunctionId(i);
             }
         }
         let id: FunctionId = FunctionId(self.ids.len());
-        self.ids.push((name, opt_self_type));
-
-        if let Some(fun) = FunctionContext::find_fun_in_scope_rec(main_scope, name, scope_path) {
-            self.infos.insert(id, BuiltFunction::build_header(fun));
-        }
+        self.ids.push((fun_name, opt_self_type));
+        id
     }
 
-    pub fn get_built_fun(&self, id: FunctionId) -> Option<&BuiltFunction<'ctx>> {
+    pub fn get_name(&self, id: FunctionId) -> &(NamePath, Option<TypeId>) {
+        for (i, value) in self.ids.iter().enumerate() {
+            if id.0 == i {
+                return value;
+            }
+        }
+        panic!("Cannot get fun name of a non existing fun id");
+    }
+
+    pub fn get_ir_fun(&self, id: FunctionId) -> &IRFunction<'ctx> {
         if let Some(info) = self.infos.get(&id) {
-            Some(info)
+            info
         } else {
-            None
+            panic!("Received non existing fun id");
         }
     }
 }
 
-struct Type<'ctx> {
+enum IRTypeEnum<'ctx> {
+    Primitive(PrimitiveType),
+    Pointer { ptr_type: TypeId, is_ref: bool },
+    Array { arr_type: TypeId, size: usize },
+    Callback { args: IRVariables, return_type: TypeId },
+    Struct { args: IRVariables, def: &'ctx Struct }
+}
+
+struct IRType<'ctx> {
     llvm_type: BasicTypeEnum<'ctx>,
-    var_type: Box<VarType>
+    is_void: bool,
+    type_enum: Box<VarType>
 }
 
 struct TypeContext<'ctx> {
     ids: Vec<VarType>,
-    infos: HashMap<TypeId, Type<'ctx>>
+    infos: HashMap<TypeId, IRType<'ctx>>
 }
 
 impl<'ctx> TypeContext<'ctx> {
-    pub fn get_type_id(&mut self, var_type: VarType, context: &'ctx Context) -> TypeId {
+    pub fn next_id(&mut self, var_type: VarType) -> TypeId {
         for (i, cur_type) in self.ids.iter().enumerate() {
             if *cur_type == var_type {
                 return TypeId(i);
@@ -143,15 +99,14 @@ impl<'ctx> TypeContext<'ctx> {
         }
         let result: TypeId = TypeId(self.ids.len());
         self.ids.push(var_type.clone());
-        self.infos.insert(result, Type { llvm_type: var_type.to_llvm_type(context), var_type: Box::new(var_type) });
         result        
     }
 
-    pub fn get_type(&self, id: TypeId) -> Option<&Type<'ctx>> {
+    pub fn get_type(&self, id: TypeId) -> &IRType<'ctx> {
         if let Some(info) = self.infos.get(&id) {
-            Some(info)
+            info
         } else {
-            None
+            panic!("Received non existing type id");
         }
     }
 }
@@ -160,6 +115,17 @@ impl<'ctx> TypeContext<'ctx> {
     pub fn new() -> Self {
         Self { ids: Vec::new(), infos: HashMap::new() }
     }
+}
+
+pub struct IRVariable {
+    name: String,
+    type_id: TypeId,
+    is_mut: bool,
+    is_resolved: bool
+}
+
+pub struct IRVariables {
+    vars: Vec<IRVariable>
 }
 
 pub struct Compiler<'ctx> {
@@ -179,36 +145,104 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     pub fn compile(&mut self) -> Result<(), CompilerError> {
-        let main_id: FunctionId = self.function_context.get_id(NamePath::new(["main".to_string()].to_vec(), None), None);
-        if let Some(fun) = self.find_fun(self.main_scope, , NamePath::new(Vec::new(), None)) {
-            self.build_next_function();
-        } else {
-            return Err(CompilerError::SemanticError("Missing main function".to_string()));
-        }
+        let main_id: FunctionId = self.function_context.next_id(NamePath::new(["main".to_string()].to_vec(), None), None);
+        self.build_fun(main_id)?;
         self.module.print_to_stderr();
         Ok(())
     }
 
-    pub fn find_fun_in_scope_rec(scope: &'ctx Scope, name_path: NamePath, scope_path: NamePath) -> Option<&'ctx Function> {
-        if name_path.path.len() == 1 {
-            if scope_path.path.len() > 0 {
-                let mod_name: String = scope_path.path[0].clone();
-                if let Some(module) = scope.find_module(mod_name) {
-                    if let Some(fun) = Self::find_fun_in_scope_rec(&module.scope, name_path, scope_path.clone_pop()) {
-                        return Some(fun);
-                    }   
+    pub fn build_fun(&mut self, fun_id: FunctionId) -> Result<(), CompilerError> {
+        let fun_def: &'ctx Function = self.find_fun_def(fun_id).ok_or(CompilerError::SemanticError(format!("Missing function '{}'", self.fun_id_to_string(fun_id))))?;
+        let (name_path , opt_self_type) = self.function_context.get_name(fun_id).clone();
+        let opt_templates_values: & Option<TemplatesValues> = &name_path.templates;
+        let return_type_id: TypeId = self.build_type_id(fun_def.return_type.clone(), opt_templates_values.clone());
+        let mut args: IRVariables = IRVariables { vars: Vec::new() };
+        let mut args_llvm_types: Vec<BasicMetadataTypeEnum> = Vec::new();
+        for arg in fun_def.args.variables.iter() {
+            let ir_var: IRVariable = self.build_ir_var(arg, opt_templates_values);
+            args_llvm_types.push(self.type_context.get_type(ir_var.type_id).llvm_type.into());
+            args.vars.push(ir_var);
+        }
+        let return_ir_type = self.type_context.get_type(return_type_id);
+        let fun_type = if return_ir_type.is_void {
+            self.context.void_type().fn_type(args_llvm_types.as_slice(), false)
+        } else {
+            return_ir_type.llvm_type.fn_type(args_llvm_types.as_slice(), false)
+        };
+
+        let ir_fun = IRFunction {
+            llvm_type: fun_type,
+            fun_value: None,
+            args,
+            return_type_id,
+            fun_def
+        };
+        let fun_id: FunctionId = self.function_context.next_id(name_path, opt_self_type);
+        self.function_context.infos.insert(fun_id, ir_fun);
+        Ok(())
+    }
+
+    pub fn build_ir_var(&mut self, var: &Variable, opt_templates_values: &Option<TemplatesValues>) -> IRVariable {
+        let type_id: TypeId = self.build_type_id(&var.var_type, &opt_templates_values);
+        IRVariable { name: var.name.clone(), type_id, is_mut: var.is_mut, is_resolved: var.is_resolved }
+    }
+
+    pub fn build_type_id(&mut self, var_type: VarType, opt_templates_values: Option<TemplatesValues>) -> TypeId {
+        // TODO
+        match var_type {
+            VarType::Unresolved { name_path } => {},
+            VarType::Primitive(primitive_type) => {
+                let id: TypeId = self.type_context.next_id(var_type);
+                let llvm_type = match primitive_type {
+                    PrimitiveType::Int
                 }
+                self.type_context.infos.insert(id, var_type);
+            },
+            _ => { }
+        }
+        if let  else {
+            let id: TypeId = self.type_context.next_id(var_type);
+            self.type_context.infos.insert(id, v)
+        }
+    }
+
+    pub fn fun_id_to_string(&self, id: FunctionId) -> String {
+        let value = self.function_context.get_name(id);
+        let mut result: String = value.0.to_string();
+        if let Some(type_id) = value.1 {
+            result += self.type_id_to_string(type_id).as_str();
+        }
+        return result;
+    }
+
+    pub fn type_id_to_string(&self, id: TypeId) -> String {
+        return "TODO".to_string();
+    }
+
+    pub fn find_fun_def(&self, fun_id: FunctionId) -> Option<&'ctx Function> {
+        let (mut name_path , opt_self_type) = self.function_context.get_name(fun_id).clone();
+        let mut cur_scope: &Scope = self.main_scope;
+
+
+        while name_path.path.len() > 1 {
+            let mod_name: String = name_path.path[0].clone();
+            if let Some(module) = cur_scope.find_module(mod_name) {
+                cur_scope = &module.scope;
+                name_path = name_path.clone_pop();
             } else {
-                let fun_name: String = name_path.path[0].clone();
-                for fun in scope.functions.iter() {
-                    if fun.name == fun_name {
-                        return Some(fun);
-                    }
+                return None;  
+            }
+        }
+
+        if name_path.path.len() == 1 {
+            let fun_name: String = name_path.path[0].clone();
+            for fun in cur_scope.functions.iter() {
+                if fun.name == fun_name {
+                    return Some(fun);
                 }
             }
             return None;
         } else {
-            // TODO
             return None;
         }
     }
