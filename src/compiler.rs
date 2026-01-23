@@ -5,14 +5,14 @@ use std::collections::{HashMap, VecDeque};
 use inkwell::context::Context;
 use inkwell::builder::Builder;
 use inkwell::module::Module;
-use inkwell::types::BasicMetadataTypeEnum;
+use inkwell::types::{BasicMetadataTypeEnum, PointerType};
 use inkwell::types::BasicType;
 use inkwell::types::BasicTypeEnum;
 use inkwell::types::StructType;
 use inkwell::types::AnyTypeEnum;
 use inkwell::types::FunctionType;
 use inkwell::types::VoidType;
-use inkwell::values::FunctionValue;
+use inkwell::values::{FunctionValue, PointerValue};
 
 #[derive(Copy, Clone, Hash, Eq, PartialEq)]
 struct FunctionId(usize);
@@ -23,9 +23,9 @@ struct TypeId(usize);
 
 
 struct IRFunction<'ctx> {
-    llvm_type: FunctionType<'ctx>,
+    fun_type: FunctionType<'ctx>,
     fun_value: FunctionValue<'ctx>,
-    args: IRVariables,
+    args: IRVariables<'ctx>,
     return_type_id: TypeId,
     fun_def: &'ctx Function
 }
@@ -75,8 +75,8 @@ enum IRTypeEnum<'ctx> {
     Primitive(PrimitiveType),
     Pointer { ptr_type_id: TypeId, is_ref: bool },
     Array { arr_type: TypeId, size: usize },
-    Callback { args: IRVariables, return_type: TypeId },
-    Struct { args: IRVariables, def: &'ctx Struct }
+    Callback { args: IRVariables<'ctx>, return_type: TypeId },
+    Struct { args: IRVariables<'ctx>, def: &'ctx Struct }
 }
 
 struct IRType<'ctx> {
@@ -117,15 +117,18 @@ impl<'ctx> TypeContext<'ctx> {
     }
 }
 
-pub struct IRVariable {
+#[derive(Clone)]
+pub struct IRVariable<'ctx> {
     name: String,
     type_id: TypeId,
     is_mut: bool,
-    is_resolved: bool
+    is_resolved: bool,
+    ptr: Option<PointerValue<'ctx>>
 }
 
-pub struct IRVariables {
-    vars: Vec<IRVariable>
+#[derive(Clone)]
+pub struct IRVariables<'ctx> {
+    vars: Vec<IRVariable<'ctx>>
 }
 
 pub struct Compiler<'ctx> {
@@ -174,7 +177,7 @@ impl<'ctx> Compiler<'ctx> {
         let fun_value: FunctionValue<'_> = self.module.add_function(fun_str_name.as_str(), fun_type, None);
 
         let ir_fun = IRFunction {
-            llvm_type: fun_type,
+            fun_type,
             fun_value,
             args,
             return_type_id,
@@ -189,13 +192,30 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     fn build_fun_body(&mut self, fun_id: FunctionId) -> Result<(), CompilerError> {
-        
+        let ir_fun: &IRFunction<'_> = &self.function_context.infos[&fun_id];
+        let fun_value: FunctionValue<'_> = ir_fun.fun_value;
+        let entry_block = self.context.append_basic_block(fun_value, "entry");
+        self.builder.position_at_end(entry_block);
+        let mut cur_vars: IRVariables = ir_fun.args.clone();
+        for (i, arg) in cur_vars.vars.iter_mut().enumerate() {
+            let llvm_type = self.type_context.infos[&arg.type_id].llvm_type;
+            let arg_value = fun_value.get_nth_param(i as u32).unwrap();
+            let ptr = self.builder.build_alloca(llvm_type, arg.name.as_str()).unwrap();
+            arg.ptr = Some();
+        }
+
+        let scope: &Scope = ir_fun.fun_def.scope.as_ref().unwrap();
+        self.build_scope(scope, &mut cur_vars);
         Ok(())
     }
 
-    fn build_ir_var(&mut self, var: &Variable, opt_templates_values: Option<TemplatesValues>) -> IRVariable {
+    fn build_scope(&mut self, scope: &Scope, cur_vars: &mut IRVariables) {
+        
+    }
+
+    fn build_ir_var(&mut self, var: &Variable, opt_templates_values: Option<TemplatesValues>) -> IRVariable<'ctx> {
         let type_id: TypeId = self.build_type_id(&var.var_type, opt_templates_values);
-        IRVariable { name: var.name.clone(), type_id, is_mut: var.is_mut, is_resolved: var.is_resolved }
+        IRVariable { name: var.name.clone(), type_id, is_mut: var.is_mut, is_resolved: var.is_resolved, ptr: None }
     }
 
     fn build_type_id(&mut self, var_type: &VarType, opt_templates_values: Option<TemplatesValues>) -> TypeId {

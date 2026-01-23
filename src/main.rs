@@ -2,7 +2,6 @@ mod parser;
 mod compiler;
 mod errors;
 
-extern crate inkwell;
 use inkwell::context::Context;
 
 use crate::errors::CompilerError;

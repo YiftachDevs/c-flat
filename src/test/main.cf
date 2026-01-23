@@ -1,4 +1,4 @@
-fun main(a: i32, b: char) -> *f64 {
+fun main(a: i32, b: char) -> f64 {
     
 }
 

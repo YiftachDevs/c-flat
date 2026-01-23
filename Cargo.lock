@@ -13,6 +13,7 @@ name = "c-flat"
 version = "0.1.0"
 dependencies = [
  "inkwell",
+ "llvm-sys",
 ]
 
 [[package]]
