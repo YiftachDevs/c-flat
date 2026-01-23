@@ -2,6 +2,7 @@ mod parser;
 mod compiler;
 mod errors;
 
+extern crate inkwell;
 use inkwell::context::Context;
 
 use crate::errors::CompilerError;
@@ -26,9 +27,9 @@ fn main() -> Result<(), CompilerError> {
     println!("{}", main_scope.to_string());
     
     let context: Context = Context::create();
-    let compiler: Compiler<'_> = Compiler::new(&context, &main_scope);
+    let mut compiler: Compiler<'_> = Compiler::new(&context, &main_scope);
 
-    compiler.compile();
+    compiler.compile()?;
 
     println!("Done!");
     Ok(())

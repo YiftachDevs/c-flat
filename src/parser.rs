@@ -125,10 +125,20 @@ impl TemplatesValues {
 
 #[derive(Eq, PartialEq, Clone, Hash, Copy)]
 pub enum PrimitiveType {
-    Int,
-    Size,
-    Float,
-    Byte,
+    U8,
+    I8,
+    U16,
+    I16,
+    U32,
+    I32,
+    U64,
+    I64,
+    U128,
+    I128,
+    F16,
+    F32,
+    F64,
+    F128,
     Char,
     Bool,
     Void
@@ -137,13 +147,23 @@ pub enum PrimitiveType {
 impl ToString for PrimitiveType {
     fn to_string(&self) -> String {
         match self {
-            PrimitiveType::Int => "int".to_string(),
-            PrimitiveType::Size => "size".to_string(),
-            PrimitiveType::Float => "float".to_string(),
-            PrimitiveType::Byte => "byte".to_string(),
+            PrimitiveType::U8 => "u8".to_string(),
+            PrimitiveType::I8 => "i8".to_string(),
+            PrimitiveType::U16 => "u16".to_string(),
+            PrimitiveType::I16 => "i16".to_string(),
+            PrimitiveType::U32 => "u32".to_string(),
+            PrimitiveType::I32 => "i32".to_string(),
+            PrimitiveType::U64 => "u64".to_string(),
+            PrimitiveType::I64 => "i64".to_string(),
+            PrimitiveType::U128 => "u128".to_string(),
+            PrimitiveType::I128 => "i128".to_string(),
+            PrimitiveType::F16 => "f16".to_string(),
+            PrimitiveType::F32 => "f32".to_string(),
+            PrimitiveType::F64 => "f64".to_string(),
+            PrimitiveType::F128 => "f128".to_string(),
             PrimitiveType::Char => "char".to_string(),
             PrimitiveType::Bool => "bool".to_string(),
-            PrimitiveType::Void => "()".to_string(),
+            PrimitiveType::Void => "()".to_string()
         }
     }
 }
@@ -416,27 +436,23 @@ impl ControlFlow {
 
 impl PrimitiveType {
     pub fn from_def(parser: &mut Parser) -> Option<Self> {
-        if parser.is_next("int") {
-            return Some(PrimitiveType::Int);
-        }
-        if parser.is_next("float") {
-            return Some(PrimitiveType::Float);
-        }
-        if parser.is_next("bool") {
-            return Some(PrimitiveType::Bool);
-        }
-        if parser.is_next("size") {
-            return Some(PrimitiveType::Size);
-        }
-        if parser.is_next("byte") {
-            return Some(PrimitiveType::Byte);
-        }
-        if parser.is_next("char") {
-            return Some(PrimitiveType::Char);
-        }
-        if parser.is_next("void") {
-            return Some(PrimitiveType::Void);
-        }
+        if parser.is_next("u8") { return Some(PrimitiveType::U8); }
+        if parser.is_next("i8") { return Some(PrimitiveType::I8); }
+        if parser.is_next("u16") { return Some(PrimitiveType::U16); }
+        if parser.is_next("i16") { return Some(PrimitiveType::I16); }
+        if parser.is_next("f16") { return Some(PrimitiveType::F16); }
+        if parser.is_next("u32") { return Some(PrimitiveType::U32); }
+        if parser.is_next("i32") { return Some(PrimitiveType::I32); }
+        if parser.is_next("f32") { return Some(PrimitiveType::F32); }
+        if parser.is_next("u64") { return Some(PrimitiveType::U64); }
+        if parser.is_next("i64") { return Some(PrimitiveType::I64); }
+        if parser.is_next("f64") { return Some(PrimitiveType::F64); }
+        if parser.is_next("u128") { return Some(PrimitiveType::U128); }
+        if parser.is_next("i128") { return Some(PrimitiveType::I128); }
+        if parser.is_next("f128") { return Some(PrimitiveType::F128); }
+        if parser.is_next("bool") { return Some(PrimitiveType::Bool); }
+        if parser.is_next("char") { return Some(PrimitiveType::Char); }
+        if parser.is_next("()") { return Some(PrimitiveType::Void); }
         return None;
     }
 }

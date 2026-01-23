@@ -1,4 +1,4 @@
-fun main() {
+fun main(a: i32, b: char) -> *f64 {
     
 }
 
@@ -10,8 +10,6 @@ module Thing {
     module Thing_2 {
         fun aoe() {
             aoe();
-            Thing.Thing_2.aoe();
-            Thing_2.aoe();
         }
     }
 }
