@@ -12,14 +12,14 @@ use inkwell::types::StructType;
 use inkwell::types::AnyTypeEnum;
 use inkwell::types::FunctionType;
 use inkwell::types::VoidType;
-use inkwell::values::{FunctionValue, PointerValue};
+use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
 
 #[derive(Copy, Clone, Hash, Eq, PartialEq)]
 struct FunctionId(usize);
 
 
 #[derive(Copy, Clone, Hash, Eq, PartialEq)]
-struct TypeId(usize);
+struct TypeId(i32);
 
 
 struct IRFunction<'ctx> {
@@ -32,14 +32,12 @@ struct IRFunction<'ctx> {
 
 struct FunctionContext<'ctx> {
     ids: Vec<(NamePath, Option<TypeId>)>, // optional: [SomeModule.InnerMod.Struct<T1, 4>] value: Foo<5, 3>
-    infos: HashMap<FunctionId, IRFunction<'ctx>>,
-    work: VecDeque<FunctionId>,
-    cur_fun: FunctionId
+    infos: HashMap<FunctionId, IRFunction<'ctx>>
 }
 
 impl<'ctx> FunctionContext<'ctx> {
     pub fn new() -> Self {
-        Self { ids: Vec::new(), infos: HashMap::new(), work: VecDeque::new(), cur_fun: FunctionId(0) }
+        Self { ids: Vec::new(), infos: HashMap::new() }
     }
 
     pub fn next_id(&mut self, fun_name: NamePath, opt_self_type: Option<TypeId>) -> FunctionId {
@@ -94,10 +92,10 @@ impl<'ctx> TypeContext<'ctx> {
     pub fn next_id(&mut self, var_type: VarType) -> TypeId {
         for (i, cur_type) in self.ids.iter().enumerate() {
             if *cur_type == var_type {
-                return TypeId(i);
+                return TypeId(i as i32);
             }
         }
-        let result: TypeId = TypeId(self.ids.len());
+        let result: TypeId = TypeId(self.ids.len() as i32);
         self.ids.push(var_type.clone());
         result        
     }
@@ -136,6 +134,7 @@ pub struct Compiler<'ctx> {
     main_scope: &'ctx Scope,
     module: Module<'ctx>,
     builder: Builder<'ctx>,
+    alloca_builder: Builder<'ctx>,
     type_context: TypeContext<'ctx>,
     function_context: FunctionContext<'ctx>
 }
@@ -144,7 +143,8 @@ impl<'ctx> Compiler<'ctx> {
     pub fn new(context: &'ctx Context, main_scope: &'ctx Scope) -> Compiler<'ctx> {
         let module: Module = context.create_module("main_module");
         let builder: Builder<'_> = context.create_builder();
-        Compiler { context: context, main_scope, module, builder, type_context: TypeContext::new(), function_context: FunctionContext::new() }
+        let alloca_builder: Builder<'_> = context.create_builder();
+        Compiler { context: context, main_scope, module, builder, alloca_builder, type_context: TypeContext::new(), function_context: FunctionContext::new() }
     }
 
     pub fn compile(&mut self) -> Result<(), CompilerError> {
@@ -158,11 +158,11 @@ impl<'ctx> Compiler<'ctx> {
         let fun_def: &'ctx Function = self.find_fun_def(fun_id).ok_or(CompilerError::SemanticError(format!("Missing function '{}'", self.fun_id_to_string(fun_id))))?;
         let (name_path , opt_self_type) = self.function_context.get_name(fun_id).clone();
         let opt_templates_values: & Option<TemplatesValues> = &name_path.templates;
-        let return_type_id: TypeId = self.build_type_id(&fun_def.return_type, opt_templates_values.clone());
+        let return_type_id: TypeId = self.build_type_id(&fun_def.return_type, &opt_templates_values);
         let mut args: IRVariables = IRVariables { vars: Vec::new() };
         let mut args_llvm_types: Vec<BasicMetadataTypeEnum> = Vec::new();
         for arg in fun_def.args.variables.iter() {
-            let ir_var: IRVariable = self.build_ir_var(arg, opt_templates_values.clone());
+            let ir_var: IRVariable = self.build_ir_var(arg, &opt_templates_values);
             args_llvm_types.push(self.type_context.get_type(ir_var.type_id).llvm_type.into());
             args.vars.push(ir_var);
         }
@@ -195,30 +195,76 @@ impl<'ctx> Compiler<'ctx> {
         let ir_fun: &IRFunction<'_> = &self.function_context.infos[&fun_id];
         let fun_value: FunctionValue<'_> = ir_fun.fun_value;
         let entry_block = self.context.append_basic_block(fun_value, "entry");
-        self.builder.position_at_end(entry_block);
+        self.alloca_builder.position_at_end(entry_block);
         let mut cur_vars: IRVariables = ir_fun.args.clone();
-        for (i, arg) in cur_vars.vars.iter_mut().enumerate() {
-            let llvm_type = self.type_context.infos[&arg.type_id].llvm_type;
-            let arg_value = fun_value.get_nth_param(i as u32).unwrap();
-            let ptr = self.builder.build_alloca(llvm_type, arg.name.as_str()).unwrap();
-            arg.ptr = Some();
+        for arg in cur_vars.vars.iter_mut() {
+            let arg_ptr = self.build_alloca(arg.type_id, arg.name.clone());
+            arg.ptr = Some(arg_ptr);
         }
-
+        self.builder.position_at_end(entry_block);
+        for (i, arg) in cur_vars.vars.iter_mut().enumerate() {
+            let arg_value = fun_value.get_nth_param(i as u32).unwrap();
+            self.builder.build_store(arg.ptr.unwrap(), arg_value).unwrap();
+        }
         let scope: &Scope = ir_fun.fun_def.scope.as_ref().unwrap();
-        self.build_scope(scope, &mut cur_vars);
+        self.build_scope(scope, &mut cur_vars, fun_id)?;
         Ok(())
     }
 
-    fn build_scope(&mut self, scope: &Scope, cur_vars: &mut IRVariables) {
-        
+    fn build_scope(&mut self, scope: &Scope, cur_vars: &mut IRVariables<'ctx>, fun_id: FunctionId) -> Result<(), CompilerError> {
+        let (name_path , opt_self_type) = self.function_context.get_name(fun_id).clone();
+        let opt_templates_values: &Option<TemplatesValues> = &name_path.templates;
+        let ir_fun: &IRFunction<'_> = &self.function_context.infos[&fun_id];
+        let fun_value: FunctionValue<'_> = ir_fun.fun_value;
+
+        for statement in scope.statements.iter() {
+            match statement {
+                Statement::VarDeclaration(var) => {
+                    let mut ir_var: IRVariable = self.build_ir_var(var, opt_templates_values);
+                    let var_ptr = if let Some(init_expr) = var.init_expr.as_ref() {
+                        let (expr_value, expr_type) = self.build_expr(init_expr);
+                        if ir_var.type_id.0 != -1 && ir_var.type_id != expr_type {
+                            todo!();
+                        }
+                        let var_ptr = self.build_alloca(expr_type, var.name.clone());
+                        self.builder.build_store(var_ptr, expr_value).unwrap();
+                        var_ptr
+                    } else {
+                        let type_id: TypeId = self.build_type_id(&var.var_type, opt_templates_values);
+                        self.build_alloca(type_id, var.name.clone())
+                    };
+                    ir_var.ptr = Some(var_ptr);
+                    cur_vars.vars.push(ir_var);
+                }
+                _ => { todo!() }
+            }
+        }
+        Ok(())
     }
 
-    fn build_ir_var(&mut self, var: &Variable, opt_templates_values: Option<TemplatesValues>) -> IRVariable<'ctx> {
+    fn build_alloca(&self, type_id: TypeId, name: String) -> PointerValue<'ctx> {
+        let llvm_type = self.type_context.infos[&type_id].llvm_type;
+
+        let entry_block = self.alloca_builder.get_insert_block().unwrap();
+    
+        match entry_block.get_first_instruction() {
+            Some(first_instr) => self.alloca_builder.position_before(&first_instr),
+            None => self.alloca_builder.position_at_end(entry_block),
+        }
+
+        self.alloca_builder.build_alloca(llvm_type, name.as_str()).unwrap()
+    }
+
+
+    fn build_expr(&mut self, expr: &ExprNode) -> (BasicValueEnum<'ctx>, TypeId) {
+        (self.context.i32_type().const_int(0, false).into(), TypeId(0))
+    }
+    fn build_ir_var(&mut self, var: &Variable, opt_templates_values: &Option<TemplatesValues>) -> IRVariable<'ctx> {
         let type_id: TypeId = self.build_type_id(&var.var_type, opt_templates_values);
         IRVariable { name: var.name.clone(), type_id, is_mut: var.is_mut, is_resolved: var.is_resolved, ptr: None }
     }
 
-    fn build_type_id(&mut self, var_type: &VarType, opt_templates_values: Option<TemplatesValues>) -> TypeId {
+    fn build_type_id(&mut self, var_type: &VarType, opt_templates_values: &Option<TemplatesValues>) -> TypeId {
         // TODO
         match var_type {
             VarType::Primitive(primitive_type) => {
@@ -248,7 +294,7 @@ impl<'ctx> Compiler<'ctx> {
                 self.type_context.infos.insert(id, ir_type);
                 id
             },
-            _ => TypeId(0) // TODO
+            _ => TypeId(-1) // TODO
         }
     }
 

@@ -10,7 +10,7 @@ use crate::parser::*;
 use crate::compiler::*;
 
 fn main() -> Result<(), CompilerError> {
-    let str_path: &str = "test";
+    let str_path: &str = "src/test";
     let path: &Path = Path::new(str_path);
     if let Err(e) = env::set_current_dir(&path) {
         return Err(CompilerError::LinkerError(format!("Failed to open working directory '{}', {}", str_path, e)));

@@ -344,7 +344,7 @@ pub struct Scope {
 }
 
 #[derive(PartialEq, Clone)]
-pub enum ExprNode {
+pub enum ExprNodeEnum {
     InfixOpr(InfixOpr, Box<ExprNode>, Box<ExprNode>),
     PrefixOpr(PrefixOpr, Box<ExprNode>),
     PostfixOpr(PostfixOpr, Box<ExprNode>, Box<Option<ExprNode>>),
@@ -354,6 +354,12 @@ pub enum ExprNode {
     Scope(Scope),
     ConditionalChain(Box<ConditionalChain>),
     Array(Vec<ExprNode>, bool) // is_duplicate [1, 2, 3] or [4; 5]
+}
+
+#[derive(PartialEq, Clone)]
+pub struct ExprNode {
+    value: ExprNodeEnum,
+    span: Span
 }
 
 #[derive(PartialEq, Clone)]
@@ -459,6 +465,7 @@ impl PrimitiveType {
 
 impl InfixOpr {
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
+        parser.skip_whitespace()?;
         let ch: char = parser.cur_char()?;
         parser.index += 1;
         let result: InfixOpr = match ch {
@@ -502,7 +509,6 @@ impl InfixOpr {
             ',' => InfixOpr::Com,
             _ => { parser.index -= 1; return Ok(None); }
         };
-        parser.skip_whitespace()?;
         Ok(Some(result))
     }
 
@@ -695,7 +701,6 @@ impl ConstValue {
         loop {
             let ch: char = ConstValue::char_from_def(parser)?;
             if ch == '\"' {
-                parser.skip_whitespace()?;
                 break;
             }
             result.push(ch);
@@ -758,6 +763,7 @@ impl ConstValue {
     }
 
     fn numeral_from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
+        parser.skip_whitespace()?;
         let ch: char = parser.cur_char()?;
         if !(ch >= '0' && ch <= '9') {
             return Err(CompilerError::SyntaxError(format!("Expected a numeral, found char '{}'", ch)));
@@ -828,10 +834,8 @@ impl ConstValue {
                     break;
                 }
             }
-            parser.skip_whitespace()?;
             return Ok(ConstValue::Float(value as f32 + fractional_value));
         }
-        parser.skip_whitespace()?;
         return Ok(ConstValue::UnresolvedInteger(value));
     }
 }
@@ -865,7 +869,7 @@ impl ExprNode {
         let mut root: Box<ExprNode> = Box::new(ExprNode::primary_from_def(parser)?);
         if let Some(infix_opr) = InfixOpr::is_from_def(parser)? {
             let next_node: ExprNode = ExprNode::primary_from_def(parser)?;
-            root = Box::new(ExprNode::InfixOpr(infix_opr, root, Box::new(next_node)));
+            root = Box::new(ExprNode{ value: ExprNodeEnum::InfixOpr(infix_opr, root, Box::new(next_node)), span: root.span.merge(next_node.span) });
         }
         while let Some(infix_opr) = InfixOpr::is_from_def(parser)? {
             let prec = infix_opr.precedence();
@@ -907,64 +911,68 @@ impl ExprNode {
     }
 
     pub fn primary_from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
-        let mut result: ExprNode;
+        parser.skip_whitespace()?;
+        let mut result_span: Span = parser.get_span_start();
+        let mut result_enum: ExprNodeEnum;
         if let Some(prefix_opr) = PrefixOpr::is_from_def(parser)? {
-            result = ExprNode::PrefixOpr(prefix_opr, Box::new(ExprNode::primary_from_def(parser)?));
+            result_enum = ExprNodeEnum::PrefixOpr(prefix_opr, Box::new(ExprNode::primary_from_def(parser)?));
         } else if let Some(new_var) = Variable::is_from_def(parser)? {
-            result = ExprNode::VarDeclaration(Box::new(new_var));
+            result_enum = ExprNodeEnum::VarDeclaration(Box::new(new_var));
         } else if let Some(const_value) = ConstValue::is_from_def(parser)? {
-            result = ExprNode::ConstValue(const_value);
+            result_enum = ExprNodeEnum::ConstValue(const_value);
         } else if let Some(cond_chain) = ConditionalChain::is_from_def(parser)? {
-            result = ExprNode::ConditionalChain(Box::new(cond_chain));
+            result_enum = ExprNodeEnum::ConditionalChain(Box::new(cond_chain));
         } else if let Some(name_path) = NamePath::is_from_def(parser)? {
-            result = ExprNode::NamePath(name_path);
+            result_enum = ExprNodeEnum::NamePath(name_path);
         } else if let Some(scope) = Scope::is_from_def(parser)? {
-            result = ExprNode::Scope(scope);
+            result_enum = ExprNodeEnum::Scope(scope);
         } else if parser.is_next("(") {
             let inner_expr: ExprNode = ExprNode::from_def(parser)?;
             parser.ensure_next(")")?;
-            result = inner_expr;
+            result_enum = inner_expr.value;
         } else if parser.is_next("[") {
             let first_expr: ExprNode = ExprNode::from_def(parser)?;
-            result = if parser.is_next(";") {
+            result_enum = if parser.is_next(";") {
                 let count_expr: ExprNode = ExprNode::primary_from_def(parser)?;
                 parser.ensure_next("]")?;
-                ExprNode::Array(Vec::from([first_expr, count_expr]), true)
+                ExprNodeEnum::Array(Vec::from([first_expr, count_expr]), true)
             } else {
                 let mut vec: Vec<ExprNode> = Vec::from([first_expr]);
                 while !parser.is_next("]") {
                     parser.ensure_next(",")?;
                     vec.push(ExprNode::from_def(parser)?);
                 }
-                ExprNode::Array(vec, false)
+                ExprNodeEnum::Array(vec, false)
             }
         } else {
             return Err(CompilerError::SyntaxError("Missing / Unknown primary expression".to_string()));
         }
+        parser.end_span(&mut result_span);
 
         while let Some((postfix_opr, expr_node)) = PostfixOpr::is_from_def(parser)? {
-            result = ExprNode::PostfixOpr(postfix_opr, Box::new(result), Box::new(expr_node));
+            result_enum = ExprNodeEnum::PostfixOpr(postfix_opr, Box::new(ExprNode { value: result_enum, span: result_span }), Box::new(expr_node));
+            parser.end_span(&mut result_span);
         }
-        Ok(result)
+        Ok(ExprNode { value: result_enum, span: result_span })
     }
 }
 
 impl ToString for ExprNode {
     fn to_string(&self) -> String {
-        match self {
-            ExprNode::PrefixOpr(prefix_opr, node) => {
+        match &self.value {
+            ExprNodeEnum::PrefixOpr(prefix_opr, node) => {
                 format!("{}{}", prefix_opr.to_string(), node.to_string())
             },
-            ExprNode::InfixOpr(infix_opr, left, right) => {
+            ExprNodeEnum::InfixOpr(infix_opr, left, right) => {
                 format!("{} {} {}", left.to_string(), infix_opr.to_string(), right.to_string())
             },
-            ExprNode::ConstValue(const_value) => {
+            ExprNodeEnum::ConstValue(const_value) => {
                 const_value.to_string()
             },
-            ExprNode::NamePath(name_path) => {
+            ExprNodeEnum::NamePath(name_path) => {
                 name_path.to_string()
             },
-            ExprNode::PostfixOpr(postfix_opr, left, right) => {
+            ExprNodeEnum::PostfixOpr(postfix_opr, left, right) => {
                 let right_str: String = if let Some(right_expr) = right.as_ref() { right_expr.to_string() } else { String::new() };
                 match postfix_opr {
                     PostfixOpr::Idx => format!("{}[{}]", left.to_string(), right_str),
@@ -972,10 +980,10 @@ impl ToString for ExprNode {
                     PostfixOpr::Mem => format!("{}.{}", left.to_string(), right_str)
                 }
             },
-            ExprNode::VarDeclaration(var_box) => format!("let {}", var_box.to_string()),
-            ExprNode::Scope(scope) => scope.to_string(),
-            ExprNode::ConditionalChain(cond_chain) => cond_chain.to_string(),
-            ExprNode::Array(values, is_dup) => {
+            ExprNodeEnum::VarDeclaration(var_box) => format!("let {}", var_box.to_string()),
+            ExprNodeEnum::Scope(scope) => scope.to_string(),
+            ExprNodeEnum::ConditionalChain(cond_chain) => cond_chain.to_string(),
+            ExprNodeEnum::Array(values, is_dup) => {
                 let sep: &str = if *is_dup { "; " } else { ", " };
                 format!("[{}]", values.iter().map(|v: &ExprNode| v.to_string()).collect::<Vec<String>>().join(sep))
             }
@@ -1362,9 +1370,61 @@ impl ToString for Module {
     }
 }
 
+#[derive(Copy, Clone, Hash, Eq, PartialEq)]
+struct Span {
+    file_id: FileId,
+    line_start: usize,
+    col_start: usize,
+    line_end: usize,
+    col_end: usize,
+}
+
+impl Span {
+    pub fn merge(&self, other: Span) -> Span {
+        let is_self_start: bool = if self.line_start == other.line_start { self.col_start < other.col_start } else { self.line_start < other.line_start };
+        let is_self_end: bool = if self.line_end == other.line_end { self.col_end > other.col_end } else { self.line_end > other.line_end };
+        let (line_start, col_start) = if is_self_start { (self.line_start, self.col_start) } else { (other.line_start, other.col_start) };
+        let (line_end, col_end) = if is_self_end { (self.line_end, self.col_end) } else { (other.line_end, other.col_end) };
+        Span { file_id: self.file_id, line_start, col_start, line_end, col_end }
+    }
+}
+
+#[derive(Copy, Clone, Hash, Eq, PartialEq)]
+struct FileId(i32);
+
+struct FileContext {
+    ids: Vec<String>,
+    files: HashMap<FileId, Vec<char>>,
+}
+
+impl FileContext {
+    pub fn new() -> Self {
+        Self { ids: Vec::new(), files: HashMap::new() }
+    }
+
+    pub fn next_id(&mut self, path: String) -> FileId {
+        for (i, cur_path) in self.ids.iter().enumerate() {
+            if *cur_path == path {
+                return FileId(i as i32);
+            }
+        }
+        let id: FileId = FileId(self.ids.len() as i32);
+        self.ids.push(path);
+        id
+    }
+
+    pub fn get_path(&self, id: FileId) -> String {
+        self.ids[id.0 as usize].clone()
+    }
+
+    pub fn contains_key(&self, path: String) -> bool {
+        self.ids.iter().any(|p| *p == path)
+    }
+}
+
 pub struct Parser {
-    files: HashMap<String, Vec<char>>,
-    cur_file_path: String,
+    file_context: FileContext,
+    cur_file_id: FileId,
     index: usize,
     new_line_index: usize,
     cur_line: usize
@@ -1373,37 +1433,51 @@ pub struct Parser {
 impl Parser {
     pub fn new() -> Self {
         Parser {
-            files: HashMap::new(),
-            cur_file_path: String::new(),
+            file_context: FileContext::new(),
+            cur_file_id: FileId(-1),
             index: 0,
             new_line_index: 0,
             cur_line: 0
         }
     }
 
-    pub fn cur_file(&self) -> &Vec<char> {
-        &self.files[&self.cur_file_path]
+    pub fn get_span_start(&self) -> Span {
+        Span { file_id: self.cur_file_id, line_start: self.cur_line, col_start: self.get_col(), line_end: 0, col_end: 0 }
     }
 
-    pub fn parse_file(&mut self, path: &str, main_scope: &mut Scope) -> Result<(), CompilerError> {
-        if self.files.contains_key(path) {
+    pub fn end_span(&self, span: &mut Span) {
+        span.line_end = self.cur_line;
+        span.col_end = self.get_col();
+    }
+
+    pub fn get_col(&self) -> usize {
+        self.index - self.new_line_index + 1
+    }
+
+    pub fn cur_file(&self) -> &Vec<char> {
+        &self.file_context.files[&self.cur_file_id]
+    }
+
+    pub fn parse_file(&mut self, path: String, main_scope: &mut Scope) -> Result<(), CompilerError> {
+        if self.file_context.contains_key(path.clone()) {
             return Ok(());
         }
-        let contents: String = match fs::read_to_string(path) {
+        let contents: String = match fs::read_to_string(path.as_str()) {
             Ok(text) => text,
             Err(e) => {
                 return Err(CompilerError::LinkerError(format!("Failed to import file {}, {}", path, e)));
             }
         };
-        let saved_file_path: String = self.cur_file_path.clone();
+        let file_id: FileId = self.file_context.next_id(path);
+        let saved_file_id: FileId = self.cur_file_id;
         let saved_index: usize = self.index;
         let saved_cur_line: usize = self.cur_line;
-        self.cur_file_path = path.to_string();
+        self.cur_file_id = file_id;
         self.index = 0;
         self.cur_line = 0;
-        self.files.insert(self.cur_file_path.clone(), contents.chars().collect());
+        self.file_context.files.insert(self.cur_file_id, contents.chars().collect());
         self.parse(main_scope)?;
-        self.cur_file_path = saved_file_path;
+        self.cur_file_id = saved_file_id;
         self.index = saved_index;
         self.cur_line = saved_cur_line;
         Ok(())
@@ -1413,7 +1487,7 @@ impl Parser {
         self.skip_whitespace()?;
         while self.is_next("import") {
             let path: String = self.next_until(|ch| ch == ';')?;
-            self.parse_file(path.as_str(), main_scope)?;
+            self.parse_file(path, main_scope)?;
         }
         while !self.is_finished() {
             main_scope.parse_next(self)?;
@@ -1422,7 +1496,7 @@ impl Parser {
     }
 
     pub fn cur_char(&self) -> Result<char, CompilerError> {
-        let file_text: &Vec<char> = self.files.get(&self.cur_file_path).unwrap();
+        let file_text: &Vec<char> = self.file_context.files.get(&self.cur_file_id).unwrap();
         if let Some(ch) = file_text.get(self.index).copied() {
             return Ok(ch);
         }
@@ -1440,6 +1514,7 @@ impl Parser {
     }
 
     pub fn next_until<F>(&mut self, end_condition: F) -> Result<String, CompilerError> where F: Fn(char) -> bool {
+        self.skip_whitespace()?;
         let start_index: usize = self.index;
         loop {
             let ch = self.cur_char()?;
@@ -1450,11 +1525,11 @@ impl Parser {
         }
         let result: String = self.cur_file()[start_index..self.index].iter().collect();
         self.index += 1;
-        self.skip_whitespace()?;
         Ok(result)
     }
 
     pub fn next_name(&mut self) -> Result<String, CompilerError> {
+        self.skip_whitespace()?;
         let start_index: usize = self.index;
         let ch: char = self.cur_char()?;
         if !self.is_name_start()? {
@@ -1468,7 +1543,6 @@ impl Parser {
             self.index += 1;
         }
         let result: String = self.cur_file()[start_index..self.index].iter().collect();
-        self.skip_whitespace()?;
         Ok(result)
     }
 
@@ -1520,6 +1594,7 @@ impl Parser {
         if self.is_finished() {
             return false;
         }
+        self.skip_whitespace();
         let s_chars: Vec<char> = s.chars().collect();
         let end: usize = self.index + s_chars.len();
         if end > self.cur_file().len() {
@@ -1529,7 +1604,6 @@ impl Parser {
         if result {
             self.index = end;
         }
-        self.skip_whitespace();
         result
     }
 
@@ -1543,9 +1617,9 @@ impl Parser {
     pub fn index_error(&self, err: CompilerError) -> CompilerError {
         let indexing_str = format!(
             "Error in file '{}' at line {}, column {}: ",
-            self.cur_file_path,
+            self.file_context.get_path(self.cur_file_id),
             self.cur_line + 1,
-            self.index - self.new_line_index + 1,
+            self.get_col(),
         );
         match err {
             CompilerError::LinkerError(err) => CompilerError::LinkerError(format!("{}{}", indexing_str, err)),
