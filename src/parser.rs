@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env::var, fs};
+use std::{collections::HashMap, env::var, fs::{self, File}};
 use crate::errors::*;
 
 #[derive(PartialEq, Clone)]
@@ -185,12 +185,12 @@ pub enum VarType {
 
 #[derive(PartialEq, Clone)]
 pub enum ConstValue {
-    UnresolvedInteger(u32),
-    Int(u32),
-    Size(u32),
+    UnresolvedInteger(u64),
+    Int(u64),
+    Size(u64),
     Bool(bool),
     Char(char),
-    Float(f32),
+    Float(f64),
     String(String),
     Void
 }
@@ -201,7 +201,8 @@ pub struct Variable {
     pub var_type: VarType,
     pub init_expr: Option<ExprNode>,
     pub is_mut: bool,
-    pub is_resolved: bool
+    pub is_resolved: bool,
+    pub span: Span
 }
 
 #[derive(PartialEq, Clone)]
@@ -358,8 +359,8 @@ pub enum ExprNodeEnum {
 
 #[derive(PartialEq, Clone)]
 pub struct ExprNode {
-    value: ExprNodeEnum,
-    span: Span
+    pub value: ExprNodeEnum,
+    pub span: Span
 }
 
 #[derive(PartialEq, Clone)]
@@ -609,7 +610,10 @@ impl PostfixOpr {
                 PostfixOpr::Inv
             }
             '.' => {
-                expr_result = Some(ExprNode::NamePath(NamePath::from_def(parser)?));
+                let mut postfix_span = parser.get_span_start();
+                let name_path = NamePath::from_def(parser)?;
+                parser.end_span(&mut postfix_span);
+                expr_result = Some(ExprNode { value: ExprNodeEnum::NamePath(name_path), span: postfix_span});
                 PostfixOpr::Mem
             }
             _ => { parser.index -= 1; return Ok(None); }
@@ -784,31 +788,31 @@ impl ConstValue {
                 parser.index -= 1;
             }
         }
-        let mut value: u32 = 0;
+        let mut value: u64 = 0;
         loop {
             let ch: char = parser.cur_char()?;
             match num_type {
                 NumType::Dec => {
                     if ch >= '0' && ch <= '9' {
-                        value = value * 10 + (ch as u32 - '0' as u32);
+                        value = value * 10 + (ch as u64 - '0' as u64);
                     } else {
                         break
                     }
                 }
                 NumType::Hex => {
                     if ch >= '0' && ch <= '9' {
-                        value = value * 16 + (ch as u32 - '0' as u32);
+                        value = value * 16 + (ch as u64 - '0' as u64);
                     } else if ch >= 'a' && ch <= 'f' {
-                        value = value * 16 + (ch as u32 - 'a' as u32 + 10);
+                        value = value * 16 + (ch as u64 - 'a' as u64 + 10);
                     } else if ch >= 'A' && ch <= 'F' {
-                        value = value * 16 + (ch as u32 - 'A' as u32 + 10);
+                        value = value * 16 + (ch as u64 - 'A' as u64 + 10);
                     } else {
                         break
                     }
                 }
                 NumType::Bin => {
                     if ch >= '0' && ch <= '1' {
-                        value = value * 2 + (ch as u32 - '0' as u32);
+                        value = value * 2 + (ch as u64 - '0' as u64);
                     } else {
                         break
                     }
@@ -822,19 +826,19 @@ impl ConstValue {
                 parser.index -= 1;
                 return Ok(ConstValue::UnresolvedInteger(value));
             }
-            let mut fractional_value: f32 = 0.0;
+            let mut fractional_value: f64 = 0.0;
             let mut i: u32 = 1;
             loop {
                 let ch: char = parser.cur_char()?;
                 if ch >= '0' && ch <= '9' {
-                    fractional_value += (ch as u32 - '0' as u32) as f32 / (10 as u32).pow(i) as f32;
+                    fractional_value += (ch as u64 - '0' as u64) as f64 / (10 as u64).pow(i) as f64;
                     i += 1;
                     parser.index += 1;
                 } else {
                     break;
                 }
             }
-            return Ok(ConstValue::Float(value as f32 + fractional_value));
+            return Ok(ConstValue::Float(value as f64 + fractional_value));
         }
         return Ok(ConstValue::UnresolvedInteger(value));
     }
@@ -867,18 +871,23 @@ impl ExprNode {
 
     pub fn from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
         let mut root: Box<ExprNode> = Box::new(ExprNode::primary_from_def(parser)?);
+        
+        let mut infix_span = parser.get_span_start();
         if let Some(infix_opr) = InfixOpr::is_from_def(parser)? {
+            parser.end_span(&mut infix_span);
             let next_node: ExprNode = ExprNode::primary_from_def(parser)?;
-            root = Box::new(ExprNode{ value: ExprNodeEnum::InfixOpr(infix_opr, root, Box::new(next_node)), span: root.span.merge(next_node.span) });
+            root = Box::new(ExprNode{ value: ExprNodeEnum::InfixOpr(infix_opr, root, Box::new(next_node)), span: infix_span });
         }
+        infix_span = parser.get_span_start();
         while let Some(infix_opr) = InfixOpr::is_from_def(parser)? {
+            parser.end_span(&mut infix_span);
             let prec = infix_opr.precedence();
             let is_left_to_right = infix_opr.is_left_to_right();
             let next_node = ExprNode::primary_from_def(parser)?;
             let mut cur_node: &mut Box<ExprNode> = &mut root;
 
             loop {
-                let cur_prec: i32 = if let ExprNode::InfixOpr(ref cur_infix_opr, _, _) = **cur_node {
+                let cur_prec: i32 = if let ExprNodeEnum::InfixOpr(ref cur_infix_opr, _, _) = cur_node.value {
                     cur_infix_opr.precedence()
                 } else {
                     -1
@@ -887,23 +896,23 @@ impl ExprNode {
                 let go_right: bool = (is_left_to_right && cur_prec > prec) || (!is_left_to_right && cur_prec >= prec);
 
                 if go_right {
-                    if let ExprNode::InfixOpr(_, _, ref mut right) = **cur_node {
+                    if let ExprNodeEnum::InfixOpr(_, _, ref mut right) = cur_node.value {
                         cur_node = right;
                         continue;
                     }
                 }
-                let temp: ExprNode = ExprNode::ConstValue(ConstValue::UnresolvedInteger(0));
+                let temp: ExprNode = ExprNode { value: ExprNodeEnum::ConstValue(ConstValue::UnresolvedInteger(0)), span: cur_node.span };
 
                 let old_box: Box<ExprNode> = std::mem::replace(
                     cur_node,
                     Box::new(temp)
                 );
 
-                *cur_node = Box::new(ExprNode::InfixOpr(
+                *cur_node = Box::new(ExprNode { value: ExprNodeEnum::InfixOpr(
                     infix_opr,
                     old_box,
                     Box::new(next_node),
-                ));
+                ), span: infix_span });
                 break;
             }
         }
@@ -994,7 +1003,9 @@ impl ToString for ExprNode {
 impl Variable {
     pub fn arg_from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
         let is_mut: bool = parser.is_next("mut");
+        let mut span: Span = parser.get_span_start();
         let name: String = parser.next_name()?;
+        parser.end_span(&mut span);
         let mut var_type: VarType = VarType::UnresolvedExpr;
         let mut init_expr: Option<ExprNode> = None;
         if parser.is_next(":") {
@@ -1006,7 +1017,7 @@ impl Variable {
         } else if var_type == VarType::UnresolvedExpr {
             return Err(CompilerError::SyntaxError("Expected either a type decleration ':' or expression assigment '='".to_string()));
         }
-        return Ok(Self { name: name, var_type: var_type, init_expr: init_expr, is_mut: is_mut, is_resolved: false });
+        return Ok(Self { name: name, var_type: var_type, init_expr: init_expr, is_mut: is_mut, is_resolved: false, span });
     }
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
         if !parser.is_next("let") {
@@ -1371,12 +1382,12 @@ impl ToString for Module {
 }
 
 #[derive(Copy, Clone, Hash, Eq, PartialEq)]
-struct Span {
-    file_id: FileId,
-    line_start: usize,
-    col_start: usize,
-    line_end: usize,
-    col_end: usize,
+pub struct Span {
+    pub file_id: FileId,
+    pub line_start: usize,
+    pub col_start: usize,
+    pub line_end: usize,
+    pub col_end: usize,
 }
 
 impl Span {
@@ -1390,11 +1401,11 @@ impl Span {
 }
 
 #[derive(Copy, Clone, Hash, Eq, PartialEq)]
-struct FileId(i32);
+pub struct FileId(i32);
 
-struct FileContext {
-    ids: Vec<String>,
-    files: HashMap<FileId, Vec<char>>,
+pub struct FileContext {
+    pub ids: Vec<String>,
+    pub files: HashMap<FileId, Vec<char>>,
 }
 
 impl FileContext {
@@ -1422,18 +1433,18 @@ impl FileContext {
     }
 }
 
-pub struct Parser {
-    file_context: FileContext,
+pub struct Parser<'fctx> {
+    file_context: &'fctx mut FileContext,
     cur_file_id: FileId,
     index: usize,
     new_line_index: usize,
     cur_line: usize
 }
 
-impl Parser {
-    pub fn new() -> Self {
+impl<'fctx> Parser<'fctx> {
+    pub fn new(file_context: &'fctx mut FileContext) -> Self {
         Parser {
-            file_context: FileContext::new(),
+            file_context,
             cur_file_id: FileId(-1),
             index: 0,
             new_line_index: 0,

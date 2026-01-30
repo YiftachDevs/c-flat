@@ -2,6 +2,7 @@ use crate::errors::CompilerError;
 use crate::parser::*;
 use std::any::Any;
 use std::collections::{HashMap, VecDeque};
+use std::fs::File;
 use inkwell::context::Context;
 use inkwell::builder::Builder;
 use inkwell::module::Module;
@@ -131,6 +132,7 @@ pub struct IRVariables<'ctx> {
 
 pub struct Compiler<'ctx> {
     context: &'ctx Context,
+    file_context: &'ctx FileContext,
     main_scope: &'ctx Scope,
     module: Module<'ctx>,
     builder: Builder<'ctx>,
@@ -140,11 +142,11 @@ pub struct Compiler<'ctx> {
 }
 
 impl<'ctx> Compiler<'ctx> {
-    pub fn new(context: &'ctx Context, main_scope: &'ctx Scope) -> Compiler<'ctx> {
+    pub fn new(context: &'ctx Context, file_context: &'ctx FileContext, main_scope: &'ctx Scope) -> Compiler<'ctx> {
         let module: Module = context.create_module("main_module");
         let builder: Builder<'_> = context.create_builder();
         let alloca_builder: Builder<'_> = context.create_builder();
-        Compiler { context: context, main_scope, module, builder, alloca_builder, type_context: TypeContext::new(), function_context: FunctionContext::new() }
+        Compiler { context, file_context, main_scope, module, builder, alloca_builder, type_context: TypeContext::new(), function_context: FunctionContext::new() }
     }
 
     pub fn compile(&mut self) -> Result<(), CompilerError> {
@@ -152,6 +154,11 @@ impl<'ctx> Compiler<'ctx> {
         self.build_fun(main_id)?;
         self.module.print_to_stderr();
         Ok(())
+    }
+
+    pub fn index_error(&mut self, span: Span, msg: String) -> String {
+        let file_name: String = self.file_context.get_path(span.file_id);
+        format!("Error in file '{}' at line {}, column {}: {}", file_name, span.line_start, span.col_start, msg)
     }
 
     fn build_fun(&mut self, fun_id: FunctionId) -> Result<(), CompilerError> {
@@ -222,9 +229,12 @@ impl<'ctx> Compiler<'ctx> {
                 Statement::VarDeclaration(var) => {
                     let mut ir_var: IRVariable = self.build_ir_var(var, opt_templates_values);
                     let var_ptr = if let Some(init_expr) = var.init_expr.as_ref() {
-                        let (expr_value, expr_type) = self.build_expr(init_expr);
+                        let (expr_value, expr_type) = self.build_expr(init_expr, ir_var.type_id)?;
                         if ir_var.type_id.0 != -1 && ir_var.type_id != expr_type {
-                            todo!();
+                            let expected_type_string: String = self.type_id_to_string(ir_var.type_id);
+                            let received_type_string: String = self.type_id_to_string(expr_type);
+                            let err_msg: String = format!("Type mismatch during var declaration, expected: {}, received: {}", expected_type_string, received_type_string);
+                            return Err(CompilerError::SemanticError(self.index_error(var.span, err_msg)));
                         }
                         let var_ptr = self.build_alloca(expr_type, var.name.clone());
                         self.builder.build_store(var_ptr, expr_value).unwrap();
@@ -256,8 +266,42 @@ impl<'ctx> Compiler<'ctx> {
     }
 
 
-    fn build_expr(&mut self, expr: &ExprNode) -> (BasicValueEnum<'ctx>, TypeId) {
-        (self.context.i32_type().const_int(0, false).into(), TypeId(0))
+    fn build_expr(&mut self, expr: &ExprNode, ctx_type: TypeId) -> Result<(BasicValueEnum<'ctx>, TypeId), CompilerError> {
+        match &expr.value {
+            ExprNodeEnum::ConstValue(const_value) => {
+                match const_value {
+                    ConstValue::Bool(v) => {
+                        let bool_type: TypeId = self.build_type_id(&VarType::Primitive(PrimitiveType::Bool), &None);
+                        Ok((self.context.bool_type().const_int(*v as u64, false).into(), bool_type))
+                    },
+                    ConstValue::Char(ch) => {
+                        let char_type: TypeId = self.build_type_id(&VarType::Primitive(PrimitiveType::Char), &None);
+                        Ok((self.context.i32_type().const_int(*ch as u64, false).into(), char_type))
+                    },
+                    ConstValue::UnresolvedInteger(int) => {
+                        let int_type: TypeId = if ctx_type.0 == -1 {
+                            self.build_type_id(&VarType::Primitive(PrimitiveType::I32), &None)
+                        } else {
+                            todo!()
+                        };
+                        Ok((self.context.i32_type().const_int(*int as u64, false).into(), int_type))
+                    },
+                    ConstValue::Float(float) => {
+                        let float_type: TypeId = if ctx_type.0 == -1 {
+                            self.build_type_id(&VarType::Primitive(PrimitiveType::F32), &None)
+                        } else {
+                            todo!()
+                        };
+                        Ok((self.context.f32_type().const_float(*float).into(), float_type))
+                    },
+                    _ => todo!()
+                }
+            },
+            ExprNodeEnum::InfixOpr(opr, left_expr, right_expr) => {
+
+            },
+            _ => todo!()
+        }
     }
     fn build_ir_var(&mut self, var: &Variable, opt_templates_values: &Option<TemplatesValues>) -> IRVariable<'ctx> {
         let type_id: TypeId = self.build_type_id(&var.var_type, opt_templates_values);
@@ -294,7 +338,8 @@ impl<'ctx> Compiler<'ctx> {
                 self.type_context.infos.insert(id, ir_type);
                 id
             },
-            _ => TypeId(-1) // TODO
+            VarType::UnresolvedExpr => TypeId(-1),
+            _ => TypeId(-1)
         }
     }
 
@@ -308,7 +353,19 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     pub fn type_id_to_string(&self, id: TypeId) -> String {
-        return "TODO".to_string();
+        let ir_type = &self.type_context.infos[&id];
+
+        match ir_type.type_enum {
+            IRTypeEnum::Primitive(primitive) => {
+                primitive.to_string()
+            },
+            IRTypeEnum::Pointer { ptr_type_id, is_ref } => {
+                let ptr_type_string: String = self.type_id_to_string(ptr_type_id);
+                let ptr_char = if is_ref { "&" } else { "*" };
+                format!("{}{}", ptr_char, ptr_type_string)
+            }
+            _ => todo!()
+        }
     }
 
     pub fn find_fun_def(&self, fun_id: FunctionId) -> Option<&'ctx Function> {

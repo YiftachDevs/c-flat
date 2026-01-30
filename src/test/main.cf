@@ -1,5 +1,5 @@
 fun main(a: i32, b: bool) -> f64 {
-    let a: f128;
+    let c = 5;
 }
 
 fun foo(a: num) -> num {
