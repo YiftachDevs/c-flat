@@ -19,7 +19,8 @@ impl NamePath {
 
     pub fn from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
         let mut path: Vec<String> = Vec::from([parser.next_name()?]);
-        while parser.is_next(".") {
+        while parser.cur_char()? == '.' {
+            parser.index += 1;
             path.push(parser.next_name()?);
         }
         let templates: Option<TemplatesValues> = TemplatesValues::is_from_def(parser)?;
@@ -79,7 +80,7 @@ impl Template {
             if arg.var_type != VarType::UnresolvedExpr {
                 return Ok(Template::ConstValue(arg.name, arg.var_type));
             } else {
-                return Err(CompilerError::SyntaxError("Expected a type for a const template".to_string()));
+                return Err(parser.error(CompilerErrorType::SyntaxError, "Expected a type for a const template".to_string(), None));
             }
         } else {
             return Ok(Template::VarType(parser.next_name()?));
@@ -110,7 +111,8 @@ impl ToString for TemplatesValues {
 
 impl TemplatesValues {
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
-        if !parser.is_next("<") { return Ok(None); }
+        if parser.cur_char()? != '<' { return Ok(None); }
+        parser.index += 1;
         let mut templates: Vec<ExprNode> = Vec::new();
         if !parser.is_next(">") {
             templates.push(ExprNode::primary_from_def(parser)?);
@@ -474,13 +476,13 @@ impl InfixOpr {
                 parser.index += 1; InfixOpr::As
             } else {
                 parser.index -= 1;
-                return Err(CompilerError::SyntaxError("Expected an infix operator, did you mean 'as'?".to_string()));
+                return Err(parser.error(CompilerErrorType::SyntaxError, "Expected an infix operator".to_string(), Some("Expected an infix operator, did you mean 'as'?".to_string())));
             },
             'i' => if parser.cur_char()? == 's' {
                 parser.index += 1; InfixOpr::Is
             } else {
                 parser.index -= 1;
-                return Err(CompilerError::SyntaxError("Expected an infix operator, did you mean 'is'?".to_string()));
+                return Err(parser.error(CompilerErrorType::SyntaxError, "Expected an infix operator".to_string(), Some("Expected an infix operator, did you mean 'is'?".to_string())));
             },
             '*' => InfixOpr::Mul,
             '/' => InfixOpr::Div,
@@ -501,7 +503,7 @@ impl InfixOpr {
                 parser.index += 1; InfixOpr::Neq
             } else {
                 parser.index -= 1;
-                return Err(CompilerError::SyntaxError("Expected an infix operator, instead found the '!' prefix operator".to_string()));
+                return Err(parser.error(CompilerErrorType::SyntaxError, "Expected an infix operator".to_string(), Some("Expected an infix operator, found the '!' prefix operator instead".to_string())));
             },
             '&' => if parser.cur_char()? == '&' { parser.index += 1; InfixOpr::LAnd } else { InfixOpr::And },
             '^' => InfixOpr::Xor,
@@ -649,7 +651,8 @@ impl VarType {
         if let Some(name_path) = NamePath::is_from_def(parser)? {
             return Ok(VarType::Unresolved { name_path: name_path });
         }
-        Err(CompilerError::SyntaxError(format!("Type cannot start with char {}", parser.cur_char()?)))
+        let err_msg = format!("Type cannot start with char {}", parser.cur_char()?);
+        Err(parser.error(CompilerErrorType::SyntaxError, err_msg, None))
     }  
 
     pub fn is_void(&self) -> bool {
@@ -770,7 +773,7 @@ impl ConstValue {
         parser.skip_whitespace()?;
         let ch: char = parser.cur_char()?;
         if !(ch >= '0' && ch <= '9') {
-            return Err(CompilerError::SyntaxError(format!("Expected a numeral, found char '{}'", ch)));
+            return Err(parser.error(CompilerErrorType::SyntaxError, format!("Expected a numeral, found char '{}'", ch), Some("A numeral must start with char 0 - 9".to_string())));
         }
         #[derive(PartialEq, Clone)]
         enum NumType { Dec, Hex, Bin }
@@ -952,9 +955,9 @@ impl ExprNode {
                     vec.push(ExprNode::from_def(parser)?);
                 }
                 ExprNodeEnum::Array(vec, false)
-            }
+            };
         } else {
-            return Err(CompilerError::SyntaxError("Missing / Unknown primary expression".to_string()));
+            return Err(parser.error(CompilerErrorType::SyntaxError, "Missing / Unknown primary expression".to_string(), None));
         }
         parser.end_span(&mut result_span);
 
@@ -1002,10 +1005,9 @@ impl ToString for ExprNode {
 
 impl Variable {
     pub fn arg_from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
-        let is_mut: bool = parser.is_next("mut");
         let mut span: Span = parser.get_span_start();
+        let is_mut: bool = parser.is_next("mut");
         let name: String = parser.next_name()?;
-        parser.end_span(&mut span);
         let mut var_type: VarType = VarType::UnresolvedExpr;
         let mut init_expr: Option<ExprNode> = None;
         if parser.is_next(":") {
@@ -1015,15 +1017,20 @@ impl Variable {
             let expr: ExprNode = ExprNode::from_def(parser)?;
             init_expr = Some(expr);
         } else if var_type == VarType::UnresolvedExpr {
-            return Err(CompilerError::SyntaxError("Expected either a type decleration ':' or expression assigment '='".to_string()));
+            return Err(parser.error(CompilerErrorType::SyntaxError, "Invalid var declaration".to_string(), Some("Cannot infer type. Expected either a type declaration ':' or expression assigment '='".to_string())));
         }
+        parser.end_span(&mut span);
         return Ok(Self { name: name, var_type: var_type, init_expr: init_expr, is_mut: is_mut, is_resolved: false, span });
     }
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
+        let mut span: Span = parser.get_span_start();
         if !parser.is_next("let") {
             return Ok(None);
         }
-        Ok(Some(Self::arg_from_def(parser)?))
+        let mut result: Variable = Self::arg_from_def(parser)?;
+        parser.end_span(&mut span);
+        result.span = span;
+        Ok(Some(result))
     }
 }
 
@@ -1381,26 +1388,27 @@ impl ToString for Module {
     }
 }
 
-#[derive(Copy, Clone, Hash, Eq, PartialEq)]
+#[derive(Copy, Clone, Hash, Eq, PartialEq, Debug)]
 pub struct Span {
     pub file_id: FileId,
     pub line_start: usize,
     pub col_start: usize,
     pub line_end: usize,
     pub col_end: usize,
+    pub line_index: usize
 }
 
 impl Span {
     pub fn merge(&self, other: Span) -> Span {
         let is_self_start: bool = if self.line_start == other.line_start { self.col_start < other.col_start } else { self.line_start < other.line_start };
         let is_self_end: bool = if self.line_end == other.line_end { self.col_end > other.col_end } else { self.line_end > other.line_end };
-        let (line_start, col_start) = if is_self_start { (self.line_start, self.col_start) } else { (other.line_start, other.col_start) };
+        let (line_start, col_start, line_index) = if is_self_start { (self.line_start, self.col_start, self.line_index) } else { (other.line_start, other.col_start, other.line_index) };
         let (line_end, col_end) = if is_self_end { (self.line_end, self.col_end) } else { (other.line_end, other.col_end) };
-        Span { file_id: self.file_id, line_start, col_start, line_end, col_end }
+        Span { file_id: self.file_id, line_start, col_start, line_end, col_end, line_index }
     }
 }
 
-#[derive(Copy, Clone, Hash, Eq, PartialEq)]
+#[derive(Copy, Clone, Hash, Eq, PartialEq, Debug)]
 pub struct FileId(i32);
 
 pub struct FileContext {
@@ -1452,13 +1460,21 @@ impl<'fctx> Parser<'fctx> {
         }
     }
 
-    pub fn get_span_start(&self) -> Span {
-        Span { file_id: self.cur_file_id, line_start: self.cur_line, col_start: self.get_col(), line_end: 0, col_end: 0 }
+    pub fn error(&mut self, err_type: CompilerErrorType, msg: String, description: Option<String>) -> CompilerError {
+        let chars: &Vec<char> = &self.cur_file();
+        let line_end_idx: usize = chars[self.new_line_index..].iter().position(|&c| c == '\n').map(|pos| self.new_line_index + pos).unwrap_or(chars.len());
+        let line_str: String = chars[self.new_line_index..line_end_idx].iter().collect();
+        CompilerError { err_type, msg, description, file: self.file_context.get_path(self.cur_file_id), span: Some(self.get_span_start()), line_str }
+    }
+
+    pub fn get_span_start(&mut self) -> Span {
+        self.skip_whitespace();
+        Span { file_id: self.cur_file_id, line_start: self.cur_line, col_start: self.get_col() - 1, line_end: self.cur_line, col_end: self.get_col(), line_index: self.new_line_index }
     }
 
     pub fn end_span(&self, span: &mut Span) {
         span.line_end = self.cur_line;
-        span.col_end = self.get_col();
+        span.col_end = self.get_col() - 1;
     }
 
     pub fn get_col(&self) -> usize {
@@ -1476,7 +1492,7 @@ impl<'fctx> Parser<'fctx> {
         let contents: String = match fs::read_to_string(path.as_str()) {
             Ok(text) => text,
             Err(e) => {
-                return Err(CompilerError::LinkerError(format!("Failed to import file {}, {}", path, e)));
+                return Err(self.error(CompilerErrorType::LinkerError, format!("Failed to import file {}, {}", path, e), None));
             }
         };
         let file_id: FileId = self.file_context.next_id(path);
@@ -1506,20 +1522,20 @@ impl<'fctx> Parser<'fctx> {
         Ok(())
     }
 
-    pub fn cur_char(&self) -> Result<char, CompilerError> {
+    pub fn cur_char(&mut self) -> Result<char, CompilerError> {
         let file_text: &Vec<char> = self.file_context.files.get(&self.cur_file_id).unwrap();
         if let Some(ch) = file_text.get(self.index).copied() {
             return Ok(ch);
         }
-        return Err(CompilerError::SyntaxError("Script ended too early".to_string()));
+        return Err(self.error(CompilerErrorType::SyntaxError, "Script ended too early".to_string(), None));
     }
 
-    pub fn is_name_start(&self) -> Result<bool, CompilerError> {
+    pub fn is_name_start(&mut self) -> Result<bool, CompilerError> {
         let ch = self.cur_char()?;
         Ok((ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z') || ch == '_')
     }
 
-    pub fn is_num_start(&self) -> Result<bool, CompilerError> {
+    pub fn is_num_start(&mut self) -> Result<bool, CompilerError> {
         let ch = self.cur_char()?;
         Ok(ch >= '0' && ch <= '9')
     }
@@ -1544,7 +1560,7 @@ impl<'fctx> Parser<'fctx> {
         let start_index: usize = self.index;
         let ch: char = self.cur_char()?;
         if !self.is_name_start()? {
-            return Err(CompilerError::SyntaxError(format!("Expected a name, starting by 'a'-'z', 'A'-'Z' or '_'. found char '{}' instead", ch)));
+            return Err(self.error(CompilerErrorType::SyntaxError, "Expected a name".to_string(), Some(format!("Expected a name, starting by 'a'-'z', 'A'-'Z' or '_'. found char '{}' instead", ch))));
         }
         self.index += 1;
         while let Ok(ch) = self.cur_char() {
@@ -1620,12 +1636,12 @@ impl<'fctx> Parser<'fctx> {
 
     pub fn ensure_next(&mut self, s: &str) -> Result<(), CompilerError> {
         if !self.is_next(s) {
-            return Err(CompilerError::SyntaxError(format!("Expected '{}'", s)));
+            return Err(self.error(CompilerErrorType::SyntaxError, format!("Expected '{}'", s), None));
         }
         Ok(())
     }
 
-    pub fn index_error(&self, err: CompilerError) -> CompilerError {
+    /*pub fn index_error(&self, err: CompilerError) -> CompilerError {
         let indexing_str = format!(
             "Error in file '{}' at line {}, column {}: ",
             self.file_context.get_path(self.cur_file_id),
@@ -1637,7 +1653,7 @@ impl<'fctx> Parser<'fctx> {
             CompilerError::SemanticError(err) => CompilerError::SemanticError(format!("{}{}", indexing_str, err)),
             CompilerError::SyntaxError(err) => CompilerError::SyntaxError(format!("{}{}", indexing_str, err)),
         }
-    }
+    }*/
 }
 
 fn indent_each_line(input: &str) -> String {

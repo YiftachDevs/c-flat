@@ -1,4 +1,4 @@
-use crate::errors::CompilerError;
+use crate::errors::{CompilerError, CompilerErrorType};
 use crate::parser::*;
 use std::any::Any;
 use std::collections::{HashMap, VecDeque};
@@ -119,7 +119,7 @@ impl<'ctx> TypeContext<'ctx> {
 #[derive(Clone)]
 pub struct IRVariable<'ctx> {
     name: String,
-    type_id: TypeId,
+    type_id: Option<TypeId>,
     is_mut: bool,
     is_resolved: bool,
     ptr: Option<PointerValue<'ctx>>
@@ -128,6 +128,20 @@ pub struct IRVariable<'ctx> {
 #[derive(Clone)]
 pub struct IRVariables<'ctx> {
     vars: Vec<IRVariable<'ctx>>
+}
+
+pub enum ExprResult<'ctx> {
+    Pointer(PointerValue<'ctx>, TypeId),
+    Value(BasicValueEnum<'ctx>, TypeId)
+}
+
+impl<'ctx> ExprResult<'ctx> {
+    pub fn get_type_id(&self) -> TypeId {
+        match self {
+            ExprResult::Pointer(_, type_id) => *type_id,
+            ExprResult::Value(_, type_id) => *type_id
+        }
+    }
 }
 
 pub struct Compiler<'ctx> {
@@ -151,18 +165,25 @@ impl<'ctx> Compiler<'ctx> {
 
     pub fn compile(&mut self) -> Result<(), CompilerError> {
         let main_id: FunctionId = self.function_context.next_id(NamePath::new(["main".to_string()].to_vec(), None), None);
-        self.build_fun(main_id)?;
+        self.build_fun(main_id, None)?;
         self.module.print_to_stderr();
         Ok(())
     }
 
-    pub fn index_error(&mut self, span: Span, msg: String) -> String {
-        let file_name: String = self.file_context.get_path(span.file_id);
-        format!("Error in file '{}' at line {}, column {}: {}", file_name, span.line_start, span.col_start, msg)
+    pub fn error(&self, msg: &str, description: Option<String>, opt_span: Option<Span>) -> CompilerError {
+        if let Some(span) =  opt_span {
+            let file: String = self.file_context.get_path(span.file_id);
+            let chars: &Vec<char> = &self.file_context.files[&span.file_id];
+            let line_end_idx: usize = chars[span.line_index..].iter().position(|&c| c == '\n').map(|pos| span.line_index + pos).unwrap_or(chars.len());
+            let line_str: String = chars[span.line_index..line_end_idx].iter().collect();
+            CompilerError { err_type: CompilerErrorType::SemanticError, msg: msg.to_string(), description, file, span: Some(span), line_str }
+        } else {
+            CompilerError { err_type: CompilerErrorType::SemanticError, msg: msg.to_string(), description, file: "".to_string(), span: None, line_str: "".to_string() }
+        }
     }
 
-    fn build_fun(&mut self, fun_id: FunctionId) -> Result<(), CompilerError> {
-        let fun_def: &'ctx Function = self.find_fun_def(fun_id).ok_or(CompilerError::SemanticError(format!("Missing function '{}'", self.fun_id_to_string(fun_id))))?;
+    fn build_fun(&mut self, fun_id: FunctionId, fun_call_span: Option<Span>) -> Result<(), CompilerError> {
+        let fun_def: &'ctx Function = self.find_fun_def(fun_id).ok_or(self.error("Called a non existing function", Some(format!("Missing function '{}'", self.fun_id_to_string(fun_id))),fun_call_span))?;
         let (name_path , opt_self_type) = self.function_context.get_name(fun_id).clone();
         let opt_templates_values: & Option<TemplatesValues> = &name_path.templates;
         let return_type_id: TypeId = self.build_type_id(&fun_def.return_type, &opt_templates_values);
@@ -170,7 +191,7 @@ impl<'ctx> Compiler<'ctx> {
         let mut args_llvm_types: Vec<BasicMetadataTypeEnum> = Vec::new();
         for arg in fun_def.args.variables.iter() {
             let ir_var: IRVariable = self.build_ir_var(arg, &opt_templates_values);
-            args_llvm_types.push(self.type_context.get_type(ir_var.type_id).llvm_type.into());
+            args_llvm_types.push(self.type_context.get_type(ir_var.type_id.unwrap()).llvm_type.into());
             args.vars.push(ir_var);
         }
         let return_ir_type = self.type_context.get_type(return_type_id);
@@ -205,7 +226,7 @@ impl<'ctx> Compiler<'ctx> {
         self.alloca_builder.position_at_end(entry_block);
         let mut cur_vars: IRVariables = ir_fun.args.clone();
         for arg in cur_vars.vars.iter_mut() {
-            let arg_ptr = self.build_alloca(arg.type_id, arg.name.clone());
+            let arg_ptr = self.build_alloca(arg.type_id.unwrap(), arg.name.clone());
             arg.ptr = Some(arg_ptr);
         }
         self.builder.position_at_end(entry_block);
@@ -218,7 +239,7 @@ impl<'ctx> Compiler<'ctx> {
         Ok(())
     }
 
-    fn build_scope(&mut self, scope: &Scope, cur_vars: &mut IRVariables<'ctx>, fun_id: FunctionId) -> Result<(), CompilerError> {
+    fn build_scope(&mut self, scope: &Scope, cur_vars: &mut IRVariables<'ctx>, fun_id: FunctionId) -> Result<Option<ExprResult>, CompilerError> {
         let (name_path , opt_self_type) = self.function_context.get_name(fun_id).clone();
         let opt_templates_values: &Option<TemplatesValues> = &name_path.templates;
         let ir_fun: &IRFunction<'_> = &self.function_context.infos[&fun_id];
@@ -229,14 +250,16 @@ impl<'ctx> Compiler<'ctx> {
                 Statement::VarDeclaration(var) => {
                     let mut ir_var: IRVariable = self.build_ir_var(var, opt_templates_values);
                     let var_ptr = if let Some(init_expr) = var.init_expr.as_ref() {
-                        let (expr_value, expr_type) = self.build_expr(init_expr, ir_var.type_id)?;
-                        if ir_var.type_id.0 != -1 && ir_var.type_id != expr_type {
-                            let expected_type_string: String = self.type_id_to_string(ir_var.type_id);
+                        let expr_result = self.build_expr(init_expr, ir_var.type_id, false, cur_vars, var.span)?;
+                        let expr_type = expr_result.get_type_id();
+                        if let Some(ir_var_type) = ir_var.type_id && ir_var_type != expr_type {
+                            let expected_type_string: String = self.type_id_to_string(ir_var_type);
                             let received_type_string: String = self.type_id_to_string(expr_type);
-                            let err_msg: String = format!("Type mismatch during var declaration, expected: {}, received: {}", expected_type_string, received_type_string);
-                            return Err(CompilerError::SemanticError(self.index_error(var.span, err_msg)));
+                            let err_description: String = format!("Type mismatch during var declaration, expected: {}, received: {}", expected_type_string, received_type_string);
+                            return Err(self.error("Invalid var declaration", Some(err_description), Some(var.span)));
                         }
-                        let var_ptr = self.build_alloca(expr_type, var.name.clone());
+                        let var_ptr: PointerValue = self.build_alloca(expr_type, var.name.clone());
+                        let expr_value: BasicValueEnum = self.build_expr_result_value(expr_result);
                         self.builder.build_store(var_ptr, expr_value).unwrap();
                         var_ptr
                     } else {
@@ -245,11 +268,27 @@ impl<'ctx> Compiler<'ctx> {
                     };
                     ir_var.ptr = Some(var_ptr);
                     cur_vars.vars.push(ir_var);
+                },
+                Statement::Expression { expr, is_final_value } => {
+                    let expr_result = self.build_expr(expr, None, false, cur_vars, expr.span)?;
+                    if *is_final_value {
+                        return Ok(Some(expr_result));
+                    }
                 }
                 _ => { todo!() }
             }
         }
-        Ok(())
+        Ok(None)
+    }
+
+    fn build_expr_result_value(&mut self, expr_result: ExprResult<'ctx>) -> BasicValueEnum<'ctx> {
+        match expr_result {
+            ExprResult::Value(value, _) => value,
+            ExprResult::Pointer(ptr, expr_type) => {
+                let llvm_type = self.type_context.infos[&expr_type].llvm_type;
+                self.builder.build_load(llvm_type, ptr, "side_load").unwrap()
+            }
+        }
     }
 
     fn build_alloca(&self, type_id: TypeId, name: String) -> PointerValue<'ctx> {
@@ -265,47 +304,93 @@ impl<'ctx> Compiler<'ctx> {
         self.alloca_builder.build_alloca(llvm_type, name.as_str()).unwrap()
     }
 
-
-    fn build_expr(&mut self, expr: &ExprNode, ctx_type: TypeId) -> Result<(BasicValueEnum<'ctx>, TypeId), CompilerError> {
+    fn build_expr(&mut self, expr: &ExprNode, ctx_type: Option<TypeId>, expects_mut: bool, cur_vars: &mut IRVariables<'ctx>, span: Span) -> Result<ExprResult<'ctx>, CompilerError> {
         match &expr.value {
             ExprNodeEnum::ConstValue(const_value) => {
                 match const_value {
                     ConstValue::Bool(v) => {
                         let bool_type: TypeId = self.build_type_id(&VarType::Primitive(PrimitiveType::Bool), &None);
-                        Ok((self.context.bool_type().const_int(*v as u64, false).into(), bool_type))
+                        Ok(ExprResult::Value(self.context.bool_type().const_int(*v as u64, false).into(), bool_type))
                     },
                     ConstValue::Char(ch) => {
                         let char_type: TypeId = self.build_type_id(&VarType::Primitive(PrimitiveType::Char), &None);
-                        Ok((self.context.i32_type().const_int(*ch as u64, false).into(), char_type))
+                        Ok(ExprResult::Value(self.context.i32_type().const_int(*ch as u64, false).into(), char_type))
                     },
                     ConstValue::UnresolvedInteger(int) => {
-                        let int_type: TypeId = if ctx_type.0 == -1 {
+                        let int_type: TypeId = if let Some(ctx_t) = ctx_type {
                             self.build_type_id(&VarType::Primitive(PrimitiveType::I32), &None)
                         } else {
                             todo!()
                         };
-                        Ok((self.context.i32_type().const_int(*int as u64, false).into(), int_type))
+                        Ok(ExprResult::Value(self.context.i32_type().const_int(*int as u64, false).into(), int_type))
                     },
                     ConstValue::Float(float) => {
-                        let float_type: TypeId = if ctx_type.0 == -1 {
+                        let float_type: TypeId = if let None = ctx_type {
                             self.build_type_id(&VarType::Primitive(PrimitiveType::F32), &None)
                         } else {
                             todo!()
                         };
-                        Ok((self.context.f32_type().const_float(*float).into(), float_type))
+                        Ok(ExprResult::Value(self.context.f32_type().const_float(*float).into(), float_type))
                     },
                     _ => todo!()
                 }
             },
             ExprNodeEnum::InfixOpr(opr, left_expr, right_expr) => {
-
+                let left_expr_result = self.build_expr(left_expr, ctx_type, false, cur_vars, span)?;
+                let right_expr_result = self.build_expr(right_expr, Some(left_expr_result.get_type_id()), true, cur_vars, span)?;
+                
+                self.build_infix_opr_block(*opr, left_expr_result, right_expr_result, expr.span)
             },
+            ExprNodeEnum::NamePath(name_path) => {
+                if let Some(ir_var) = cur_vars.vars.iter().find(|v| v.name == name_path.path[0]) {
+                    if expects_mut && !ir_var.is_mut {
+                        return Err(self.error("Cannot mutate immutable variable", None, Some(span)))
+                    }
+                    return Ok(ExprResult::Pointer(ir_var.ptr.unwrap(), ir_var.type_id.unwrap()));
+                }
+                todo!();
+            }
             _ => todo!()
         }
     }
+
+    fn build_infix_opr_block(&mut self, opr: InfixOpr, left: ExprResult<'ctx>, right: ExprResult<'ctx>, span: Span) -> Result<ExprResult<'ctx>, CompilerError>  {
+        let left_type: &IRType<'_> = &self.type_context.infos[&left.get_type_id()];
+        match left_type.type_enum {
+            IRTypeEnum::Primitive(primitive) => {
+                match primitive {
+                    PrimitiveType::I8 | PrimitiveType::I16 | PrimitiveType::I32 | PrimitiveType::I64 | PrimitiveType::I128 => {
+                        let i32_type = left.get_type_id();
+                        let right_value = self.build_expr_result_value(right).into_int_value();
+                        if let InfixOpr::Asn = opr {
+                            return if let ExprResult::Pointer(ptr, type_id) = left {
+                                self.builder.build_store(ptr, right_value).unwrap();
+                                Ok(ExprResult::Pointer(ptr, type_id))
+                            } else {
+                                Err(self.error("Invalid assignment", Some("Cannot assign a value to a value".to_string()), Some(span)))
+                            }
+                        }
+                        let left_value = self.build_expr_result_value(left).into_int_value();
+                        let result = match opr {
+                            InfixOpr::Add => self.builder.build_int_add(left_value, right_value, "add_tmp").unwrap(),
+                            InfixOpr::Sub => self.builder.build_int_sub(left_value, right_value, "sub_tmp").unwrap(),
+                            InfixOpr::Mul => self.builder.build_int_mul(left_value, right_value, "mul_tmp").unwrap(),
+                            InfixOpr::Div => self.builder.build_int_signed_div(left_value, right_value, "div_tmp").unwrap(),
+                            _ => todo!()
+                        };
+                        Ok(ExprResult::Value(result.into(), i32_type))
+                    },
+                    _ => todo!()
+                }
+                
+            }
+            _ => todo!()
+        }
+    }
+
     fn build_ir_var(&mut self, var: &Variable, opt_templates_values: &Option<TemplatesValues>) -> IRVariable<'ctx> {
         let type_id: TypeId = self.build_type_id(&var.var_type, opt_templates_values);
-        IRVariable { name: var.name.clone(), type_id, is_mut: var.is_mut, is_resolved: var.is_resolved, ptr: None }
+        IRVariable { name: var.name.clone(), type_id: Some(type_id), is_mut: var.is_mut, is_resolved: var.is_resolved, ptr: None }
     }
 
     fn build_type_id(&mut self, var_type: &VarType, opt_templates_values: &Option<TemplatesValues>) -> TypeId {

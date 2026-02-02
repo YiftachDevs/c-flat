@@ -1,5 +1,6 @@
-fun main(a: i32, b: bool) -> f64 {
-    let c = 5;
+fun main() {
+    let var_1: i32 = 5 + 4;
+    var_1 = 4 * var_1;
 }
 
 fun foo(a: num) -> num {
