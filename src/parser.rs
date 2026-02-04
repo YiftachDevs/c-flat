@@ -155,7 +155,7 @@ impl PrimitiveType {
     
     pub fn is_uint(&self) -> bool {
         match self {
-            PrimitiveType::U8 | PrimitiveType::U16 | PrimitiveType::U32 | PrimitiveType::U64 | PrimitiveType::U128 => true,
+            PrimitiveType::U8 | PrimitiveType::U16 | PrimitiveType::U32 | PrimitiveType::U64 | PrimitiveType::U128 | PrimitiveType::Char => true,
             _ => false
         }
     }
