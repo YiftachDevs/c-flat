@@ -213,7 +213,6 @@ impl<'ctx> Compiler<'ctx> {
         };
         let fun_id: FunctionId = self.function_context.next_id(name_path, opt_self_type);
         self.function_context.infos.insert(fun_id, ir_fun);
-
         self.build_fun_body(fun_id)?;
 
         Ok(())
@@ -250,14 +249,15 @@ impl<'ctx> Compiler<'ctx> {
                 Statement::VarDeclaration(var) => {
                     let mut ir_var: IRVariable = self.build_ir_var(var, opt_templates_values);
                     let var_ptr = if let Some(init_expr) = var.init_expr.as_ref() {
-                        let expr_result = self.build_expr(init_expr, ir_var.type_id, false, cur_vars, var.span)?;
+                        let expr_result = self.build_expr(init_expr, ir_var.type_id, false, cur_vars)?;
                         let expr_type = expr_result.get_type_id();
                         if let Some(ir_var_type) = ir_var.type_id && ir_var_type != expr_type {
                             let expected_type_string: String = self.type_id_to_string(ir_var_type);
                             let received_type_string: String = self.type_id_to_string(expr_type);
                             let err_description: String = format!("Type mismatch during var declaration, expected: {}, received: {}", expected_type_string, received_type_string);
-                            return Err(self.error("Invalid var declaration", Some(err_description), Some(var.span)));
+                            return Err(self.error("Type mismatch", Some(err_description), Some(var.span)));
                         }
+                        ir_var.type_id = Some(expr_type);
                         let var_ptr: PointerValue = self.build_alloca(expr_type, var.name.clone());
                         let expr_value: BasicValueEnum = self.build_expr_result_value(expr_result);
                         self.builder.build_store(var_ptr, expr_value).unwrap();
@@ -270,7 +270,7 @@ impl<'ctx> Compiler<'ctx> {
                     cur_vars.vars.push(ir_var);
                 },
                 Statement::Expression { expr, is_final_value } => {
-                    let expr_result = self.build_expr(expr, None, false, cur_vars, expr.span)?;
+                    let expr_result = self.build_expr(expr, None, false, cur_vars)?;
                     if *is_final_value {
                         return Ok(Some(expr_result));
                     }
@@ -304,7 +304,7 @@ impl<'ctx> Compiler<'ctx> {
         self.alloca_builder.build_alloca(llvm_type, name.as_str()).unwrap()
     }
 
-    fn build_expr(&mut self, expr: &ExprNode, ctx_type: Option<TypeId>, expects_mut: bool, cur_vars: &mut IRVariables<'ctx>, span: Span) -> Result<ExprResult<'ctx>, CompilerError> {
+    fn build_expr(&mut self, expr: &ExprNode, ctx_type: Option<TypeId>, expects_mut: bool, cur_vars: &mut IRVariables<'ctx>) -> Result<ExprResult<'ctx>, CompilerError> {
         match &expr.value {
             ExprNodeEnum::ConstValue(const_value) => {
                 match const_value {
@@ -317,34 +317,42 @@ impl<'ctx> Compiler<'ctx> {
                         Ok(ExprResult::Value(self.context.i32_type().const_int(*ch as u64, false).into(), char_type))
                     },
                     ConstValue::UnresolvedInteger(int) => {
-                        let int_type: TypeId = if let Some(ctx_t) = ctx_type {
-                            self.build_type_id(&VarType::Primitive(PrimitiveType::I32), &None)
+                        let (int_type_id, llvm_int_type) = if let Some(ctx_t) = ctx_type {
+                            if let IRTypeEnum::Primitive(prim) = self.type_context.infos[&ctx_t].type_enum && (prim.is_int() | prim.is_uint()) {
+                                (self.build_type_id(&VarType::Primitive(prim), &None), self.type_context.infos[&ctx_t].llvm_type.into_int_type())
+                            } else {
+                                return Err(self.error("Type mismatch", Some(format!("Expected a {}, received an integer", self.type_id_to_string(ctx_t))), Some(expr.span)));
+                            }
                         } else {
-                            todo!()
+                            (self.build_type_id(&VarType::Primitive(PrimitiveType::I32), &None), self.context.i32_type())
                         };
-                        Ok(ExprResult::Value(self.context.i32_type().const_int(*int as u64, false).into(), int_type))
+                        Ok(ExprResult::Value(llvm_int_type.const_int(*int as u64, false).into(), int_type_id))
                     },
                     ConstValue::Float(float) => {
-                        let float_type: TypeId = if let None = ctx_type {
-                            self.build_type_id(&VarType::Primitive(PrimitiveType::F32), &None)
+                        let (float_type_id, llvm_float_type) = if let Some(ctx_t) = ctx_type {
+                            if let IRTypeEnum::Primitive(prim) = self.type_context.infos[&ctx_t].type_enum && prim.is_float() {
+                                (self.build_type_id(&VarType::Primitive(prim), &None), self.type_context.infos[&ctx_t].llvm_type.into_float_type())
+                            } else {
+                                return Err(self.error("Type mismatch", Some(format!("Expected a {}, received a float", self.type_id_to_string(ctx_t))), Some(expr.span)));
+                            }
                         } else {
-                            todo!()
+                            (self.build_type_id(&VarType::Primitive(PrimitiveType::F32), &None), self.context.f32_type())
                         };
-                        Ok(ExprResult::Value(self.context.f32_type().const_float(*float).into(), float_type))
+                        Ok(ExprResult::Value(llvm_float_type.const_float(*float).into(), float_type_id))
                     },
                     _ => todo!()
                 }
             },
             ExprNodeEnum::InfixOpr(opr, left_expr, right_expr) => {
-                let left_expr_result = self.build_expr(left_expr, ctx_type, false, cur_vars, span)?;
-                let right_expr_result = self.build_expr(right_expr, Some(left_expr_result.get_type_id()), true, cur_vars, span)?;
-                
+                let left_expr_result = self.build_expr(left_expr, ctx_type, false, cur_vars)?;
+                let right_expr_result = self.build_expr(right_expr, Some(left_expr_result.get_type_id()), true, cur_vars)?;
+            
                 self.build_infix_opr_block(*opr, left_expr_result, right_expr_result, expr.span)
             },
             ExprNodeEnum::NamePath(name_path) => {
                 if let Some(ir_var) = cur_vars.vars.iter().find(|v| v.name == name_path.path[0]) {
                     if expects_mut && !ir_var.is_mut {
-                        return Err(self.error("Cannot mutate immutable variable", None, Some(span)))
+                        return Err(self.error("Cannot mutate immutable variable", None, Some(expr.span)))
                     }
                     return Ok(ExprResult::Pointer(ir_var.ptr.unwrap(), ir_var.type_id.unwrap()));
                 }
@@ -355,13 +363,27 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     fn build_infix_opr_block(&mut self, opr: InfixOpr, left: ExprResult<'ctx>, right: ExprResult<'ctx>, span: Span) -> Result<ExprResult<'ctx>, CompilerError>  {
+        let bool_type: TypeId = self.build_type_id(&VarType::Primitive(PrimitiveType::Bool), &None);
         let left_type: &IRType<'_> = &self.type_context.infos[&left.get_type_id()];
+        /*match opr {
+            InfixOpr::Asn => {
+                return if let ExprResult::Pointer(ptr, type_id) = left {
+                let right_value = self.build_expr_result_value(right).into_int_value();
+                    self.builder.build_store(ptr, right_value).unwrap();
+                    Ok(ExprResult::Pointer(ptr, type_id))
+                } else {
+                    Err(self.error("Invalid assignment", Some("Cannot assign a value to a value".to_string()), Some(span)))
+                }
+            },
+            _ => todo!()
+        }*/
+
         match left_type.type_enum {
             IRTypeEnum::Primitive(primitive) => {
                 match primitive {
-                    PrimitiveType::I8 | PrimitiveType::I16 | PrimitiveType::I32 | PrimitiveType::I64 | PrimitiveType::I128 => {
-                        let i32_type = left.get_type_id();
-                        let right_value = self.build_expr_result_value(right).into_int_value();
+                    _ if primitive.is_int() => {
+                        let int_type = left.get_type_id();
+                        let right_value = match right { ExprResult::Value(value, type_id) => value.into_int_value(), _ => panic!() };
                         if let InfixOpr::Asn = opr {
                             return if let ExprResult::Pointer(ptr, type_id) = left {
                                 self.builder.build_store(ptr, right_value).unwrap();
@@ -371,14 +393,18 @@ impl<'ctx> Compiler<'ctx> {
                             }
                         }
                         let left_value = self.build_expr_result_value(left).into_int_value();
+                        println!("{:?}", right_value);
+                        
                         let result = match opr {
                             InfixOpr::Add => self.builder.build_int_add(left_value, right_value, "add_tmp").unwrap(),
                             InfixOpr::Sub => self.builder.build_int_sub(left_value, right_value, "sub_tmp").unwrap(),
                             InfixOpr::Mul => self.builder.build_int_mul(left_value, right_value, "mul_tmp").unwrap(),
                             InfixOpr::Div => self.builder.build_int_signed_div(left_value, right_value, "div_tmp").unwrap(),
+                            InfixOpr::Mod => self.builder.build_int_signed_rem(left_value, right_value, "mod_tmp").unwrap(),
+                            InfixOpr::Eq => self.builder.build_int_compare(inkwell::IntPredicate::EQ, left_value, right_value, "eq_tmp").unwrap(),
                             _ => todo!()
                         };
-                        Ok(ExprResult::Value(result.into(), i32_type))
+                        Ok(ExprResult::Value(result.into(), if opr.is_boolean() { bool_type } else { int_type }))
                     },
                     _ => todo!()
                 }
@@ -390,7 +416,7 @@ impl<'ctx> Compiler<'ctx> {
 
     fn build_ir_var(&mut self, var: &Variable, opt_templates_values: &Option<TemplatesValues>) -> IRVariable<'ctx> {
         let type_id: TypeId = self.build_type_id(&var.var_type, opt_templates_values);
-        IRVariable { name: var.name.clone(), type_id: Some(type_id), is_mut: var.is_mut, is_resolved: var.is_resolved, ptr: None }
+        IRVariable { name: var.name.clone(), type_id: if type_id.0 != -1 { Some(type_id) } else { None }, is_mut: var.is_mut, is_resolved: var.is_resolved, ptr: None }
     }
 
     fn build_type_id(&mut self, var_type: &VarType, opt_templates_values: &Option<TemplatesValues>) -> TypeId {
@@ -408,7 +434,6 @@ impl<'ctx> Compiler<'ctx> {
                     PrimitiveType::F16 => self.context.f16_type().into(),
                     PrimitiveType::F32 => self.context.f32_type().into(),
                     PrimitiveType::F64 => self.context.f64_type().into(),
-                    PrimitiveType::F128 => self.context.f128_type().into(),
                     PrimitiveType::Bool => self.context.bool_type().into(),
                     PrimitiveType::Void => { is_void = true; self.context.bool_type().into() } // place holder
                 };
@@ -423,7 +448,6 @@ impl<'ctx> Compiler<'ctx> {
                 self.type_context.infos.insert(id, ir_type);
                 id
             },
-            VarType::UnresolvedExpr => TypeId(-1),
             _ => TypeId(-1)
         }
     }

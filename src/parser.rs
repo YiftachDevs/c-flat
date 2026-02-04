@@ -140,10 +140,32 @@ pub enum PrimitiveType {
     F16,
     F32,
     F64,
-    F128,
     Char,
     Bool,
     Void
+}
+
+impl PrimitiveType {
+    pub fn is_int(&self) -> bool {
+        match self {
+            PrimitiveType::I8 | PrimitiveType::I16 | PrimitiveType::I32 | PrimitiveType::I64 | PrimitiveType::I128 => true,
+            _ => false
+        }
+    }
+    
+    pub fn is_uint(&self) -> bool {
+        match self {
+            PrimitiveType::U8 | PrimitiveType::U16 | PrimitiveType::U32 | PrimitiveType::U64 | PrimitiveType::U128 => true,
+            _ => false
+        }
+    }
+
+    pub fn is_float(&self) -> bool {
+        match self {
+            PrimitiveType::F16 | PrimitiveType::F32 | PrimitiveType::F64 => true,
+            _ => false
+        }
+    }
 }
 
 impl ToString for PrimitiveType {
@@ -162,7 +184,6 @@ impl ToString for PrimitiveType {
             PrimitiveType::F16 => "f16".to_string(),
             PrimitiveType::F32 => "f32".to_string(),
             PrimitiveType::F64 => "f64".to_string(),
-            PrimitiveType::F128 => "f128".to_string(),
             PrimitiveType::Char => "char".to_string(),
             PrimitiveType::Bool => "bool".to_string(),
             PrimitiveType::Void => "()".to_string()
@@ -248,6 +269,15 @@ pub enum InfixOpr {
     LOr,
     Asn,
     Com
+}
+
+impl InfixOpr {
+    pub fn is_boolean(&self) -> bool {
+        match self {
+            InfixOpr::Eq | InfixOpr::Neq | InfixOpr::Lss | InfixOpr::Leq | InfixOpr::Gtr | InfixOpr::Geq | InfixOpr::Add | InfixOpr::Xor | InfixOpr::Or => true,
+            _ => false
+        }
+    }
 }
 
 #[derive(Eq, PartialEq, Clone, Copy)]
@@ -458,7 +488,6 @@ impl PrimitiveType {
         if parser.is_next("f64") { return Some(PrimitiveType::F64); }
         if parser.is_next("u128") { return Some(PrimitiveType::U128); }
         if parser.is_next("i128") { return Some(PrimitiveType::I128); }
-        if parser.is_next("f128") { return Some(PrimitiveType::F128); }
         if parser.is_next("bool") { return Some(PrimitiveType::Bool); }
         if parser.is_next("char") { return Some(PrimitiveType::Char); }
         if parser.is_next("()") { return Some(PrimitiveType::Void); }

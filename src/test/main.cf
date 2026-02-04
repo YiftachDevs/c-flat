@@ -1,6 +1,6 @@
 fun main() {
-    let var_1: i32 = 5 + 4;
-    var_1 = 4 * var_1;
+    let mut var_1: u64 = 5.0;
+    var_1 = 4.0 * var_1;
 }
 
 fun foo(a: num) -> num {
