@@ -278,6 +278,13 @@ impl InfixOpr {
             _ => false
         }
     }
+
+    pub fn is_shift(&self) -> bool {
+        match self {
+            InfixOpr::Shl | InfixOpr::Shr => true,
+            _ => false
+        }
+    }
 }
 
 #[derive(Eq, PartialEq, Clone, Copy)]

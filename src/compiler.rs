@@ -53,12 +53,7 @@ impl<'ctx> FunctionContext<'ctx> {
     }
 
     pub fn get_name(&self, id: FunctionId) -> &(NamePath, Option<TypeId>) {
-        for (i, value) in self.ids.iter().enumerate() {
-            if id.0 == i {
-                return value;
-            }
-        }
-        panic!("Cannot get fun name of a non existing fun id");
+        self.ids.get(id.0).expect("Cannot get fun name of a non existing fun id")
     }
 
     pub fn get_ir_fun(&self, id: FunctionId) -> &IRFunction<'ctx> {
@@ -130,8 +125,8 @@ pub struct IRVariables<'ctx> {
     vars: Vec<IRVariable<'ctx>>
 }
 
-pub struct  ExprResult<'ctx> {
-    value: BasicValueEnum<'ctx>,
+pub struct ExprResult<'ctx> {
+    value: Option<BasicValueEnum<'ctx>>,
     type_id: TypeId
 }
 
@@ -239,7 +234,7 @@ impl<'ctx> Compiler<'ctx> {
             match statement {
                 Statement::VarDeclaration(var) => {
                     let mut ir_var: IRVariable = self.build_ir_var(var, opt_templates_values);
-                    let var_ptr = if let Some(init_expr) = var.init_expr.as_ref() {
+                    let opt_var_ptr = if let Some(init_expr) = var.init_expr.as_ref() {
                         let expr_result = self.build_expr(init_expr, ir_var.type_id, false, cur_vars)?;
                         let expr_type = expr_result.type_id;
                         if let Some(ir_var_type) = ir_var.type_id && ir_var_type != expr_type {
@@ -249,15 +244,23 @@ impl<'ctx> Compiler<'ctx> {
                             return Err(self.error("Type mismatch", Some(err_description), Some(var.span)));
                         }
                         ir_var.type_id = Some(expr_type);
-                        let var_ptr: PointerValue = self.build_alloca(expr_type, var.name.clone());
-                        let expr_value: BasicValueEnum = self.build_expr_result_value(&expr_result);
-                        self.builder.build_store(var_ptr, expr_value).unwrap();
-                        var_ptr
+                        if let Some(expr_value) = self.build_expr_result_value(&expr_result) {
+                            let var_ptr: PointerValue = self.build_alloca(expr_type, var.name.clone());
+                            self.builder.build_store(var_ptr, expr_value).unwrap();
+                            Some(var_ptr)
+                        } else {
+                            None
+                        }
                     } else {
-                        let type_id: TypeId = self.build_type_id(&var.var_type, opt_templates_values);
-                        self.build_alloca(type_id, var.name.clone())
+                        let ir_type = &self.type_context.infos[&ir_var.type_id.unwrap()];
+                        if ir_type.is_void {
+                            None
+                        } else {
+                            let var_ptr = self.build_alloca(ir_var.type_id.unwrap(), var.name.clone());
+                            Some(var_ptr)
+                        }
                     };
-                    ir_var.ptr = Some(var_ptr);
+                    ir_var.ptr = opt_var_ptr;
                     cur_vars.vars.push(ir_var);
                 },
                 Statement::Expression { expr, is_final_value } => {
@@ -272,12 +275,16 @@ impl<'ctx> Compiler<'ctx> {
         Ok(None)
     }
 
-    fn build_expr_result_value(&mut self, expr_result: &ExprResult<'ctx>) -> BasicValueEnum<'ctx> {
-        if let BasicValueEnum::PointerValue(ptr_value) = expr_result.value {
-            let llvm_type = self.type_context.infos[&expr_result.type_id].llvm_type;
-            self.builder.build_load(llvm_type, ptr_value, "side_load").unwrap()
+    fn build_expr_result_value(&mut self, expr_result: &ExprResult<'ctx>) -> Option<BasicValueEnum<'ctx>> {
+        if let Some(expr_value) = expr_result.value {
+            Some(if let BasicValueEnum::PointerValue(ptr_value) = expr_value {
+                let llvm_type = self.type_context.infos[&expr_result.type_id].llvm_type;
+                self.builder.build_load(llvm_type, ptr_value, "side_load").unwrap()
+            } else {
+                expr_value
+            })
         } else {
-            expr_result.value
+            None
         }
     }
 
@@ -300,11 +307,11 @@ impl<'ctx> Compiler<'ctx> {
                 match const_value {
                     ConstValue::Bool(v) => {
                         let bool_type: TypeId = self.build_type_id(&VarType::Primitive(PrimitiveType::Bool), &None);
-                        Ok(ExprResult{ value: self.context.bool_type().const_int(*v as u64, false).into(), type_id: bool_type})
+                        Ok(ExprResult{ value: Some(self.context.bool_type().const_int(*v as u64, false).into()), type_id: bool_type})
                     },
                     ConstValue::Char(ch) => {
                         let char_type: TypeId = self.build_type_id(&VarType::Primitive(PrimitiveType::Char), &None);
-                        Ok(ExprResult{ value: self.context.i32_type().const_int(*ch as u64, false).into(), type_id: char_type})
+                        Ok(ExprResult{ value: Some(self.context.i32_type().const_int(*ch as u64, false).into()), type_id: char_type})
                     },
                     ConstValue::UnresolvedInteger(int) => {
                         let (int_type_id, llvm_int_type) = if let Some(ctx_t) = ctx_type {
@@ -316,7 +323,7 @@ impl<'ctx> Compiler<'ctx> {
                         } else {
                             (self.build_type_id(&VarType::Primitive(PrimitiveType::I32), &None), self.context.i32_type())
                         };
-                        Ok(ExprResult{ value: llvm_int_type.const_int(*int as u64, false).into(), type_id: int_type_id})
+                        Ok(ExprResult{ value: Some(llvm_int_type.const_int(*int as u64, false).into()), type_id: int_type_id})
                     },
                     ConstValue::Float(float) => {
                         let (float_type_id, llvm_float_type) = if let Some(ctx_t) = ctx_type {
@@ -328,23 +335,21 @@ impl<'ctx> Compiler<'ctx> {
                         } else {
                             (self.build_type_id(&VarType::Primitive(PrimitiveType::F32), &None), self.context.f32_type())
                         };
-                        Ok(ExprResult{ value: llvm_float_type.const_float(*float).into(), type_id: float_type_id})
+                        Ok(ExprResult{ value: Some(llvm_float_type.const_float(*float).into()), type_id: float_type_id})
                     },
                     _ => todo!()
                 }
             },
             ExprNodeEnum::InfixOpr(opr, left_expr, right_expr) => {
-                let left_expr_result = self.build_expr(left_expr, ctx_type, false, cur_vars)?;
-                let right_expr_result = self.build_expr(right_expr, Some(left_expr_result.type_id), true, cur_vars)?;
-            
-                self.build_infix_opr_block(*opr, left_expr_result, right_expr_result, expr.span)
+                self.build_infix_opr_block(*opr, left_expr, right_expr, cur_vars, ctx_type, expr.span)
             },
             ExprNodeEnum::NamePath(name_path) => {
                 if let Some(ir_var) = cur_vars.vars.iter().find(|v| v.name == name_path.path[0]) {
                     if expects_mut && !ir_var.is_mut {
                         return Err(self.error("Cannot mutate immutable variable", None, Some(expr.span)))
                     }
-                    return Ok(ExprResult{ value: ir_var.ptr.unwrap().into(), type_id: ir_var.type_id.unwrap()});
+                    let value: Option<BasicValueEnum<'_>> = if let Some(ptr_value) = ir_var.ptr { Some(ptr_value.into()) } else { None };
+                    return Ok(ExprResult{ value, type_id: ir_var.type_id.unwrap()});
                 }
                 todo!();
             }
@@ -354,10 +359,44 @@ impl<'ctx> Compiler<'ctx> {
 
     fn is_impl_trait(&self, type_id: TypeId) -> bool { false } // todo
 
-    fn build_infix_opr_block(&mut self, opr: InfixOpr, left: ExprResult<'ctx>, right: ExprResult<'ctx>, span: Span) -> Result<ExprResult<'ctx>, CompilerError>  {
+    fn build_prim_infix_opr_block(&mut self, opr: InfixOpr, prim: PrimitiveType, left_value: &BasicValueEnum<'ctx>, right_value: &BasicValueEnum<'ctx>, left_type: TypeId, right_type: TypeId, span: Span) -> Result<ExprResult<'ctx>, CompilerError> {
+        let left_ir_type: &IRType<'ctx> = &self.type_context.infos[&left_type];
+        let right_ir_type: &IRType<'ctx> = &self.type_context.infos[&right_type];
+        let left_type_str = self.type_id_to_string(left_type);
+        let right_type_str = self.type_id_to_string(right_type);
+
+        match opr {
+            InfixOpr::Add => {
+                let err = self.error("Invalid addition", Some(format!("{} does not implement the Add trait", left_type_str)), Some(span));
+                let value = match prim {
+                    _ if prim.is_int() | prim.is_uint() => self.builder.build_int_add(left_value.into_int_value(), right_value.into_int_value(), "add_tmp").unwrap().into(),
+                    _ if prim.is_float() => self.builder.build_float_add(left_value.into_float_value(), right_value.into_float_value(), "add_tmp").unwrap().into(),
+                    _ => return Err(err)
+                };
+                Ok(ExprResult{value, type_id: left_type})
+            },
+            InfixOpr::Sub => {
+                let err = self.error("Invalid subtraction", Some(format!("{} does not implement the Add trait", left_type_str)), Some(span));
+                let value = match prim {
+                    _ if prim.is_int() | prim.is_uint() => self.builder.build_int_add(left_value.into_int_value(), right_value.into_int_value(), "add_tmp").unwrap().into(),
+                    _ if prim.is_float() => self.builder.build_float_add(left_value.into_float_value(), right_value.into_float_value(), "add_tmp").unwrap().into(),
+                    _ => return Err(err)
+                };
+                Ok(ExprResult{value, type_id: left_type})
+            },
+            _ => todo!()
+        }
+    }
+
+    fn build_infix_opr_block(&mut self, opr: InfixOpr, left_expr: &ExprNode, right_expr: &ExprNode, cur_vars: &mut IRVariables<'ctx>, ctx_type: Option<TypeId>, span: Span) -> Result<ExprResult<'ctx>, CompilerError>  {
+        let left = self.build_expr(left_expr, ctx_type, false, cur_vars)?;
+            
         if self.is_impl_trait(left.type_id) {
             todo!()
         }
+
+        let right_ctx_type = if opr.is_shift() { None } else { Some(left.type_id) };
+        let right = self.build_expr(right_expr, right_ctx_type, true, cur_vars)?;
 
         let left_type_str = self.type_id_to_string(left.type_id);
         let right_type_str = self.type_id_to_string(right.type_id);
@@ -369,17 +408,25 @@ impl<'ctx> Compiler<'ctx> {
         let right_value = self.build_expr_result_value(&right);
 
         if let InfixOpr::Asn = opr {
-            return if let BasicValueEnum::PointerValue(ptr_value) = left.value {
-                self.builder.build_store(ptr_value, right_value).unwrap();
-                Ok(ExprResult{value: ptr_value.into(), type_id: left.type_id})
+            return if let Some(left_value) = left.value {
+                if let BasicValueEnum::PointerValue(ptr_value) = left_value {
+                    self.builder.build_store(ptr_value, right_value).unwrap();
+                    Ok(ExprResult{value: self.context.void_type(), type_id: left.type_id})
+                } else {
+                    Err(self.error("Invalid assignment", Some("Cannot assign a value to a value".to_string()), Some(span)))
+                }
             } else {
-                Err(self.error("Invalid assignment", Some("Cannot assign a value to a value".to_string()), Some(span)))
-            };
+
+            }
         }
         let left_value = self.build_expr_result_value(&left);
         let left_ir_type: &IRType<'ctx> = &self.type_context.infos[&left.type_id];
 
-        match opr {
+        match left_ir_type.type_enum {
+            IRTypeEnum::Primitive(prim) => self.build_prim_infix_opr_block(opr, prim, &left_value, &right_value, left.type_id, right.type_id, span),
+            _ => todo!()
+        }
+        /*match opr {
             InfixOpr::Add => {
                 let err = self.error("Invalid addition", Some(format!("{} does not implement the Add trait", left_type_str)), Some(span));
                 if let IRTypeEnum::Primitive(prim) = left_ir_type.type_enum {
@@ -394,7 +441,7 @@ impl<'ctx> Compiler<'ctx> {
                 }
             }
             _ => todo!()
-        }
+        }*/
 
         /*match left_ir_type.type_enum {
             IRTypeEnum::Primitive(primitive) => {
