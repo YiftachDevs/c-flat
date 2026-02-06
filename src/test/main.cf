@@ -1,15 +1,3 @@
 fun main() {
-    let mut var_1: f32 = 4.0 + 4;
-}
-
-fun foo(a: num) -> num {
-    foo(a)
-}
-
-module Thing {
-    module Thing_2 {
-        fun aoe() {
-            aoe();
-        }
-    }
+    let var_1 = (4 - 3 + 2);
 }

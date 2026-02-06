@@ -337,6 +337,10 @@ impl<'ctx> Compiler<'ctx> {
                         };
                         Ok(ExprResult{ value: Some(llvm_float_type.const_float(*float).into()), type_id: float_type_id})
                     },
+                    ConstValue::Void => {
+                        let void_type: TypeId = self.build_type_id(&VarType::Primitive(PrimitiveType::Void), &None);
+                        Ok(ExprResult{ value: None, type_id: void_type})
+                    },
                     _ => todo!()
                 }
             },
@@ -368,20 +372,29 @@ impl<'ctx> Compiler<'ctx> {
         match opr {
             InfixOpr::Add => {
                 let err = self.error("Invalid addition", Some(format!("{} does not implement the Add trait", left_type_str)), Some(span));
-                let value = match prim {
+                let value = Some(match prim {
                     _ if prim.is_int() | prim.is_uint() => self.builder.build_int_add(left_value.into_int_value(), right_value.into_int_value(), "add_tmp").unwrap().into(),
                     _ if prim.is_float() => self.builder.build_float_add(left_value.into_float_value(), right_value.into_float_value(), "add_tmp").unwrap().into(),
                     _ => return Err(err)
-                };
+                });
                 Ok(ExprResult{value, type_id: left_type})
             },
             InfixOpr::Sub => {
-                let err = self.error("Invalid subtraction", Some(format!("{} does not implement the Add trait", left_type_str)), Some(span));
-                let value = match prim {
-                    _ if prim.is_int() | prim.is_uint() => self.builder.build_int_add(left_value.into_int_value(), right_value.into_int_value(), "add_tmp").unwrap().into(),
-                    _ if prim.is_float() => self.builder.build_float_add(left_value.into_float_value(), right_value.into_float_value(), "add_tmp").unwrap().into(),
+                let err = self.error("Invalid subtraction", Some(format!("{} does not implement the Sub trait", left_type_str)), Some(span));
+                let value = Some(match prim {
+                    _ if prim.is_int() | prim.is_uint() => self.builder.build_int_sub(left_value.into_int_value(), right_value.into_int_value(), "add_tmp").unwrap().into(),
+                    _ if prim.is_float() => self.builder.build_float_sub(left_value.into_float_value(), right_value.into_float_value(), "add_tmp").unwrap().into(),
                     _ => return Err(err)
-                };
+                });
+                Ok(ExprResult{value, type_id: left_type})
+            },
+            InfixOpr::Mul => {
+                let err = self.error("Invalid multiplication", Some(format!("{} does not implement the Mul trait", left_type_str)), Some(span));
+                let value = Some(match prim {
+                    _ if prim.is_int() | prim.is_uint() => self.builder.build_int_mul(left_value.into_int_value(), right_value.into_int_value(), "add_tmp").unwrap().into(),
+                    _ if prim.is_float() => self.builder.build_float_mul(left_value.into_float_value(), right_value.into_float_value(), "add_tmp").unwrap().into(),
+                    _ => return Err(err)
+                });
                 Ok(ExprResult{value, type_id: left_type})
             },
             _ => todo!()
@@ -389,14 +402,15 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     fn build_infix_opr_block(&mut self, opr: InfixOpr, left_expr: &ExprNode, right_expr: &ExprNode, cur_vars: &mut IRVariables<'ctx>, ctx_type: Option<TypeId>, span: Span) -> Result<ExprResult<'ctx>, CompilerError>  {
-        let left = self.build_expr(left_expr, ctx_type, false, cur_vars)?;
-            
+        let is_asn: bool = opr == InfixOpr::Asn;
+        let left = self.build_expr(left_expr, ctx_type, is_asn, cur_vars)?;
+
         if self.is_impl_trait(left.type_id) {
             todo!()
         }
 
         let right_ctx_type = if opr.is_shift() { None } else { Some(left.type_id) };
-        let right = self.build_expr(right_expr, right_ctx_type, true, cur_vars)?;
+        let right = self.build_expr(right_expr, right_ctx_type, false, cur_vars)?;
 
         let left_type_str = self.type_id_to_string(left.type_id);
         let right_type_str = self.type_id_to_string(right.type_id);
@@ -406,77 +420,32 @@ impl<'ctx> Compiler<'ctx> {
         }
 
         let right_value = self.build_expr_result_value(&right);
+        let void_type: TypeId = self.build_type_id(&VarType::Primitive(PrimitiveType::Void), &None);
 
-        if let InfixOpr::Asn = opr {
+        if is_asn {
             return if let Some(left_value) = left.value {
                 if let BasicValueEnum::PointerValue(ptr_value) = left_value {
-                    self.builder.build_store(ptr_value, right_value).unwrap();
-                    Ok(ExprResult{value: self.context.void_type(), type_id: left.type_id})
+                    self.builder.build_store(ptr_value, right_value.unwrap()).unwrap();
+                    Ok(ExprResult{value: None, type_id: void_type})
                 } else {
                     Err(self.error("Invalid assignment", Some("Cannot assign a value to a value".to_string()), Some(span)))
                 }
             } else {
-
+                Ok(ExprResult{value: None, type_id: void_type})
             }
         }
-        let left_value = self.build_expr_result_value(&left);
+
+        if left.type_id == void_type || right.type_id == void_type {
+            return Err(self.error("What are you doing, my guy?", Some(format!("Cannot apply operator {} between void types", opr.to_string())), Some(span)));
+        }
+
+        let left_value = self.build_expr_result_value(&left).unwrap();
         let left_ir_type: &IRType<'ctx> = &self.type_context.infos[&left.type_id];
 
         match left_ir_type.type_enum {
-            IRTypeEnum::Primitive(prim) => self.build_prim_infix_opr_block(opr, prim, &left_value, &right_value, left.type_id, right.type_id, span),
+            IRTypeEnum::Primitive(prim) => self.build_prim_infix_opr_block(opr, prim, &left_value, &right_value.unwrap(), left.type_id, right.type_id, span),
             _ => todo!()
         }
-        /*match opr {
-            InfixOpr::Add => {
-                let err = self.error("Invalid addition", Some(format!("{} does not implement the Add trait", left_type_str)), Some(span));
-                if let IRTypeEnum::Primitive(prim) = left_ir_type.type_enum {
-                    let value = match prim {
-                        _ if prim.is_int() | prim.is_uint() => self.builder.build_int_add(left_value.into_int_value(), right_value.into_int_value(), "add_tmp").unwrap().into(),
-                        _ if prim.is_float() => self.builder.build_float_add(left_value.into_float_value(), right_value.into_float_value(), "add_tmp").unwrap().into(),
-                        _ => return Err(err)
-                    };
-                    Ok(ExprResult{value, type_id: left.type_id})
-                } else {
-                    Err(err)
-                }
-            }
-            _ => todo!()
-        }*/
-
-        /*match left_ir_type.type_enum {
-            IRTypeEnum::Primitive(primitive) => {
-                match primitive {
-                    _ if primitive.is_int() => {
-                        let int_type = left.type_id;
-                        let right_value = match right { ExprResult::Value(value, type_id) => value.into_int_value(), _ => panic!() };
-                        if let InfixOpr::Asn = opr {
-                            return if let ExprResult::Pointer(ptr, type_id) = left {
-                                self.builder.build_store(ptr, right_value).unwrap();
-                                Ok(ExprResult::Pointer(ptr, type_id))
-                            } else {
-                                Err(self.error("Invalid assignment", Some("Cannot assign a value to a value".to_string()), Some(span)))
-                            }
-                        }
-                        let left_value = self.build_expr_result_value(left).into_int_value();
-                        println!("{:?}", right_value);
-                        
-                        let result = match opr {
-                            InfixOpr::Add => self.builder.build_int_add(left_value, right_value, "add_tmp").unwrap(),
-                            InfixOpr::Sub => self.builder.build_int_sub(left_value, right_value, "sub_tmp").unwrap(),
-                            InfixOpr::Mul => self.builder.build_int_mul(left_value, right_value, "mul_tmp").unwrap(),
-                            InfixOpr::Div => self.builder.build_int_signed_div(left_value, right_value, "div_tmp").unwrap(),
-                            InfixOpr::Mod => self.builder.build_int_signed_rem(left_value, right_value, "mod_tmp").unwrap(),
-                            InfixOpr::Eq => self.builder.build_int_compare(inkwell::IntPredicate::EQ, left_value, right_value, "eq_tmp").unwrap(),
-                            _ => todo!()
-                        };
-                        Ok(ExprResult::Value(result.into(), if opr.is_boolean() { bool_type } else { int_type }))
-                    },
-                    _ => todo!()
-                }
-                
-            }
-            _ => todo!()
-        }*/
     }
 
     fn build_ir_var(&mut self, var: &Variable, opt_templates_values: &Option<TemplatesValues>) -> IRVariable<'ctx> {

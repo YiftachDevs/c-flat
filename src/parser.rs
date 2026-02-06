@@ -721,7 +721,9 @@ impl ToString for VarType {
 
 impl ConstValue {
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
-        if parser.is_next("false") {
+        if parser.is_next("()") {
+            return Ok(Some(ConstValue::Void));
+        } else if parser.is_next("false") {
             return Ok(Some(ConstValue::Bool(false)));
         } else if parser.is_next("true") {
             return Ok(Some(ConstValue::Bool(true)));
