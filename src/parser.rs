@@ -1,11 +1,10 @@
 use std::{collections::HashMap, env::var, fs::{self, File}};
 use crate::errors::*;
 
-#[derive(PartialEq, Clone)]
+/*#[derive(PartialEq, Clone)]
 pub struct NamePath {
     pub path: Vec<String>, // Game.Player.get_pos;
     pub templates: Option<TemplatesValues>
-}
 
 impl NamePath {
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
@@ -40,7 +39,7 @@ impl ToString for NamePath {
         }
         result
     }
-}
+}*/
 
 #[derive(PartialEq, Clone)]
 pub struct Templates {
@@ -77,7 +76,7 @@ impl Template {
     pub fn from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
         if parser.is_next("const") {
             let arg: Variable = Variable::arg_from_def(parser)?;
-            if arg.var_type != VarType::UnresolvedExpr {
+            if arg.var_type != VarType::UnresolvedInitExpr {
                 return Ok(Template::ConstValue(arg.name, arg.var_type));
             } else {
                 return Err(parser.error(CompilerErrorType::SyntaxError, "Expected a type for a const template".to_string(), None));
@@ -193,8 +192,8 @@ impl ToString for PrimitiveType {
 
 #[derive(PartialEq, Clone)]
 pub enum VarType {
-    UnresolvedExpr,
-    Unresolved { name_path: NamePath },
+    UnresolvedInitExpr,
+    Unresolved { name: Box<ExprNode> },
     Primitive(PrimitiveType),
     Pointer { ptr_type: Box<VarType>, is_ref: bool },
     Array { arr_type: Box<VarType>, size_expr: Box<ExprNode> },
@@ -300,7 +299,8 @@ pub enum PrefixOpr {
 pub enum PostfixOpr {
     Inv,
     Idx,
-    Mem
+    Mem,
+    Tmp // (template eg <>)
 }
 
 #[derive(Eq, PartialEq, Clone, Hash)]
@@ -388,7 +388,7 @@ pub enum ExprNodeEnum {
     InfixOpr(InfixOpr, Box<ExprNode>, Box<ExprNode>),
     PrefixOpr(PrefixOpr, Box<ExprNode>),
     PostfixOpr(PostfixOpr, Box<ExprNode>, Box<Option<ExprNode>>),
-    NamePath(NamePath),
+    Name(String),
     ConstValue(ConstValue),
     VarDeclaration(Box<Variable>),
     Scope(Scope),
@@ -647,11 +647,16 @@ impl PostfixOpr {
                 parser.ensure_next(")")?;
                 PostfixOpr::Inv
             }
+            '<' => {
+                expr_result = Some(ExprNode::primary_from_def(parser)?);
+                parser.ensure_next(">")?;
+                PostfixOpr::Tmp
+            }
             '.' => {
-                let mut postfix_span = parser.get_span_start();
-                let name_path = NamePath::from_def(parser)?;
+                let mut postfix_span: Span = parser.get_span_start();
+                let name: String = parser.next_name()?;
                 parser.end_span(&mut postfix_span);
-                expr_result = Some(ExprNode { value: ExprNodeEnum::NamePath(name_path), span: postfix_span});
+                expr_result = Some(ExprNode { value: ExprNodeEnum::Name(name), span: postfix_span});
                 PostfixOpr::Mem
             }
             _ => { parser.index -= 1; return Ok(None); }
@@ -684,8 +689,9 @@ impl VarType {
             let return_type: Box<VarType> = Box::new(VarType::from_def(parser)?);
             return Ok(VarType::Callback { args, return_type })
         }
-        if let Some(name_path) = NamePath::is_from_def(parser)? {
-            return Ok(VarType::Unresolved { name_path: name_path });
+        if parser.is_name_start()? {
+            let name: Box<ExprNode> = Box::new(ExprNode::primary_from_def(parser)?);
+            return Ok(VarType::Unresolved { name });
         }
         let err_msg = format!("Type cannot start with char {}", parser.cur_char()?);
         Err(parser.error(CompilerErrorType::SyntaxError, err_msg, None))
@@ -708,13 +714,13 @@ impl ToString for VarType {
                 } else {
                     format!("*{}", ptr_type.to_string())
                 },
-            VarType::Unresolved { name_path } => name_path.to_string(),
+            VarType::Unresolved { name } => name.to_string(),
             VarType::Primitive(primitive_type) => primitive_type.to_string(),
             VarType::Array { arr_type, size_expr } => format!("[{}; {}]", arr_type.to_string(), size_expr.to_string()),
             VarType::Callback { args, return_type } => 
                 format!("{} -> {}", args.to_string(), return_type.to_string()),
             VarType::Struct { args, templates } => "Huh??? How???".to_string(),
-            VarType::UnresolvedExpr => "<Unresolved Expression>".to_string()
+            VarType::UnresolvedInitExpr => "<Unresolved Expression>".to_string()
         }
     }
 }
@@ -970,8 +976,6 @@ impl ExprNode {
             result_enum = ExprNodeEnum::ConstValue(const_value);
         } else if let Some(cond_chain) = ConditionalChain::is_from_def(parser)? {
             result_enum = ExprNodeEnum::ConditionalChain(Box::new(cond_chain));
-        } else if let Some(name_path) = NamePath::is_from_def(parser)? {
-            result_enum = ExprNodeEnum::NamePath(name_path);
         } else if let Some(scope) = Scope::is_from_def(parser)? {
             result_enum = ExprNodeEnum::Scope(scope);
         } else if parser.is_next("(") {
@@ -992,6 +996,9 @@ impl ExprNode {
                 }
                 ExprNodeEnum::Array(vec, false)
             };
+        } else if parser.is_name_start()? {
+            let name: String = parser.next_name()?;
+            result_enum = ExprNodeEnum::Name(name);
         } else {
             return Err(parser.error(CompilerErrorType::SyntaxError, "Missing / Unknown primary expression".to_string(), None));
         }
@@ -1017,14 +1024,15 @@ impl ToString for ExprNode {
             ExprNodeEnum::ConstValue(const_value) => {
                 const_value.to_string()
             },
-            ExprNodeEnum::NamePath(name_path) => {
-                name_path.to_string()
+            ExprNodeEnum::Name(name) => {
+                name.clone()
             },
             ExprNodeEnum::PostfixOpr(postfix_opr, left, right) => {
                 let right_str: String = if let Some(right_expr) = right.as_ref() { right_expr.to_string() } else { String::new() };
                 match postfix_opr {
                     PostfixOpr::Idx => format!("{}[{}]", left.to_string(), right_str),
                     PostfixOpr::Inv => format!("{}({})", left.to_string(), right_str),
+                    PostfixOpr::Tmp => format!("{}<{}>", left.to_string(), right_str),
                     PostfixOpr::Mem => format!("{}.{}", left.to_string(), right_str)
                 }
             },
@@ -1044,7 +1052,7 @@ impl Variable {
         let mut span: Span = parser.get_span_start();
         let is_mut: bool = parser.is_next("mut");
         let name: String = parser.next_name()?;
-        let mut var_type: VarType = VarType::UnresolvedExpr;
+        let mut var_type: VarType = VarType::UnresolvedInitExpr;
         let mut init_expr: Option<ExprNode> = None;
         if parser.is_next(":") {
             var_type = VarType::from_def(parser)?;
@@ -1052,7 +1060,7 @@ impl Variable {
         if parser.is_next("=") {
             let expr: ExprNode = ExprNode::from_def(parser)?;
             init_expr = Some(expr);
-        } else if var_type == VarType::UnresolvedExpr {
+        } else if var_type == VarType::UnresolvedInitExpr {
             return Err(parser.error(CompilerErrorType::SyntaxError, "Invalid var declaration".to_string(), Some("Cannot infer type. Expected either a type declaration ':' or expression assigment '='".to_string())));
         }
         parser.end_span(&mut span);
@@ -1344,7 +1352,7 @@ impl Scope {
         Ok(())
     }
 
-    pub fn find_module(&self, name: String) -> Option<&Module> {
+    pub fn find_module(&self, name: &str) -> Option<&Module> {
         for module in self.modules.iter() {
             if module.name == name {
                 return Some(module);

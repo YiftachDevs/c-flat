@@ -1,5 +1,5 @@
 fun main() {
-    let mut var_1: f32 = 4.0 + 4;
+    let mut var_1: f32 = 4.0 + 4.0;
 }
 
 fun foo(a: num) -> num {

@@ -3,6 +3,7 @@ use crate::parser::*;
 use std::any::Any;
 use std::collections::{HashMap, VecDeque};
 use std::fs::File;
+use std::path::Path;
 use inkwell::context::Context;
 use inkwell::builder::Builder;
 use inkwell::module::Module;
@@ -15,61 +16,88 @@ use inkwell::types::FunctionType;
 use inkwell::types::VoidType;
 use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
 
-#[derive(Copy, Clone, Hash, Eq, PartialEq)]
-struct FunctionId(usize);
+type IRFunctionId = usize;
+type IRTypeId = usize;
 
+#[derive(PartialEq, Clone)]
+enum IRTemplateValue {
+    Type(IRTypeId),
+    Const(ConstValue)
+}
 
-#[derive(Copy, Clone, Hash, Eq, PartialEq)]
-struct TypeId(i32);
+#[derive(PartialEq, Eq, Hash, Clone)]
+enum IRTemplateKey {
+    Type(String),
+    Const(String, IRTypeId)
+}
 
+type IRTemplatesValues = HashMap<IRTemplateKey, IRTemplateValue>;
+
+#[derive(PartialEq, Eq, Hash, Clone)]
+struct IRScopeName {
+    modules: Vec<String>,
+    self_type: Option<IRTypeId>,
+}
+
+impl IRScopeName {
+    pub fn new() -> Self {
+        Self { modules: Vec::new(), self_type: None }
+    }
+}
+
+#[derive(PartialEq, Clone)]
+struct IRFunctionName {
+    name: String,
+    templates_values: IRTemplatesValues,
+    scope_name: IRScopeName
+}
 
 struct IRFunction<'ctx> {
     fun_type: FunctionType<'ctx>,
     fun_value: FunctionValue<'ctx>,
     args: IRVariables<'ctx>,
-    return_type_id: TypeId,
+    return_type_id: IRTypeId,
     fun_def: &'ctx Function
 }
 
 struct FunctionContext<'ctx> {
-    ids: Vec<(NamePath, Option<TypeId>)>, // optional: [SomeModule.InnerMod.Struct<T1, 4>] value: Foo<5, 3>
-    infos: HashMap<FunctionId, IRFunction<'ctx>>
+    names: Vec<IRFunctionName>, // optional: [SomeModule.InnerMod.Struct<T1, 4>] value: Foo<5, 3>
+    funs: Vec<IRFunction<'ctx>>
 }
 
 impl<'ctx> FunctionContext<'ctx> {
     pub fn new() -> Self {
-        Self { ids: Vec::new(), infos: HashMap::new() }
+        Self { names: Vec::new(), funs: Vec::new() }
     }
 
-    pub fn next_id(&mut self, fun_name: NamePath, opt_self_type: Option<TypeId>) -> FunctionId {
-        for (i, (cur_name, cur_opt_self_type)) in self.ids.iter().enumerate() {
-            if *cur_name == fun_name && *cur_opt_self_type == opt_self_type {
-                return FunctionId(i);
-            }
-        }
-        let id: FunctionId = FunctionId(self.ids.len());
-        self.ids.push((fun_name, opt_self_type));
+    pub fn add_fun(&mut self, name: IRFunctionName, fun: IRFunction<'ctx>) -> IRFunctionId {
+        let id: IRFunctionId = self.names.len();
+        self.names.push(name);
+        self.funs.push(fun);
         id
     }
 
-    pub fn get_name(&self, id: FunctionId) -> &(NamePath, Option<TypeId>) {
-        self.ids.get(id.0).expect("Cannot get fun name of a non existing fun id")
+    pub fn get_id(&self, name: IRFunctionName) -> Option<IRFunctionId> {
+        match self.names.iter().enumerate().find(|(_, n)| **n == name) {
+            Some((i, _)) => Some(i),
+            None => None
+        }
     }
 
-    pub fn get_ir_fun(&self, id: FunctionId) -> &IRFunction<'ctx> {
-        if let Some(info) = self.infos.get(&id) {
-            info
-        } else {
-            panic!("Received non existing fun id");
-        }
+    pub fn get_name(&self, id: IRFunctionId) -> &IRFunctionName {
+        self.names.get(id).expect("Cannot get fun name of a non existing fun id")
+    }
+
+    pub fn get_fun(&self, id: IRFunctionId) -> &IRFunction<'ctx> {
+        self.funs.get(id).expect("Cannot get fun of a non existing fun id")
     }
 }
 
 enum IRTypeEnum<'ctx> {
     Primitive(PrimitiveType),
-    Pointer { ptr_type_id: TypeId, is_ref: bool },
-    Array { arr_type: TypeId, size: usize },
-    Callback { args: IRVariables<'ctx>, return_type: TypeId },
+    Pointer { ptr_type_id: IRTypeId, is_ref: bool },
+    Array { arr_type: IRTypeId, size: usize },
+    Callback { args: IRVariables<'ctx>, return_type: IRTypeId },
     Struct { args: IRVariables<'ctx>, def: &'ctx Struct }
 }
 
@@ -80,41 +108,40 @@ struct IRType<'ctx> {
 }
 
 struct TypeContext<'ctx> {
-    ids: Vec<VarType>,
-    infos: HashMap<TypeId, IRType<'ctx>>
+    var_types: Vec<VarType>,
+    types: Vec<IRType<'ctx>>
 }
 
 impl<'ctx> TypeContext<'ctx> {
-    pub fn next_id(&mut self, var_type: VarType) -> TypeId {
-        for (i, cur_type) in self.ids.iter().enumerate() {
-            if *cur_type == var_type {
-                return TypeId(i as i32);
-            }
-        }
-        let result: TypeId = TypeId(self.ids.len() as i32);
-        self.ids.push(var_type.clone());
-        result        
+    pub fn add_type(&mut self, var_type: VarType, ir_type: IRType<'ctx>) -> IRTypeId {
+        let id: IRTypeId = self.var_types.len();
+        self.var_types.push(var_type);
+        self.types.push(ir_type);
+        id
     }
 
-    pub fn get_type(&self, id: TypeId) -> &IRType<'ctx> {
-        if let Some(info) = self.infos.get(&id) {
-            info
-        } else {
-            panic!("Received non existing type id");
+    pub fn get_id(&self, var_type: &VarType) -> Option<IRTypeId> {
+        match self.var_types.iter().enumerate().find(|(_, n)| **n == *var_type) {
+            Some((i, _)) => Some(i),
+            None => None
         }
+    }
+
+    pub fn get_type(&self, id: IRTypeId) -> &IRType<'ctx> {
+        self.types.get(id).expect("Cannot get type of a non existing type id")
     }
 }
 
 impl<'ctx> TypeContext<'ctx> {
     pub fn new() -> Self {
-        Self { ids: Vec::new(), infos: HashMap::new() }
+        Self { var_types: Vec::new(), types: Vec::new() }
     }
 }
 
 #[derive(Clone)]
 pub struct IRVariable<'ctx> {
     name: String,
-    type_id: Option<TypeId>,
+    type_id: Option<IRTypeId>,
     is_mut: bool,
     is_resolved: bool,
     ptr: Option<PointerValue<'ctx>>
@@ -127,7 +154,7 @@ pub struct IRVariables<'ctx> {
 
 pub struct ExprResult<'ctx> {
     value: Option<BasicValueEnum<'ctx>>,
-    type_id: TypeId
+    type_id: IRTypeId
 }
 
 pub struct Compiler<'ctx> {
@@ -150,8 +177,11 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     pub fn compile(&mut self) -> Result<(), CompilerError> {
-        let main_id: FunctionId = self.function_context.next_id(NamePath::new(["main".to_string()].to_vec(), None), None);
-        self.build_fun(main_id, None)?;
+        let main_name: IRFunctionName = IRFunctionName { name: "main".to_string(), templates_values: HashMap::new(), scope_name: IRScopeName::new() };
+        self.build_fun(main_name)?;
+
+        let file_path = Path::new("output.ll");
+        self.module.print_to_file(file_path).expect("Failed to write IR");
         self.module.print_to_stderr();
         Ok(())
     }
@@ -168,15 +198,18 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    fn build_fun(&mut self, fun_id: FunctionId, fun_call_span: Option<Span>) -> Result<(), CompilerError> {
-        let fun_def: &'ctx Function = self.find_fun_def(fun_id).ok_or(self.error("Called a non existing function", Some(format!("Missing function '{}'", self.fun_id_to_string(fun_id))),fun_call_span))?;
-        let (name_path , opt_self_type) = self.function_context.get_name(fun_id).clone();
-        let opt_templates_values: & Option<TemplatesValues> = &name_path.templates;
-        let return_type_id: TypeId = self.build_type_id(&fun_def.return_type, &opt_templates_values);
+    fn call_fun(&mut self, fun_id: IRFunctionId, fun_call_span: Option<Span>) -> Result<(), CompilerError> {
+        todo!()
+    }
+
+    fn build_fun(&mut self, fun_name: IRFunctionName) -> Result<(), CompilerError> {
+        let fun_def = self.find_fun_def(&fun_name).expect("Cannot find fun def, invalid name");
+        let templates_values: &IRTemplatesValues = &fun_name.templates_values;
+        let return_type_id: IRTypeId = self.build_var_type_id(&fun_def.return_type, &templates_values);
         let mut args: IRVariables = IRVariables { vars: Vec::new() };
         let mut args_llvm_types: Vec<BasicMetadataTypeEnum> = Vec::new();
         for arg in fun_def.args.variables.iter() {
-            let ir_var: IRVariable = self.build_ir_var(arg, &opt_templates_values);
+            let ir_var: IRVariable = self.build_ir_var(arg, &templates_values);
             args_llvm_types.push(self.type_context.get_type(ir_var.type_id.unwrap()).llvm_type.into());
             args.vars.push(ir_var);
         }
@@ -187,7 +220,7 @@ impl<'ctx> Compiler<'ctx> {
             return_ir_type.llvm_type.fn_type(args_llvm_types.as_slice(), false)
         };
 
-        let fun_str_name: String = self.fun_id_to_string(fun_id);
+        let fun_str_name: String = self.fun_name_to_string(&fun_name);
         let fun_value: FunctionValue<'_> = self.module.add_function(fun_str_name.as_str(), fun_type, None);
 
         let ir_fun = IRFunction {
@@ -197,15 +230,12 @@ impl<'ctx> Compiler<'ctx> {
             return_type_id,
             fun_def
         };
-        let fun_id: FunctionId = self.function_context.next_id(name_path, opt_self_type);
-        self.function_context.infos.insert(fun_id, ir_fun);
-        self.build_fun_body(fun_id)?;
-
-        Ok(())
+        let fun_id = self.function_context.add_fun(fun_name, ir_fun);
+        self.build_fun_body(fun_id)
     }
 
-    fn build_fun_body(&mut self, fun_id: FunctionId) -> Result<(), CompilerError> {
-        let ir_fun: &IRFunction<'_> = &self.function_context.infos[&fun_id];
+    fn build_fun_body(&mut self, fun_id: IRFunctionId) -> Result<(), CompilerError> {
+        let ir_fun: &IRFunction<'_> = self.function_context.get_fun(fun_id);
         let fun_value: FunctionValue<'_> = ir_fun.fun_value;
         let entry_block = self.context.append_basic_block(fun_value, "entry");
         self.alloca_builder.position_at_end(entry_block);
@@ -224,16 +254,14 @@ impl<'ctx> Compiler<'ctx> {
         Ok(())
     }
 
-    fn build_scope(&mut self, scope: &Scope, cur_vars: &mut IRVariables<'ctx>, fun_id: FunctionId) -> Result<Option<ExprResult>, CompilerError> {
-        let (name_path , opt_self_type) = self.function_context.get_name(fun_id).clone();
-        let opt_templates_values: &Option<TemplatesValues> = &name_path.templates;
-        let ir_fun: &IRFunction<'_> = &self.function_context.infos[&fun_id];
-        let fun_value: FunctionValue<'_> = ir_fun.fun_value;
+    fn build_scope(&mut self, scope: &Scope, cur_vars: &mut IRVariables<'ctx>, fun_id: IRFunctionId) -> Result<Option<ExprResult>, CompilerError> {
+        let fun_name: IRFunctionName = self.function_context.get_name(fun_id).clone();
+        let opt_templates_values: &IRTemplatesValues = &fun_name.templates_values;
 
         for statement in scope.statements.iter() {
             match statement {
                 Statement::VarDeclaration(var) => {
-                    let mut ir_var: IRVariable = self.build_ir_var(var, opt_templates_values);
+                    let mut ir_var: IRVariable<'ctx> = self.build_ir_var(var, opt_templates_values);
                     let opt_var_ptr = if let Some(init_expr) = var.init_expr.as_ref() {
                         let expr_result = self.build_expr(init_expr, ir_var.type_id, false, cur_vars)?;
                         let expr_type = expr_result.type_id;
@@ -252,7 +280,7 @@ impl<'ctx> Compiler<'ctx> {
                             None
                         }
                     } else {
-                        let ir_type = &self.type_context.infos[&ir_var.type_id.unwrap()];
+                        let ir_type = self.type_context.get_type(ir_var.type_id.unwrap());
                         if ir_type.is_void {
                             None
                         } else {
@@ -278,7 +306,7 @@ impl<'ctx> Compiler<'ctx> {
     fn build_expr_result_value(&mut self, expr_result: &ExprResult<'ctx>) -> Option<BasicValueEnum<'ctx>> {
         if let Some(expr_value) = expr_result.value {
             Some(if let BasicValueEnum::PointerValue(ptr_value) = expr_value {
-                let llvm_type = self.type_context.infos[&expr_result.type_id].llvm_type;
+                let llvm_type = self.type_context.get_type(expr_result.type_id).llvm_type;
                 self.builder.build_load(llvm_type, ptr_value, "side_load").unwrap()
             } else {
                 expr_value
@@ -288,8 +316,8 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    fn build_alloca(&self, type_id: TypeId, name: String) -> PointerValue<'ctx> {
-        let llvm_type = self.type_context.infos[&type_id].llvm_type;
+    fn build_alloca(&self, type_id: IRTypeId, name: String) -> PointerValue<'ctx> {
+        let llvm_type = self.type_context.get_type(type_id).llvm_type;
 
         let entry_block = self.alloca_builder.get_insert_block().unwrap();
     
@@ -301,39 +329,40 @@ impl<'ctx> Compiler<'ctx> {
         self.alloca_builder.build_alloca(llvm_type, name.as_str()).unwrap()
     }
 
-    fn build_expr(&mut self, expr: &ExprNode, ctx_type: Option<TypeId>, expects_mut: bool, cur_vars: &mut IRVariables<'ctx>) -> Result<ExprResult<'ctx>, CompilerError> {
+    fn build_expr(&mut self, expr: &ExprNode, ctx_type: Option<IRTypeId>, expects_mut: bool, cur_vars: &mut IRVariables<'ctx>) -> Result<ExprResult<'ctx>, CompilerError> {
         match &expr.value {
             ExprNodeEnum::ConstValue(const_value) => {
+                let templates_values = HashMap::new();
                 match const_value {
                     ConstValue::Bool(v) => {
-                        let bool_type: TypeId = self.build_type_id(&VarType::Primitive(PrimitiveType::Bool), &None);
+                        let bool_type: IRTypeId = self.build_var_type_id(&VarType::Primitive(PrimitiveType::Bool), &templates_values);
                         Ok(ExprResult{ value: Some(self.context.bool_type().const_int(*v as u64, false).into()), type_id: bool_type})
                     },
                     ConstValue::Char(ch) => {
-                        let char_type: TypeId = self.build_type_id(&VarType::Primitive(PrimitiveType::Char), &None);
+                        let char_type: IRTypeId = self.build_var_type_id(&VarType::Primitive(PrimitiveType::Char), &templates_values);
                         Ok(ExprResult{ value: Some(self.context.i32_type().const_int(*ch as u64, false).into()), type_id: char_type})
                     },
                     ConstValue::UnresolvedInteger(int) => {
                         let (int_type_id, llvm_int_type) = if let Some(ctx_t) = ctx_type {
-                            if let IRTypeEnum::Primitive(prim) = self.type_context.infos[&ctx_t].type_enum && (prim.is_int() | prim.is_uint()) {
-                                (self.build_type_id(&VarType::Primitive(prim), &None), self.type_context.infos[&ctx_t].llvm_type.into_int_type())
+                            if let IRTypeEnum::Primitive(prim) = self.type_context.get_type(ctx_t).type_enum && (prim.is_int() | prim.is_uint()) {
+                                (self.build_var_type_id(&VarType::Primitive(prim), &templates_values), self.type_context.get_type(ctx_t).llvm_type.into_int_type())
                             } else {
                                 return Err(self.error("Type mismatch", Some(format!("Expected a {}, received an integer", self.type_id_to_string(ctx_t))), Some(expr.span)));
                             }
                         } else {
-                            (self.build_type_id(&VarType::Primitive(PrimitiveType::I32), &None), self.context.i32_type())
+                            (self.build_var_type_id(&VarType::Primitive(PrimitiveType::I32), &templates_values), self.context.i32_type())
                         };
                         Ok(ExprResult{ value: Some(llvm_int_type.const_int(*int as u64, false).into()), type_id: int_type_id})
                     },
                     ConstValue::Float(float) => {
                         let (float_type_id, llvm_float_type) = if let Some(ctx_t) = ctx_type {
-                            if let IRTypeEnum::Primitive(prim) = self.type_context.infos[&ctx_t].type_enum && prim.is_float() {
-                                (self.build_type_id(&VarType::Primitive(prim), &None), self.type_context.infos[&ctx_t].llvm_type.into_float_type())
+                            if let IRTypeEnum::Primitive(prim) = self.type_context.get_type(ctx_t).type_enum && prim.is_float() {
+                                (self.build_var_type_id(&VarType::Primitive(prim), &templates_values), self.type_context.get_type(ctx_t).llvm_type.into_float_type())
                             } else {
                                 return Err(self.error("Type mismatch", Some(format!("Expected a {}, received a float", self.type_id_to_string(ctx_t))), Some(expr.span)));
                             }
                         } else {
-                            (self.build_type_id(&VarType::Primitive(PrimitiveType::F32), &None), self.context.f32_type())
+                            (self.build_var_type_id(&VarType::Primitive(PrimitiveType::F32), &templates_values), self.context.f32_type())
                         };
                         Ok(ExprResult{ value: Some(llvm_float_type.const_float(*float).into()), type_id: float_type_id})
                     },
@@ -343,8 +372,8 @@ impl<'ctx> Compiler<'ctx> {
             ExprNodeEnum::InfixOpr(opr, left_expr, right_expr) => {
                 self.build_infix_opr_block(*opr, left_expr, right_expr, cur_vars, ctx_type, expr.span)
             },
-            ExprNodeEnum::NamePath(name_path) => {
-                if let Some(ir_var) = cur_vars.vars.iter().find(|v| v.name == name_path.path[0]) {
+            ExprNodeEnum::Name(name) => {
+                if let Some(ir_var) = cur_vars.vars.iter().find(|v| v.name == *name) {
                     if expects_mut && !ir_var.is_mut {
                         return Err(self.error("Cannot mutate immutable variable", None, Some(expr.span)))
                     }
@@ -357,46 +386,57 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    fn is_impl_trait(&self, type_id: TypeId) -> bool { false } // todo
+    fn is_impl_trait(&self, type_id: IRTypeId) -> bool { false } // todo
 
-    fn build_prim_infix_opr_block(&mut self, opr: InfixOpr, prim: PrimitiveType, left_value: &BasicValueEnum<'ctx>, right_value: &BasicValueEnum<'ctx>, left_type: TypeId, right_type: TypeId, span: Span) -> Result<ExprResult<'ctx>, CompilerError> {
-        let left_ir_type: &IRType<'ctx> = &self.type_context.infos[&left_type];
-        let right_ir_type: &IRType<'ctx> = &self.type_context.infos[&right_type];
+    fn build_prim_infix_opr_block(&mut self, opr: InfixOpr, prim: PrimitiveType, left_value: &BasicValueEnum<'ctx>, right_value: &BasicValueEnum<'ctx>, left_type: IRTypeId, right_type: IRTypeId, span: Span) -> Result<ExprResult<'ctx>, CompilerError> {
+        let left_ir_type: &IRType<'ctx> = &self.type_context.get_type(left_type);
+        let right_ir_type: &IRType<'ctx> = &self.type_context.get_type(right_type);
         let left_type_str = self.type_id_to_string(left_type);
         let right_type_str = self.type_id_to_string(right_type);
 
         match opr {
             InfixOpr::Add => {
                 let err = self.error("Invalid addition", Some(format!("{} does not implement the Add trait", left_type_str)), Some(span));
-                let value = match prim {
+                let value = Some(match prim {
                     _ if prim.is_int() | prim.is_uint() => self.builder.build_int_add(left_value.into_int_value(), right_value.into_int_value(), "add_tmp").unwrap().into(),
                     _ if prim.is_float() => self.builder.build_float_add(left_value.into_float_value(), right_value.into_float_value(), "add_tmp").unwrap().into(),
                     _ => return Err(err)
-                };
+                });
                 Ok(ExprResult{value, type_id: left_type})
             },
             InfixOpr::Sub => {
-                let err = self.error("Invalid subtraction", Some(format!("{} does not implement the Add trait", left_type_str)), Some(span));
-                let value = match prim {
-                    _ if prim.is_int() | prim.is_uint() => self.builder.build_int_add(left_value.into_int_value(), right_value.into_int_value(), "add_tmp").unwrap().into(),
-                    _ if prim.is_float() => self.builder.build_float_add(left_value.into_float_value(), right_value.into_float_value(), "add_tmp").unwrap().into(),
+                let err = self.error("Invalid subtraction", Some(format!("{} does not implement the Sub trait", left_type_str)), Some(span));
+                let value = Some(match prim {
+                    _ if prim.is_int() | prim.is_uint() => self.builder.build_int_sub(left_value.into_int_value(), right_value.into_int_value(), "sub_tmp").unwrap().into(),
+                    _ if prim.is_float() => self.builder.build_float_sub(left_value.into_float_value(), right_value.into_float_value(), "sub_tmp").unwrap().into(),
                     _ => return Err(err)
-                };
+                });
+                Ok(ExprResult{value, type_id: left_type})
+            },
+            InfixOpr::Mul => {
+                let err = self.error("Invalid multiplication", Some(format!("{} does not implement the Mul trait", left_type_str)), Some(span));
+                let value = Some(match prim {
+                    _ if prim.is_int() | prim.is_uint() => self.builder.build_int_mul(left_value.into_int_value(), right_value.into_int_value(), "mul_tmp").unwrap().into(),
+                    _ if prim.is_float() => self.builder.build_float_mul(left_value.into_float_value(), right_value.into_float_value(), "mul_tmp").unwrap().into(),
+                    _ => return Err(err)
+                });
                 Ok(ExprResult{value, type_id: left_type})
             },
             _ => todo!()
         }
     }
 
-    fn build_infix_opr_block(&mut self, opr: InfixOpr, left_expr: &ExprNode, right_expr: &ExprNode, cur_vars: &mut IRVariables<'ctx>, ctx_type: Option<TypeId>, span: Span) -> Result<ExprResult<'ctx>, CompilerError>  {
-        let left = self.build_expr(left_expr, ctx_type, false, cur_vars)?;
-            
+
+    fn build_infix_opr_block(&mut self, opr: InfixOpr, left_expr: &ExprNode, right_expr: &ExprNode, cur_vars: &mut IRVariables<'ctx>, ctx_type: Option<IRTypeId>, span: Span) -> Result<ExprResult<'ctx>, CompilerError>  {
+        let is_asn: bool = opr == InfixOpr::Asn;
+        let left = self.build_expr(left_expr, ctx_type, is_asn, cur_vars)?;
+
         if self.is_impl_trait(left.type_id) {
             todo!()
         }
 
         let right_ctx_type = if opr.is_shift() { None } else { Some(left.type_id) };
-        let right = self.build_expr(right_expr, right_ctx_type, true, cur_vars)?;
+        let right = self.build_expr(right_expr, right_ctx_type, false, cur_vars)?;
 
         let left_type_str = self.type_id_to_string(left.type_id);
         let right_type_str = self.type_id_to_string(right.type_id);
@@ -406,89 +446,44 @@ impl<'ctx> Compiler<'ctx> {
         }
 
         let right_value = self.build_expr_result_value(&right);
+        let void_type: IRTypeId = self.build_var_type_id(&VarType::Primitive(PrimitiveType::Void), &HashMap::new());
 
-        if let InfixOpr::Asn = opr {
+        if is_asn {
             return if let Some(left_value) = left.value {
                 if let BasicValueEnum::PointerValue(ptr_value) = left_value {
-                    self.builder.build_store(ptr_value, right_value).unwrap();
-                    Ok(ExprResult{value: self.context.void_type(), type_id: left.type_id})
+                    self.builder.build_store(ptr_value, right_value.unwrap()).unwrap();
+                    Ok(ExprResult{value: None, type_id: void_type})
                 } else {
                     Err(self.error("Invalid assignment", Some("Cannot assign a value to a value".to_string()), Some(span)))
                 }
             } else {
-
+                Ok(ExprResult{value: None, type_id: void_type})
             }
         }
-        let left_value = self.build_expr_result_value(&left);
-        let left_ir_type: &IRType<'ctx> = &self.type_context.infos[&left.type_id];
+
+        if left.type_id == void_type || right.type_id == void_type {
+            return Err(self.error("What are you doing, my guy?", Some(format!("Cannot apply operator {} between void types", opr.to_string())), Some(span)));
+        }
+
+        let left_value = self.build_expr_result_value(&left).unwrap();
+        let left_ir_type: &IRType<'ctx> = &self.type_context.get_type(left.type_id);
 
         match left_ir_type.type_enum {
-            IRTypeEnum::Primitive(prim) => self.build_prim_infix_opr_block(opr, prim, &left_value, &right_value, left.type_id, right.type_id, span),
+            IRTypeEnum::Primitive(prim) => self.build_prim_infix_opr_block(opr, prim, &left_value, &right_value.unwrap(), left.type_id, right.type_id, span),
             _ => todo!()
         }
-        /*match opr {
-            InfixOpr::Add => {
-                let err = self.error("Invalid addition", Some(format!("{} does not implement the Add trait", left_type_str)), Some(span));
-                if let IRTypeEnum::Primitive(prim) = left_ir_type.type_enum {
-                    let value = match prim {
-                        _ if prim.is_int() | prim.is_uint() => self.builder.build_int_add(left_value.into_int_value(), right_value.into_int_value(), "add_tmp").unwrap().into(),
-                        _ if prim.is_float() => self.builder.build_float_add(left_value.into_float_value(), right_value.into_float_value(), "add_tmp").unwrap().into(),
-                        _ => return Err(err)
-                    };
-                    Ok(ExprResult{value, type_id: left.type_id})
-                } else {
-                    Err(err)
-                }
-            }
-            _ => todo!()
-        }*/
-
-        /*match left_ir_type.type_enum {
-            IRTypeEnum::Primitive(primitive) => {
-                match primitive {
-                    _ if primitive.is_int() => {
-                        let int_type = left.type_id;
-                        let right_value = match right { ExprResult::Value(value, type_id) => value.into_int_value(), _ => panic!() };
-                        if let InfixOpr::Asn = opr {
-                            return if let ExprResult::Pointer(ptr, type_id) = left {
-                                self.builder.build_store(ptr, right_value).unwrap();
-                                Ok(ExprResult::Pointer(ptr, type_id))
-                            } else {
-                                Err(self.error("Invalid assignment", Some("Cannot assign a value to a value".to_string()), Some(span)))
-                            }
-                        }
-                        let left_value = self.build_expr_result_value(left).into_int_value();
-                        println!("{:?}", right_value);
-                        
-                        let result = match opr {
-                            InfixOpr::Add => self.builder.build_int_add(left_value, right_value, "add_tmp").unwrap(),
-                            InfixOpr::Sub => self.builder.build_int_sub(left_value, right_value, "sub_tmp").unwrap(),
-                            InfixOpr::Mul => self.builder.build_int_mul(left_value, right_value, "mul_tmp").unwrap(),
-                            InfixOpr::Div => self.builder.build_int_signed_div(left_value, right_value, "div_tmp").unwrap(),
-                            InfixOpr::Mod => self.builder.build_int_signed_rem(left_value, right_value, "mod_tmp").unwrap(),
-                            InfixOpr::Eq => self.builder.build_int_compare(inkwell::IntPredicate::EQ, left_value, right_value, "eq_tmp").unwrap(),
-                            _ => todo!()
-                        };
-                        Ok(ExprResult::Value(result.into(), if opr.is_boolean() { bool_type } else { int_type }))
-                    },
-                    _ => todo!()
-                }
-                
-            }
-            _ => todo!()
-        }*/
+    }
+    fn build_ir_var(&mut self, var: &Variable, templates_values: &IRTemplatesValues) -> IRVariable<'ctx> {
+        let type_id: Option<IRTypeId> = if var.var_type == VarType::UnresolvedInitExpr { None } else { Some(self.build_var_type_id(&var.var_type, templates_values)) };
+        IRVariable { name: var.name.clone(), type_id, is_mut: var.is_mut, is_resolved: var.is_resolved, ptr: None }
     }
 
-    fn build_ir_var(&mut self, var: &Variable, opt_templates_values: &Option<TemplatesValues>) -> IRVariable<'ctx> {
-        let type_id: TypeId = self.build_type_id(&var.var_type, opt_templates_values);
-        IRVariable { name: var.name.clone(), type_id: if type_id.0 != -1 { Some(type_id) } else { None }, is_mut: var.is_mut, is_resolved: var.is_resolved, ptr: None }
-    }
-
-    fn build_type_id(&mut self, var_type: &VarType, opt_templates_values: &Option<TemplatesValues>) -> TypeId {
-        // TODO
+    fn build_var_type_id(&mut self, var_type: &VarType, templates_values: &IRTemplatesValues) -> IRTypeId {
         match var_type {
             VarType::Primitive(primitive_type) => {
-                let id: TypeId = self.type_context.next_id(var_type.clone());
+                if let Some(type_id) = self.type_context.get_id(var_type) {
+                    return type_id;
+                }
                 let mut is_void: bool = false;
                 let llvm_type = match primitive_type {
                     PrimitiveType::I8 | PrimitiveType::U8 => self.context.i8_type().into(),
@@ -503,31 +498,44 @@ impl<'ctx> Compiler<'ctx> {
                     PrimitiveType::Void => { is_void = true; self.context.bool_type().into() } // place holder
                 };
                 let ir_type = IRType { llvm_type, is_void, type_enum: IRTypeEnum::Primitive(*primitive_type) };
-                self.type_context.infos.insert(id, ir_type);
-                id
+                self.type_context.add_type(var_type.clone(), ir_type)
             },
             VarType::Pointer { ptr_type, is_ref } => {
-                let ptr_type_id: TypeId = self.build_type_id(ptr_type, opt_templates_values);
-                let id: TypeId = self.type_context.next_id(var_type.clone());
-                let ir_type: IRType<'_> = IRType { llvm_type: self.context.ptr_type(inkwell::AddressSpace::from(0)).into(), is_void: false, type_enum: IRTypeEnum::Pointer { ptr_type_id, is_ref: *is_ref} };
-                self.type_context.infos.insert(id, ir_type);
-                id
+                let ptr_type_id: IRTypeId = self.build_var_type_id(ptr_type, templates_values);
+                let ir_type: IRType<'_> = IRType { llvm_type: self.context.ptr_type(inkwell::AddressSpace::from(0)).into(), is_void: false, type_enum: IRTypeEnum::Pointer { ptr_type_id, is_ref: *is_ref } };
+                self.type_context.add_type(var_type.clone(), ir_type)
             },
-            _ => TypeId(-1)
+            _ => todo!("build_var_type_id for other var types")
         }
     }
 
-    fn fun_id_to_string(&self, id: FunctionId) -> String {
-        let value = self.function_context.get_name(id);
-        let mut result: String = value.0.to_string();
-        if let Some(type_id) = value.1 {
-            result += self.type_id_to_string(type_id).as_str();
-        }
-        return result;
+    fn fun_name_to_string(&self, name: &IRFunctionName) -> String {
+        let mut result: String = self.scope_name_to_string(&name.scope_name) + "." + name.name.as_str();
+        result += self.templates_values_to_string(&name.templates_values).as_str();
+        result
     }
 
-    pub fn type_id_to_string(&self, id: TypeId) -> String {
-        let ir_type = &self.type_context.infos[&id];
+    fn scope_name_to_string(&self, scope_name: &IRScopeName) -> String {
+        let mut result = scope_name.modules.join(".");
+        if let Some(type_id) = scope_name.self_type {
+            result += format!(".{}", self.type_id_to_string(type_id)).as_str();
+        }
+        result
+    }
+
+    fn templates_values_to_string(&self, templates_values: &IRTemplatesValues) -> String {
+        if templates_values.is_empty() {
+            return "".to_string();
+        }
+
+        templates_values.values().map(|value| match value {
+            IRTemplateValue::Type(type_id) => self.type_id_to_string(*type_id),
+            IRTemplateValue::Const(const_value) => const_value.to_string()
+        }).collect::<Vec<String>>().join(", ")
+    }
+
+    pub fn type_id_to_string(&self, id: IRTypeId) -> String {
+        let ir_type = self.type_context.get_type(id);
 
         match ir_type.type_enum {
             IRTypeEnum::Primitive(primitive) => {
@@ -542,35 +550,26 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    pub fn find_fun_def(&self, fun_id: FunctionId) -> Option<&'ctx Function> {
-        let (mut name_path , opt_self_type) = self.function_context.get_name(fun_id).clone();
+    pub fn find_fun_def(&self, fun_name: &IRFunctionName) -> Option<&'ctx Function> {
         let mut cur_scope: &Scope = self.main_scope;
 
-
-        while name_path.path.len() > 1 {
-            let mod_name: String = name_path.path[0].clone();
-            if let Some(module) = cur_scope.find_module(mod_name) {
+        for mod_name in fun_name.scope_name.modules.iter() {
+            if let Some(module) = cur_scope.find_module(mod_name.as_str()) {
                 cur_scope = &module.scope;
-                name_path = name_path.clone_pop();
             } else {
                 return None;  
             }
         }
 
-        if name_path.path.len() == 1 {
-            let fun_name: String = name_path.path[0].clone();
-            for fun in cur_scope.functions.iter() {
-                if fun.name == fun_name {
-                    return Some(fun);
-                }
+        for fun in cur_scope.functions.iter() {
+            if fun.name == fun_name.name {
+                return Some(fun);
             }
-            return None;
-        } else {
-            return None;
         }
+        return None;
     }
 
-    /*fn evaluate_const_expr(&self, const_expr: ExprNode, ident: FunctionIdent) -> ConstValue {
+    /*fn evaluate_const_expr(&self, const_expr: ExprNode, ident: IRFunctionIdent) -> ConstValue {
         // TODO
         ConstValue::Void
     }
@@ -583,7 +582,7 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    fn get_fn_type(&self, ident: FunctionIdent) -> FunctionType {
+    fn get_fn_type(&self, ident: IRFunctionIdent) -> FunctionType {
         if let Some(var_type) = fun.return_type {
             match var_type {
                 VarType::Primitive(primitive_type) => {
@@ -598,7 +597,7 @@ impl<'ctx> Compiler<'ctx> {
 
     pub fn find_cur_function_ast_from_ident(&self) -> Option<&Function<'ctx>> {
         let mut cur_scope: &Scope = main_scope;
-        let mut ident: FunctionIdent = self.cur_function;
+        let mut ident: IRFunctionIdent = self.cur_function;
         loop {
             
         }
@@ -608,7 +607,7 @@ impl<'ctx> Compiler<'ctx> {
         let return_type_id = self.type_context.get_type_id(self.function_context.cur_fun.re)
         let main_type = self.context.void_type().fn_type(&[], false);
         let main_value = self.module.add_function("main", main_type, None);
-        let main_ident = FunctionIdentifier { name: "main", templates: None, self_type: None };
+        let main_ident = IRFunctionIdentifier { name: "main", templates: None, self_type: None };
         self.functions.insert(main_ident, fun_value);
     }*/
 }
