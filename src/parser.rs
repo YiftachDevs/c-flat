@@ -141,7 +141,8 @@ pub enum PrimitiveType {
     F64,
     Char,
     Bool,
-    Void
+    Void,
+    Never
 }
 
 impl PrimitiveType {
@@ -185,7 +186,8 @@ impl ToString for PrimitiveType {
             PrimitiveType::F64 => "f64".to_string(),
             PrimitiveType::Char => "char".to_string(),
             PrimitiveType::Bool => "bool".to_string(),
-            PrimitiveType::Void => "()".to_string()
+            PrimitiveType::Void => "()".to_string(),
+            PrimitiveType::Never => "!".to_string()
         }
     }
 }
@@ -499,6 +501,7 @@ impl PrimitiveType {
         if parser.is_next("bool") { return Some(PrimitiveType::Bool); }
         if parser.is_next("char") { return Some(PrimitiveType::Char); }
         if parser.is_next("()") { return Some(PrimitiveType::Void); }
+        if parser.is_next("!") { return Some(PrimitiveType::Never); }
         return None;
     }
 }
@@ -732,6 +735,8 @@ impl ConstValue {
             return Ok(Some(ConstValue::Bool(false)));
         } else if parser.is_next("true") {
             return Ok(Some(ConstValue::Bool(true)));
+        } else if parser.is_next("()") {
+            return Ok(Some(ConstValue::Void));
         } else if parser.is_next("'") {
             let ch: char = ConstValue::char_from_def(parser)?;
             parser.ensure_next("'")?;

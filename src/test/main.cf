@@ -1,17 +1,5 @@
 fun main() -> f32 {
-    let mut var_1: i8 = 5;
-    {};
-    {4}
-}
-
-fun foo(a: num) -> num {
-    foo(a)
-}
-
-module Thing {
-    module Thing_2 {
-        fun aoe() {
-            aoe();
-        }
-    }
+    let mut var_1 = ();
+    var_1 = {};
+    {var_1; 4.0}
 }

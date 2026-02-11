@@ -266,15 +266,17 @@ impl<'ctx> Compiler<'ctx> {
 
         let total_templates_values = fun_name.templates_values.clone();
         if let Some(self_type) = fun_name.scope_name.self_type {
-
+            todo!("implemnet self type templates for functions of structs / enums")
         }
 
         let mut scope_context = IRContext { cur_fun: fun_id, cur_vars, templates_values: total_templates_values };
         let return_type_id = ir_fun.return_type_id;
         let return_result: ExprResult<'_> = self.build_scope(scope, &mut scope_context, Some(ir_fun.return_type_id))?;
-        if return_type_id != return_result.type_id {
+        let never_type_id = self.get_primitive_type_id(PrimitiveType::Never);
+        if return_result.type_id != never_type_id && return_type_id != return_result.type_id {
             return Err(self.error("Type mismatch", Some(format!("Expected type {}, received type {} instead", self.type_id_to_string(return_type_id), self.type_id_to_string(return_result.type_id))), Some(scope.span)));
-        }
+        }        let never_type_id = self.get_primitive_type_id(PrimitiveType::Never);
+
         if let Some(value) = self.build_expr_result_value(&return_result) {
             self.builder.build_return(Some(&value)).expect("Return build failed");
         }
@@ -361,6 +363,7 @@ impl<'ctx> Compiler<'ctx> {
     fn get_primitive_type_id(&mut self, prim: PrimitiveType) -> IRTypeId {
         let templates_values = HashMap::new();
         match prim {
+            PrimitiveType::Never => self.build_var_type_id(&VarType::Primitive(PrimitiveType::Never), &templates_values),
             PrimitiveType::Void => self.build_var_type_id(&VarType::Primitive(PrimitiveType::Void), &templates_values),
             PrimitiveType::Bool => self.build_var_type_id(&VarType::Primitive(PrimitiveType::Bool), &templates_values),
             PrimitiveType::Char => self.build_var_type_id(&VarType::Primitive(PrimitiveType::Char), &templates_values),
@@ -416,6 +419,9 @@ impl<'ctx> Compiler<'ctx> {
                         };
                         Ok(ExprResult{ value: Some(llvm_float_type.const_float(*float).into()), type_id: float_type_id})
                     },
+                    ConstValue::Void => {
+                        Ok(ExprResult{ value: None, type_id: self.get_primitive_type_id(PrimitiveType::Void)}) 
+                    }
                     _ => todo!()
                 }
             },
@@ -551,6 +557,7 @@ impl<'ctx> Compiler<'ctx> {
                     PrimitiveType::F64 => self.context.f64_type().into(),
                     PrimitiveType::Bool => self.context.bool_type().into(),
                     PrimitiveType::Void => { is_void = true; self.context.bool_type().into() } // place holder
+                    PrimitiveType::Never => { is_void = true; self.context.bool_type().into() } // place holder
                 };
                 let ir_type = IRType { llvm_type, is_void, type_enum: IRTypeEnum::Primitive(*primitive_type) };
                 self.type_context.add_type(type_name, ir_type)
@@ -565,7 +572,9 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     fn fun_name_to_string(&self, name: &IRFunctionName) -> String {
-        let mut result: String = self.scope_name_to_string(&name.scope_name) + "." + name.name.as_str();
+        let mut result: String = self.scope_name_to_string(&name.scope_name);
+        if !result.is_empty() { result += "."; }
+        result += name.name.as_str();
         result += self.templates_values_to_string(&name.templates_values).as_str();
         result
     }
