@@ -32,7 +32,7 @@ impl fmt::Display for CompilerError {
             write!(f, "\n{} {}", "Description:".white().dimmed(), desc)?;
         }
         if let Some(s) = self.span {
-            let pos_str: String = format!("Ln {} Col {}:", s.line_start, s.col_start);
+            let pos_str: String = format!("Ln {} Col {}:", s.line_start + 1, s.col_start + 1);
             let before_str = &self.line_str[..s.col_start];
             let span_str = &self.line_str[s.col_start..s.col_end];
             let after_str = &self.line_str[s.col_end..];

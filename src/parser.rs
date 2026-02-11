@@ -380,7 +380,8 @@ pub struct Scope {
     pub modules: Vec<Module>,
     pub implementations: Vec<Implementation>,
     pub traits: Vec<Trait>,
-    pub return_type: Option<VarType>
+    pub return_type: Option<VarType>,
+    pub span: Span
 }
 
 #[derive(PartialEq, Clone)]
@@ -1310,7 +1311,8 @@ impl Scope {
             implementations: Vec::new(),
             traits: Vec::new(),
             modules: Vec::new(),
-            return_type: None
+            return_type: None,
+            span: Span { file_id: FileId(0), line_start: 0, col_start: 0, line_end: 0, col_end: 0, line_index: 0 }
         }
     }
 
@@ -1322,11 +1324,14 @@ impl Scope {
     }
 
     pub fn from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
+        let mut span: Span = parser.get_span_start();
         parser.ensure_next("{")?;
+        parser.end_span(&mut span);
         let mut result: Scope = Scope::new();
         while !parser.is_next("}") {
             result.parse_next(parser)?;
         }
+        result.span = span;
         Ok(result)
     }
 
