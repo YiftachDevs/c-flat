@@ -158,6 +158,12 @@ pub struct IRVariables<'ctx> {
     vars: Vec<IRVariable<'ctx>>
 }
 
+impl<'ctx> IRVariables<'ctx> {
+    pub fn find(&self, var_name: &str) -> Option<&IRVariable> {
+        self.vars.iter().find(|var| var.name == var_name)
+    }
+}
+
 pub struct ExprResult<'ctx> {
     value: Option<BasicValueEnum<'ctx>>,
     type_id: IRTypeId
@@ -210,7 +216,7 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    fn call_fun(&mut self, fun_id: IRFunctionId, fun_call_span: Option<Span>) -> Result<(), CompilerError> {
+    fn call_fun(&mut self, fun: IRFunctionId, ir_context: &mut IRContext<'ctx>, fun_call_span: Option<Span>) -> Result<(), CompilerError> {
         todo!()
     }
 
@@ -275,7 +281,7 @@ impl<'ctx> Compiler<'ctx> {
         let never_type_id = self.get_primitive_type_id(PrimitiveType::Never);
         if return_result.type_id != never_type_id && return_type_id != return_result.type_id {
             return Err(self.error("Type mismatch", Some(format!("Expected type {}, received type {} instead", self.type_id_to_string(return_type_id), self.type_id_to_string(return_result.type_id))), Some(scope.span)));
-        }        let never_type_id = self.get_primitive_type_id(PrimitiveType::Never);
+        }
 
         if let Some(value) = self.build_expr_result_value(&return_result) {
             self.builder.build_return(Some(&value)).expect("Return build failed");
@@ -428,6 +434,9 @@ impl<'ctx> Compiler<'ctx> {
             ExprNodeEnum::InfixOpr(opr, left_expr, right_expr) => {
                 self.build_infix_opr_block(*opr, left_expr, right_expr, expr.span, ir_context, context_type)
             },
+            ExprNodeEnum::PostfixOpr(opr, left_expr, right_expr) => {
+                self.build_postfix_opr_block(*opr, left_expr, right_expr, expr.span, ir_context, context_type)
+            },
             ExprNodeEnum::Name(name) => {
                 let scope_name = &self.function_context.get_name(ir_context.cur_fun).scope_name;
                 if let Some(ir_var) = ir_context.cur_vars.vars.iter().find(|v| v.name == *name) {
@@ -447,6 +456,22 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     fn is_impl_trait(&self, type_id: IRTypeId) -> bool { false } // todo
+
+    fn build_postfix_opr_block(&mut self, opr: PostfixOpr, left_expr: &ExprNode, right_expr: &Option<ExprNode>, span: Span, ir_context: &mut IRContext<'ctx>, context_type: Option<IRTypeId>) -> Result<ExprResult<'ctx>, CompilerError> {
+        match opr {
+            PostfixOpr::Inv => {
+                if let ExprNodeEnum::Name(name) = left_expr.value && let Some(callback_var) = ir_context.cur_vars.find(name.as_str()) {
+                    todo!("callback invoked");
+                } else {
+                    return Err(self.error("Invalid invoke", None, Some(span)));
+                }
+            }
+        }
+    }
+
+    fn build() {
+
+    }
 
     fn build_prim_infix_opr_block(&mut self, opr: InfixOpr, prim: PrimitiveType, left_value: &BasicValueEnum<'ctx>, right_value: &BasicValueEnum<'ctx>, left_type: IRTypeId, right_type: IRTypeId, span: Span) -> Result<ExprResult<'ctx>, CompilerError> {
         let left_ir_type: &IRType<'ctx> = &self.type_context.get_type(left_type);
