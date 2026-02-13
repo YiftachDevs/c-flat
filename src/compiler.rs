@@ -1,5 +1,6 @@
 use crate::errors::{CompilerError, CompilerErrorType};
 use crate::parser::*;
+use core::panic;
 use std::any::Any;
 use std::collections::{HashMap, VecDeque};
 use std::fs::File;
@@ -33,16 +34,10 @@ enum IRTemplateKey {
 
 type IRTemplatesValues = HashMap<IRTemplateKey, IRTemplateValue>;
 
-#[derive(PartialEq, Eq, Hash, Clone)]
-struct IRScopeName {
-    modules: Vec<String>,
-    self_type: Option<IRTypeId>,
-}
-
-impl IRScopeName {
-    pub fn new() -> Self {
-        Self { modules: Vec::new(), self_type: None }
-    }
+#[derive(PartialEq, Clone)]
+pub enum IRScopeName {
+    Path(Vec<String>),
+    Type(IRTypeId)
 }
 
 #[derive(PartialEq, Clone)]
@@ -158,15 +153,21 @@ pub struct IRVariables<'ctx> {
     vars: Vec<IRVariable<'ctx>>
 }
 
-impl<'ctx> IRVariables<'ctx> {
-    pub fn find(&self, var_name: &str) -> Option<&IRVariable> {
-        self.vars.iter().find(|var| var.name == var_name)
-    }
-}
-
 pub struct ExprResult<'ctx> {
     value: Option<BasicValueEnum<'ctx>>,
     type_id: IRTypeId
+}
+
+pub enum ExprPartialResult<'ctx> {
+    Result(ExprResult<'ctx>),
+    FunctionName(IRFunctionId),
+    TypeName(IRTypeId),
+    ScopeName(IRScopeName)
+}
+
+pub enum NamePathResult {
+    Variable(String),
+    Function(IRFunctionId)
 }
 
 pub struct IRContext<'ctx> {
@@ -195,7 +196,7 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     pub fn compile(&mut self) -> Result<(), CompilerError> {
-        let main_name: IRFunctionName = IRFunctionName { name: "main".to_string(), templates_values: HashMap::new(), scope_name: IRScopeName::new() };
+        let main_name: IRFunctionName = IRFunctionName { name: "main".to_string(), templates_values: HashMap::new(), scope_name: IRScopeName::Path(Vec::new()) };
         self.build_fun(main_name)?;
 
         let file_path = Path::new("output.ll");
@@ -271,9 +272,9 @@ impl<'ctx> Compiler<'ctx> {
         let scope: &Scope = ir_fun.fun_def.scope.as_ref().unwrap();
 
         let total_templates_values = fun_name.templates_values.clone();
-        if let Some(self_type) = fun_name.scope_name.self_type {
-            todo!("implemnet self type templates for functions of structs / enums")
-        }
+        // if let Some(self_type) = fun_name.scope_name.self_type {
+        //     todo!("implement self type templates for functions of structs / enums")
+        // }
 
         let mut scope_context = IRContext { cur_fun: fun_id, cur_vars, templates_values: total_templates_values };
         let return_type_id = ir_fun.return_type_id;
@@ -431,47 +432,81 @@ impl<'ctx> Compiler<'ctx> {
                     _ => todo!()
                 }
             },
+            ExprNodeEnum::PrefixOpr(opr, right_expr) => {
+                todo!()
+            }
             ExprNodeEnum::InfixOpr(opr, left_expr, right_expr) => {
                 self.build_infix_opr_block(*opr, left_expr, right_expr, expr.span, ir_context, context_type)
-            },
-            ExprNodeEnum::PostfixOpr(opr, left_expr, right_expr) => {
-                self.build_postfix_opr_block(*opr, left_expr, right_expr, expr.span, ir_context, context_type)
-            },
-            ExprNodeEnum::Name(name) => {
-                let scope_name = &self.function_context.get_name(ir_context.cur_fun).scope_name;
-                if let Some(ir_var) = ir_context.cur_vars.vars.iter().find(|v| v.name == *name) {
-                    if expects_mut && !ir_var.is_mut {
-                        return Err(self.error("Cannot mutate immutable variable", None, Some(expr.span)))
-                    }
-                    let value: Option<BasicValueEnum<'_>> = if let Some(ptr_value) = ir_var.ptr { Some(ptr_value.into()) } else { None };
-                    return Ok(ExprResult{ value, type_id: ir_var.type_id.unwrap()});
-                }
-                todo!();
             },
             ExprNodeEnum::Scope(scope) => {
                 self.build_scope(scope, ir_context, context_type)
             },
-            _ => todo!()
-        }
-    }
-
-    fn is_impl_trait(&self, type_id: IRTypeId) -> bool { false } // todo
-
-    fn build_postfix_opr_block(&mut self, opr: PostfixOpr, left_expr: &ExprNode, right_expr: &Option<ExprNode>, span: Span, ir_context: &mut IRContext<'ctx>, context_type: Option<IRTypeId>) -> Result<ExprResult<'ctx>, CompilerError> {
-        match opr {
-            PostfixOpr::Inv => {
-                if let ExprNodeEnum::Name(name) = left_expr.value && let Some(callback_var) = ir_context.cur_vars.find(name.as_str()) {
-                    todo!("callback invoked");
-                } else {
-                    return Err(self.error("Invalid invoke", None, Some(span)));
+            _ => {
+                let result = self.build_partial_expr(expr, expects_mut, ir_context, context_type)?;
+                match result {
+                    ExprPartialResult::Result(res) => Ok(res),
+                    ExprPartialResult::FunctionName(fun_id) => panic!("partial panic! fun"),
+                    ExprPartialResult::ScopeName(scope_name) => panic!("partial panic! scope"),
+                    ExprPartialResult::TypeName(type_id) => panic!("partial panic! type")
                 }
             }
         }
     }
 
-    fn build() {
+    fn is_impl_trait(&self, type_id: IRTypeId) -> bool { false } // todo
+
+    fn build_partial_expr(&mut self, expr: &ExprNode, expects_mut: bool, ir_context: &mut IRContext<'ctx>, context_type: Option<IRTypeId>) -> Result<ExprPartialResult<'ctx>, CompilerError> {
+        match &expr.value {
+            ExprNodeEnum::Name(name) => {
+                if let Some(ir_var) = ir_context.cur_vars.vars.iter().find(|v| v.name == *name) {
+                    if expects_mut && !ir_var.is_mut {
+                        Err(self.error("Cannot mutate immutable variable", None, Some(expr.span)))
+                    } else {
+                        let value: Option<BasicValueEnum<'_>> = if let Some(ptr_value) = ir_var.ptr { Some(ptr_value.into()) } else { None };
+                        let result: ExprResult<'_> = ExprResult{ value, type_id: ir_var.type_id.unwrap().clone()};
+                        Ok(ExprPartialResult::Result(result))
+                    }
+                } else if let Some(fun_id) = self.find_fun_def() {
+                    
+                }
+            },
+            ExprNodeEnum::PostfixOpr(opr, left_expr, right_expr) => {
+                todo!("ahhh postfix")
+            },
+            _ => panic!("tried to build partial expr, when expr should have covered it")
+        }
+    }
+
+    fn find_module_name(&mut self, module_name: &str, ir_context: &mut IRContext<'ctx>) {
 
     }
+
+    /*PostfixOpr::Inv => {
+                if let ExprNodeEnum::Name(name) = left_expr.value && let Some(callback_var) = ir_context.cur_vars.find(name.as_str()) {
+                    todo!("callback invoked");
+                } else {
+                    return Err(self.error("Invalid invoke", None, Some(span)));
+                }
+            },
+            _ => {
+                let result = self.build_name_path(expr, ir_context)?;
+
+            }
+            match result {
+                    NamePathResult::Variable(name) => {
+                        if let Some(ir_var) = ir_context.cur_vars.vars.iter().find(|v| v.name == *name) {
+                            if expects_mut && !ir_var.is_mut {
+                                return Err(self.error("Cannot mutate immutable variable", None, Some(expr.span)))
+                            }
+                            let value: Option<BasicValueEnum<'_>> = if let Some(ptr_value) = ir_var.ptr { Some(ptr_value.into()) } else { None };
+                            return Ok(ExprResult{ value, type_id: ir_var.type_id.unwrap()});
+                        }
+                    },
+                    NamePathResult::Function(fun) => {
+                        todo!()
+                    }
+                }                 
+            */
 
     fn build_prim_infix_opr_block(&mut self, opr: InfixOpr, prim: PrimitiveType, left_value: &BasicValueEnum<'ctx>, right_value: &BasicValueEnum<'ctx>, left_type: IRTypeId, right_type: IRTypeId, span: Span) -> Result<ExprResult<'ctx>, CompilerError> {
         let left_ir_type: &IRType<'ctx> = &self.type_context.get_type(left_type);
@@ -605,11 +640,10 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     fn scope_name_to_string(&self, scope_name: &IRScopeName) -> String {
-        let mut result = scope_name.modules.join(".");
-        if let Some(type_id) = scope_name.self_type {
-            result += format!(".{}", self.type_id_to_string(type_id)).as_str();
+        match scope_name {
+            IRScopeName::Path(path) => path.join("."),
+            IRScopeName::Type(type_id) => self.type_id_to_string(*type_id)
         }
-        result
     }
 
     fn templates_values_to_string(&self, templates_values: &IRTemplatesValues) -> String {
@@ -639,64 +673,28 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    pub fn find_fun_def(&self, fun_name: &IRFunctionName) -> Option<&'ctx Function> {
-        let mut cur_scope: &Scope = self.main_scope;
+    fn find_fun_def(&self, fun_name: &IRFunctionName, ir_context: &mut IRContext<'ctx>) -> Option<&'ctx Function> {
+        let main_scope: &Scope = self.main_scope;
+        let cur_scope: &Scope = &self.function_context.get_fun(ir_context.cur_fun).fun_def.scope.unwrap();
+        let mut scope = if let Some(module) = cur_scope.find_module(mod_name.as_str()) {
 
-        for mod_name in fun_name.scope_name.modules.iter() {
-            if let Some(module) = cur_scope.find_module(mod_name.as_str()) {
-                cur_scope = &module.scope;
-            } else {
-                return None;  
-            }
         }
+        let fun_scope_name = fun_name.scope_name;
 
-        for fun in cur_scope.functions.iter() {
-            if fun.name == fun_name.name {
-                return Some(fun);
+        match fun_scope_name {
+            IRScopeName::Path(path) => {        
+                for mod_name in path.iter() {
+                    if let Some(module) = cur_scope.find_module(mod_name.as_str()) {
+                        cur_scope = &module.scope;
+                    } else {
+                        return None;  
+                    }
+                }
+            },
+            IRScopeName::Type(type_id) => {
+                todo!("fun of type impl todo!")
             }
         }
         return None;
     }
-
-    /*fn evaluate_const_expr(&self, const_expr: ExprNode, ident: IRFunctionIdent) -> ConstValue {
-        // TODO
-        ConstValue::Void
-    }
-
-    fn build_basic_type_from_var_type(&self, var_type: VarType) -> BasicTypeEnum {
-        match var_type {
-            VarType::Array { arr_type, size_expr } => {
-                let size = self.evaluate_const_expr()
-            }
-        }
-    }
-
-    fn get_fn_type(&self, ident: IRFunctionIdent) -> FunctionType {
-        if let Some(var_type) = fun.return_type {
-            match var_type {
-                VarType::Primitive(primitive_type) => {
-
-                }
-                Var
-            }
-        } else {
-            self.context.void_type().fn_type(param_types, is_var_args)
-        }
-    }
-
-    pub fn find_cur_function_ast_from_ident(&self) -> Option<&Function<'ctx>> {
-        let mut cur_scope: &Scope = main_scope;
-        let mut ident: IRFunctionIdent = self.cur_function;
-        loop {
-            
-        }
-    }
-
-    pub fn build_next_function(&self) {
-        let return_type_id = self.type_context.get_type_id(self.function_context.cur_fun.re)
-        let main_type = self.context.void_type().fn_type(&[], false);
-        let main_value = self.module.add_function("main", main_type, None);
-        let main_ident = IRFunctionIdentifier { name: "main", templates: None, self_type: None };
-        self.functions.insert(main_ident, fun_value);
-    }*/
 }

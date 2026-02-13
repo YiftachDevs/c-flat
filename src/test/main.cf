@@ -1,5 +1,5 @@
 fun main() -> f32 {
     let mut var_1 = ();
-    var_1 = {};
+    var_1 = mod_1;
     {var_1; 4.0}
 }
