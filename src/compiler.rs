@@ -1,5 +1,6 @@
 use crate::errors::{CompilerError, CompilerErrorType};
 use crate::parser::*;
+use crate::database::*;
 use core::panic;
 use std::any::Any;
 use std::collections::{HashMap, VecDeque};
@@ -222,7 +223,7 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     fn build_fun(&mut self, fun_name: IRFunctionName) -> Result<(), CompilerError> {
-        let fun_def = self.find_fun_def(&fun_name).expect("Cannot find fun def, invalid name");
+        let fun_def = self.find_fun_def(&fun_name, None).expect("Cannot find fun def, invalid name");
         let templates_values: &IRTemplatesValues = &fun_name.templates_values;
         let return_type_id: IRTypeId = self.build_var_type_id(&fun_def.return_type, &templates_values);
         let mut args: IRVariables = IRVariables { vars: Vec::new() };
@@ -466,8 +467,8 @@ impl<'ctx> Compiler<'ctx> {
                         let result: ExprResult<'_> = ExprResult{ value, type_id: ir_var.type_id.unwrap().clone()};
                         Ok(ExprPartialResult::Result(result))
                     }
-                } else if let Some(fun_id) = self.find_fun_def() {
-                    
+                } else {
+                    todo!()
                 }
             },
             ExprNodeEnum::PostfixOpr(opr, left_expr, right_expr) => {
@@ -673,19 +674,13 @@ impl<'ctx> Compiler<'ctx> {
         }
     }
 
-    fn find_fun_def(&self, fun_name: &IRFunctionName, ir_context: &mut IRContext<'ctx>) -> Option<&'ctx Function> {
-        let main_scope: &Scope = self.main_scope;
-        let cur_scope: &Scope = &self.function_context.get_fun(ir_context.cur_fun).fun_def.scope.unwrap();
-        let mut scope = if let Some(module) = cur_scope.find_module(mod_name.as_str()) {
-
-        }
-        let fun_scope_name = fun_name.scope_name;
-
-        match fun_scope_name {
+    fn find_scope_def(&self, scope_name: &IRScopeName, call_scope: Option<&IRScopeName>) -> Option<&'ctx Scope> {
+        let mut scope: &Scope = self.main_scope;
+        match scope_name {
             IRScopeName::Path(path) => {        
                 for mod_name in path.iter() {
-                    if let Some(module) = cur_scope.find_module(mod_name.as_str()) {
-                        cur_scope = &module.scope;
+                    if let Some(module) = scope.find_module(mod_name.as_str()) {
+                        scope = &module.scope;
                     } else {
                         return None;  
                     }
@@ -696,5 +691,10 @@ impl<'ctx> Compiler<'ctx> {
             }
         }
         return None;
+    }
+
+    fn find_fun_def(&self, fun_name: &IRFunctionName, call_scope: Option<&IRScopeName>) -> Option<&'ctx Function> {
+        let scope = self.find_scope_def(&fun_name.scope_name, call_scope)?;
+        scope.functions.iter().find(|fun| fun.name == fun_name.name)
     }
 }

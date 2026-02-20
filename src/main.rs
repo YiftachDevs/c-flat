@@ -1,6 +1,7 @@
 mod parser;
 mod compiler;
 mod errors;
+mod database;
 
 use inkwell::context::Context;
 
