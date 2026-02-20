@@ -1,104 +1,15 @@
-class Num(var value: Unit) {
-    inline infix func +(other: Num) -> Num = Num(this.value + other.value)
-}
+mod Mod_1 {
+    struct Str;
 
-trait Additive {
-    infix fun<T> +(other: T) -> T;
-}
-
-impl Additive for Int {
-    infix inline fun +(other: Int) -> Int = #
-}
-
-open class Widget(var rect: Rect) {
-    open func render(screen: Screen) {
-
+    fn foo(str: Str) {
+        
     }
 }
 
-class Button(var on: Bool, rect: Rect) : Widget(rect) {
+mod Mod_2 {
+    struc Str;
 
-}
-
-var widgets = List[Widget].new();
-var btn = Button(false);
-widgets.add(btn);
-
-for (val widget in widgets) {
-    widget.render();
-}
-
-func Num.Abs() -> Num = if (this > 0) this else -this 
-
-val a = (-4).Abs();
-
-fun Num.abs() -> Num = if (this >= 0) this else -this;
-
-trait Stringable {
-    fun to_str() -> String;
-}
-
-implement Stringable for Num {
-    fun to_str() -> String {
-        ...
-    }
-}
-
-fun print<T: Stringable>(value: T) {
-    val str = value.to_str();
-    ...
-}
-
-var arr: Array<int, 4> = Array(3, 2, 1, 4);
-arr = Array.dup(0, 5);x
-
-var tup: Tuple<int, bool, char> = Tuple(3, false, 'a');
-
-print(43);
-
-var a = -43;
-
-while (a < 0) {
-    a = a.abs();
-}
-
-fun main() {
-    a = 3;
-}
-
-fun a() -> (Int) -> Bool {
-    return (b: Int) -> Boo
-}
-
-trait Widget {
-    var rect: Rect;
-    
-    fun render(screen: Screen);
-}
-
-struct Panel: Widget {
-    var rect: Rect;
-    var color: Color;
-
-    stat val Default: Panel = Panel();
-
-    fun Panel() {
+    fn foo(str: Str) {
 
     }
-
-    fun render(screen: Screen) {
-        screne.draw_rect(rect, color);
-    }
 }
-
-var widgets = List<Widget>();
-
-widgets.add(Panel());
-
-fun render_widget<T: Widget>(widget: Widget) {
-    widget.render(screen);
-}
-
-var arr: Int[3] = [5, 3, 2];
-var tup: (Int, Int) = (3, 2);
-var f: (Int, Bool) -> Bool = existing_foo;

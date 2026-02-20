@@ -2,6 +2,7 @@ mod parser;
 mod compiler;
 mod errors;
 mod database;
+mod codegen;
 
 use inkwell::context::Context;
 

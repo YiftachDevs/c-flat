@@ -200,7 +200,6 @@ pub enum VarType {
     Pointer { ptr_type: Box<VarType>, is_ref: bool },
     Array { arr_type: Box<VarType>, size_expr: Box<ExprNode> },
     Callback { args: Variables, return_type: Box<VarType> },
-    Struct { args: Variables, templates: Templates }
     // Pointer(Box<VarType>)
     // Array(Box<VarType>, u32),
     // Tuple(Vec<VarType>),
@@ -723,7 +722,6 @@ impl ToString for VarType {
             VarType::Array { arr_type, size_expr } => format!("[{}; {}]", arr_type.to_string(), size_expr.to_string()),
             VarType::Callback { args, return_type } => 
                 format!("{} -> {}", args.to_string(), return_type.to_string()),
-            VarType::Struct { args, templates } => "Huh??? How???".to_string(),
             VarType::UnresolvedInitExpr => "<Unresolved Expression>".to_string()
         }
     }
