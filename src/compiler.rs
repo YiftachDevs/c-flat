@@ -1,6 +1,6 @@
 use crate::errors::{CompilerError, CompilerErrorType};
 use crate::parser::*;
-use crate::database::*;
+use crate::code_lowerer::*;
 use core::panic;
 use std::any::Any;
 use std::collections::{HashMap, VecDeque};
@@ -356,16 +356,18 @@ impl<'ctx> Compiler<'ctx> {
     }
 
     fn build_alloca(&self, type_id: IRTypeId, name: String) -> PointerValue<'ctx> {
-        let llvm_type = self.type_context.get_type(type_id).llvm_type;
+        let current_block = self.alloca_builder.get_insert_block();
 
-        let entry_block = self.alloca_builder.get_insert_block().unwrap();
-    
-        match entry_block.get_first_instruction() {
-            Some(first_instr) => self.alloca_builder.position_before(&first_instr),
-            None => self.alloca_builder.position_at_end(entry_block),
+        if let Some(entry_block) = current_block {
+            match entry_block.get_first_instruction() {
+                Some(first_instr) => self.alloca_builder.position_before(&first_instr),
+                None => self.alloca_builder.position_at_end(entry_block),
+            }
         }
 
-        self.alloca_builder.build_alloca(llvm_type, name.as_str()).unwrap()
+        if let Some(entry_block) = current_block {
+            self.alloca_builder.position_at_end(entry_block);
+        }
     }
 
     fn get_primitive_type_id(&mut self, prim: PrimitiveType) -> IRTypeId {

@@ -1,15 +1,19 @@
 mod parser;
-mod compiler;
 mod errors;
-mod database;
-mod codegen;
+mod code_lowerer;
+mod function_lowerer;
+mod expr_lowerer;
 
 use inkwell::context::Context;
 
 use colored::*;
+use std::collections::HashMap;
+use std::hash::Hash;
 use std::{env, path::Path};
+use crate::code_lowerer::{CodeLowerer, IRTemplateKey, IRTemplateValue};
+use crate::code_lowerer::IRScope;
+use crate::code_lowerer::IRScopePath;
 use crate::parser::*;
-use crate::compiler::*;
 
 fn main() {
     let str_path: &str = "src/test";
@@ -30,13 +34,20 @@ fn main() {
 
     println!("{}", main_scope.to_string());
     
-    let context: Context = Context::create();
-    let mut compiler: Compiler<'_> = Compiler::new(&context, &file_context, &main_scope);
+    let llvm_context: Context = Context::create();
+    let mut code_lowerer = CodeLowerer::new(&main_scope, file_context, &llvm_context);
 
-    if let Err(err) = compiler.compile() {
+    let global_scope = code_lowerer.get_global_scope();
+    let mut templates_values = HashMap::new();
+    templates_values.insert(IRTemplateKey::Type("T".to_string()), IRTemplateValue::Type(code_lowerer.get_type_from(global_scope, &VarType::Primitive(PrimitiveType::F64)).unwrap()));
+    let main_fun_result = code_lowerer.lower_fun(global_scope, "main", templates_values, None);
+
+    if let Err(err) = main_fun_result {
         eprintln!("{}", err);
         return;
     }
+
+    code_lowerer.export_ir_to_file(Path::new("output.ll"));
 
     println!("{}", "Done!".green());
 }

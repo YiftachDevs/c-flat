@@ -195,7 +195,7 @@ impl ToString for PrimitiveType {
 #[derive(PartialEq, Clone)]
 pub enum VarType {
     UnresolvedInitExpr,
-    Unresolved { name: Box<ExprNode> },
+    Unresolved { expr: Box<ExprNode> },
     Primitive(PrimitiveType),
     Pointer { ptr_type: Box<VarType>, is_ref: bool },
     Array { arr_type: Box<VarType>, size_expr: Box<ExprNode> },
@@ -656,11 +656,8 @@ impl PostfixOpr {
                 PostfixOpr::Tmp
             }
             '.' => {
-                let mut postfix_span: Span = parser.get_span_start();
-                let name: String = parser.next_name()?;
-                parser.end_span(&mut postfix_span);
-                expr_result = Some(ExprNode { value: ExprNodeEnum::Name(name), span: postfix_span});
-                PostfixOpr::Mem
+                expr_result = Some(ExprNode::primary_from_def(parser)?);
+                PostfixOpr::Tmp
             }
             _ => { parser.index -= 1; return Ok(None); }
         };
@@ -693,8 +690,8 @@ impl VarType {
             return Ok(VarType::Callback { args, return_type })
         }
         if parser.is_name_start()? {
-            let name: Box<ExprNode> = Box::new(ExprNode::primary_from_def(parser)?);
-            return Ok(VarType::Unresolved { name });
+            let expr: Box<ExprNode> = Box::new(ExprNode::primary_from_def(parser)?);
+            return Ok(VarType::Unresolved { expr });
         }
         let err_msg = format!("Type cannot start with char {}", parser.cur_char()?);
         Err(parser.error(CompilerErrorType::SyntaxError, err_msg, None))
@@ -717,7 +714,7 @@ impl ToString for VarType {
                 } else {
                     format!("*{}", ptr_type.to_string())
                 },
-            VarType::Unresolved { name } => name.to_string(),
+            VarType::Unresolved { expr } => expr.to_string(),
             VarType::Primitive(primitive_type) => primitive_type.to_string(),
             VarType::Array { arr_type, size_expr } => format!("[{}; {}]", arr_type.to_string(), size_expr.to_string()),
             VarType::Callback { args, return_type } => 
@@ -1008,7 +1005,7 @@ impl ExprNode {
         }
         parser.end_span(&mut result_span);
 
-        while let Some((postfix_opr, expr_node)) = PostfixOpr::is_from_def(parser)? {
+        if let Some((postfix_opr, expr_node)) = PostfixOpr::is_from_def(parser)? {
             result_enum = ExprNodeEnum::PostfixOpr(postfix_opr, Box::new(ExprNode { value: result_enum, span: result_span }), Box::new(expr_node));
             parser.end_span(&mut result_span);
         }

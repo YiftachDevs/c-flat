@@ -1,4 +1,4 @@
-fun main() -> f32 {
+fun main<T>() -> T {
     let mut var_1 = ();
     var_1 = mod_1;
     {var_1; 4.0}
