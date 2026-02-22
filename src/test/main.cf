@@ -1,5 +1,10 @@
-fun main<T>() -> T {
-    let mut var_1 = ();
-    var_1 = mod_1;
-    {var_1; 4.0}
+fun main() -> i32 {
+    let result = math.foo(4);
+    result
+}
+
+mod math {
+    fun foo(a: i32) -> i32 {
+        a
+    }
 }

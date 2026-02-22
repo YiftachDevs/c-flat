@@ -38,9 +38,7 @@ fn main() {
     let mut code_lowerer = CodeLowerer::new(&main_scope, file_context, &llvm_context);
 
     let global_scope = code_lowerer.get_global_scope();
-    let mut templates_values = HashMap::new();
-    templates_values.insert(IRTemplateKey::Type("T".to_string()), IRTemplateValue::Type(code_lowerer.get_type_from(global_scope, &VarType::Primitive(PrimitiveType::F64)).unwrap()));
-    let main_fun_result = code_lowerer.lower_fun(global_scope, "main", templates_values, None);
+    let main_fun_result = code_lowerer.lower_fun(global_scope, "main", HashMap::new(), None);
 
     if let Err(err) = main_fun_result {
         eprintln!("{}", err);

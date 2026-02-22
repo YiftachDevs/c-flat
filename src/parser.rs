@@ -43,7 +43,7 @@ impl ToString for NamePath {
 
 #[derive(PartialEq, Clone)]
 pub struct Templates {
-    templates: Vec<Template>
+    pub templates: Vec<Template>
 }
 
 impl Templates {
@@ -68,7 +68,7 @@ impl ToString for Templates {
 
 #[derive(PartialEq, Clone)]
 pub enum Template {
-    ConstValue(String, VarType),
+    Literal(String, VarType),
     VarType(String)
 }
 
@@ -77,7 +77,7 @@ impl Template {
         if parser.is_next("const") {
             let arg: Variable = Variable::arg_from_def(parser)?;
             if arg.var_type != VarType::UnresolvedInitExpr {
-                return Ok(Template::ConstValue(arg.name, arg.var_type));
+                return Ok(Template::Literal(arg.name, arg.var_type));
             } else {
                 return Err(parser.error(CompilerErrorType::SyntaxError, "Expected a type for a const template".to_string(), None));
             }
@@ -90,7 +90,7 @@ impl Template {
 impl ToString for Template {
     fn to_string(&self) -> String {
         match self {
-            Template::ConstValue(name, var_type) => format!("const {}: {}", name, var_type.to_string()),
+            Template::Literal(name, var_type) => format!("const {}: {}", name, var_type.to_string()),
             Template::VarType(name) => name.clone()
         }
     }
@@ -207,7 +207,7 @@ pub enum VarType {
 }
 
 #[derive(PartialEq, Clone)]
-pub enum ConstValue {
+pub enum Literal {
     UnresolvedInteger(u64),
     Int(u64),
     Size(u64),
@@ -391,7 +391,7 @@ pub enum ExprNodeEnum {
     PrefixOpr(PrefixOpr, Box<ExprNode>),
     PostfixOpr(PostfixOpr, Box<ExprNode>, Box<Option<ExprNode>>),
     Name(String),
-    ConstValue(ConstValue),
+    Literal(Literal),
     VarDeclaration(Box<Variable>),
     Scope(Scope),
     ConditionalChain(Box<ConditionalChain>),
@@ -656,8 +656,11 @@ impl PostfixOpr {
                 PostfixOpr::Tmp
             }
             '.' => {
-                expr_result = Some(ExprNode::primary_from_def(parser)?);
-                PostfixOpr::Tmp
+                let mut span: Span = parser.get_span_start();
+                let name: String = parser.next_name()?;
+                parser.end_span(&mut span);
+                expr_result = Some(ExprNode { value: ExprNodeEnum::Name(name), span });
+                PostfixOpr::Mem
             }
             _ => { parser.index -= 1; return Ok(None); }
         };
@@ -724,23 +727,23 @@ impl ToString for VarType {
     }
 }
 
-impl ConstValue {
+impl Literal {
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
         if parser.is_next("false") {
-            return Ok(Some(ConstValue::Bool(false)));
+            return Ok(Some(Literal::Bool(false)));
         } else if parser.is_next("true") {
-            return Ok(Some(ConstValue::Bool(true)));
+            return Ok(Some(Literal::Bool(true)));
         } else if parser.is_next("()") {
-            return Ok(Some(ConstValue::Void));
+            return Ok(Some(Literal::Void));
         } else if parser.is_next("'") {
-            let ch: char = ConstValue::char_from_def(parser)?;
+            let ch: char = Literal::char_from_def(parser)?;
             parser.ensure_next("'")?;
-            return Ok(Some(ConstValue::Char(ch)));
+            return Ok(Some(Literal::Char(ch)));
         } else if parser.is_next("\"") {
-            let str: String = ConstValue::string_from_def(parser)?;
-            return Ok(Some(ConstValue::String(str)));
+            let str: String = Literal::string_from_def(parser)?;
+            return Ok(Some(Literal::String(str)));
         } else if parser.is_num_start()? {
-            let const_value: ConstValue = ConstValue::numeral_from_def(parser)?;
+            let const_value: Literal = Literal::numeral_from_def(parser)?;
             return Ok(Some(const_value));
         }
         return Ok(None);
@@ -749,7 +752,7 @@ impl ConstValue {
     fn string_from_def(parser: &mut Parser) -> Result<String, CompilerError> {
         let mut result: String = String::new();
         loop {
-            let ch: char = ConstValue::char_from_def(parser)?;
+            let ch: char = Literal::char_from_def(parser)?;
             if ch == '\"' {
                 break;
             }
@@ -870,7 +873,7 @@ impl ConstValue {
             parser.index += 1;
             if !parser.is_num_start()? {
                 parser.index -= 1;
-                return Ok(ConstValue::UnresolvedInteger(value));
+                return Ok(Literal::UnresolvedInteger(value));
             }
             let mut fractional_value: f64 = 0.0;
             let mut i: u32 = 1;
@@ -884,23 +887,23 @@ impl ConstValue {
                     break;
                 }
             }
-            return Ok(ConstValue::Float(value as f64 + fractional_value));
+            return Ok(Literal::Float(value as f64 + fractional_value));
         }
-        return Ok(ConstValue::UnresolvedInteger(value));
+        return Ok(Literal::UnresolvedInteger(value));
     }
 }
 
-impl ToString for ConstValue {
+impl ToString for Literal {
     fn to_string(&self) -> String {
         match self {
-            ConstValue::Bool(b) => (if *b { "true" } else { "false" }).to_string(),
-            ConstValue::Char(ch) => format!("'{}'", Self::char_to_string(*ch)),
-            ConstValue::UnresolvedInteger(int) => int.to_string(),
-            ConstValue::Int(int) => int.to_string(),
-            ConstValue::Float(num) => num.to_string(),
-            ConstValue::Size(size) => size.to_string(),
-            ConstValue::Void => "()".to_string(),
-            ConstValue::String(str) => format!("\"{}\"", Self::string_to_string(str.clone())),
+            Literal::Bool(b) => (if *b { "true" } else { "false" }).to_string(),
+            Literal::Char(ch) => format!("'{}'", Self::char_to_string(*ch)),
+            Literal::UnresolvedInteger(int) => int.to_string(),
+            Literal::Int(int) => int.to_string(),
+            Literal::Float(num) => num.to_string(),
+            Literal::Size(size) => size.to_string(),
+            Literal::Void => "()".to_string(),
+            Literal::String(str) => format!("\"{}\"", Self::string_to_string(str.clone())),
             _ => "?unknown?".to_string()
         }
     }
@@ -947,7 +950,7 @@ impl ExprNode {
                         continue;
                     }
                 }
-                let temp: ExprNode = ExprNode { value: ExprNodeEnum::ConstValue(ConstValue::UnresolvedInteger(0)), span: cur_node.span };
+                let temp: ExprNode = ExprNode { value: ExprNodeEnum::Literal(Literal::UnresolvedInteger(0)), span: cur_node.span };
 
                 let old_box: Box<ExprNode> = std::mem::replace(
                     cur_node,
@@ -973,8 +976,8 @@ impl ExprNode {
             result_enum = ExprNodeEnum::PrefixOpr(prefix_opr, Box::new(ExprNode::primary_from_def(parser)?));
         } else if let Some(new_var) = Variable::is_from_def(parser)? {
             result_enum = ExprNodeEnum::VarDeclaration(Box::new(new_var));
-        } else if let Some(const_value) = ConstValue::is_from_def(parser)? {
-            result_enum = ExprNodeEnum::ConstValue(const_value);
+        } else if let Some(const_value) = Literal::is_from_def(parser)? {
+            result_enum = ExprNodeEnum::Literal(const_value);
         } else if let Some(cond_chain) = ConditionalChain::is_from_def(parser)? {
             result_enum = ExprNodeEnum::ConditionalChain(Box::new(cond_chain));
         } else if let Some(scope) = Scope::is_from_def(parser)? {
@@ -1005,7 +1008,7 @@ impl ExprNode {
         }
         parser.end_span(&mut result_span);
 
-        if let Some((postfix_opr, expr_node)) = PostfixOpr::is_from_def(parser)? {
+        while let Some((postfix_opr, expr_node)) = PostfixOpr::is_from_def(parser)? {
             result_enum = ExprNodeEnum::PostfixOpr(postfix_opr, Box::new(ExprNode { value: result_enum, span: result_span }), Box::new(expr_node));
             parser.end_span(&mut result_span);
         }
@@ -1022,7 +1025,7 @@ impl ToString for ExprNode {
             ExprNodeEnum::InfixOpr(infix_opr, left, right) => {
                 format!("{} {} {}", left.to_string(), infix_opr.to_string(), right.to_string())
             },
-            ExprNodeEnum::ConstValue(const_value) => {
+            ExprNodeEnum::Literal(const_value) => {
                 const_value.to_string()
             },
             ExprNodeEnum::Name(name) => {
@@ -1369,7 +1372,7 @@ impl Scope {
 
 impl Module {
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
-        if !parser.is_next("module") {
+        if !parser.is_next("mod") {
             return Ok(None);
         }
         let name: String = parser.next_name()?;

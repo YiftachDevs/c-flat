@@ -17,7 +17,7 @@ use inkwell::types::VoidType;
 use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
 
 use crate::errors::{CompilerError, CompilerErrorType};
-use crate::parser::{ConstValue, ExprNode, ExprNodeEnum, FileContext, Function, PrimitiveType, Scope, Span, Struct, TemplatesValues, VarType, Variable};
+use crate::parser::{ExprNode, ExprNodeEnum, FileContext, Function, Literal, PrimitiveType, Scope, Span, Struct, Template, Templates, TemplatesValues, VarType, Variable};
 
 pub type IRTypeId = usize;
 pub type IRFunctionId = usize;
@@ -44,7 +44,7 @@ pub enum IRTypeEnum<'ctx> {
 #[derive(PartialEq, Clone)]
 pub enum IRTemplateValue {
     Type(IRTypeId),
-    Const(ConstValue)
+    Const(Literal)
 }
 
 #[derive(PartialEq, Eq, Hash, Clone)]
@@ -208,18 +208,37 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
     }
 
-    /*pub fn get_module_scope_in_scope(&mut self, scope: IRScopeId, name: &str) -> Option<IRScopeId> {
-        let ir_scope: &IRScope<'_> = self.ir_scope(scope);
-        for module in ir_scope.ast_def.modules.iter() {
+    pub fn is_type_zero_sized(&mut self, type_id: IRTypeId) -> Result<bool, CompilerError> {
+        let void_type = self.primitive_type(PrimitiveType::Void)?;
+        let never_type = self.primitive_type(PrimitiveType::Never)?;
+        Ok(type_id == void_type || type_id == never_type)
+    }
+
+    pub fn get_templates_keys_from(&mut self, ctx_scope: IRScopeId, ast_templates: &Templates) -> Result<Vec<IRTemplateKey>, CompilerError> {
+        let mut result: Vec<IRTemplateKey> = Vec::new();
+        for ast_template in ast_templates.templates.iter() {
+            let template = match ast_template {
+                Template::VarType(name) => IRTemplateKey::Type(name.clone()),
+                Template::Literal(name, var_type) => IRTemplateKey::Const(name.clone(), self.get_type_from(ctx_scope, &var_type)?)
+            };
+            result.push(template);
+        }
+        Ok(result)
+    }
+
+    pub fn get_module_scope_in_scope(&mut self, parent_scope: IRScopeId, name: &str) -> Option<IRScopeId> {
+        let ir_parent_scope: &IRScope<'_> = self.ir_scope(parent_scope);
+        for module in ir_parent_scope.ast_def.modules.iter() {
             if module.name == name {
-                let mut new_parent_path = if let IRScopePath::ModulePath(path) = ir_scope.path.clone() { path } else { panic!("CodeLowerer::get_module_scope_in_scope") };
+                let mut new_parent_path = if let IRScopePath::ModulePath(path) = ir_parent_scope.path.clone() { path } else { panic!("CodeLowerer::get_module_scope_in_scope") };
                 new_parent_path.push(name.to_string());
-                let ir_scope = IRScope { path: IRScopePath::ModulePath(new_parent_path), templates_values: HashMap::new(), ast_def: &module.scope };
+                let path_string = self.format_child_scope_path(parent_scope, name, &HashMap::new());
+                let ir_scope = IRScope { path: IRScopePath::ModulePath(new_parent_path), templates_values: HashMap::new(), ast_def: &module.scope, path_string };
                 return Some(self.scope_id(ir_scope));
             }
         }
         None
-    }*/
+    }
     
     pub fn get_global_scope(&mut self) -> IRScopeId {
         self.scope_id(IRScope{ path: IRScopePath::ModulePath(Vec::new()), path_string: "".to_string(), templates_values: HashMap::new(), ast_def: &self.ast_scope})

@@ -1,6 +1,6 @@
 
 use inkwell::{types::{BasicMetadataTypeEnum, BasicType}, values::{FunctionValue, PointerValue}};
-use crate::{code_lowerer::*, errors::CompilerError, parser::{Function, PrimitiveType, Span, Variable}};
+use crate::{code_lowerer::*, errors::CompilerError, parser::{Function, PrimitiveType, Span, Template, Variable}};
 
 pub struct IRFunScope<'ctx> {
     pub fun: IRFunctionId,
@@ -13,7 +13,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(IRVariable { name: var.name.clone(), type_id, is_mut: var.is_mut, llvm_ptr: None })
     }
 
-    pub fn get_ir_var_alloca(&self, var: &IRVariable) -> PointerValue<'ctx> {
+    pub fn get_alloca(&self, type_id: IRTypeId, name: &str) -> PointerValue<'ctx> {
         let current_block = self.builder.get_insert_block();
 
         if let Some(entry_block) = current_block {
@@ -22,14 +22,14 @@ impl<'ctx> CodeLowerer<'ctx> {
                 None => self.builder.position_at_end(entry_block),
             }
         }
-        let alloca =  self.builder.build_alloca(self.ir_type(var.type_id).llvm_type.unwrap(), var.name.as_str()).unwrap();
+        let alloca =  self.builder.build_alloca(self.ir_type(type_id).llvm_type.unwrap(), name).unwrap();
         if let Some(entry_block) = current_block {
             self.builder.position_at_end(entry_block);
         }
         alloca
     }
 
-    fn find_fun_def_in_scope(&self, parent_scope: IRScopeId, name: &str) -> Option<&'ctx Function> {
+    pub fn find_fun_def_in_scope(&self, parent_scope: IRScopeId, name: &str) -> Option<&'ctx Function> {
         let ir_scope = self.ir_scope(parent_scope);
         for fun in ir_scope.ast_def.functions.iter() {
             if fun.name == name {
@@ -47,7 +47,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
         None
     }
-    
+
     pub fn lower_fun(&mut self, parent_scope: IRScopeId, name: &str, templates_values: IRTemplatesValues, call_span: Option<Span>) -> Result<IRFunctionId, CompilerError> {
         if let Some(id) = self.find_fun_in_scope(parent_scope, name, &templates_values) {
             return Ok(id);
@@ -107,13 +107,15 @@ impl<'ctx> CodeLowerer<'ctx> {
         let return_type = ir_fun.return_type;
         let llvm_value: FunctionValue<'_> = ir_fun.llvm_value;
         let entry_block = self.llvm_context.append_basic_block(llvm_value, "entry");
+
+        let original_block = self.builder.get_insert_block();
         self.builder.position_at_end(entry_block);
 
         let mut ir_fun_scope = IRFunScope { fun: fun, vars: Vec::new() };
 
         for arg in ir_fun.args.iter() {
             let mut new_arg = arg.clone();
-            new_arg.llvm_ptr = Some(self.get_ir_var_alloca(arg));
+            new_arg.llvm_ptr = Some(self.get_alloca(arg.type_id, arg.name.as_str()));
             ir_fun_scope.vars.push(new_arg);
         }
         for (i, arg) in ir_fun_scope.vars.iter_mut().enumerate() {
@@ -121,7 +123,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             self.builder.build_store(arg.llvm_ptr.unwrap(), arg_value).unwrap();
         }
 
-        let result = self.lower_scope(&mut ir_fun_scope)?;
+        let result = self.lower_scope(&mut ir_fun_scope, ir_fun.ast_def.scope.as_ref().unwrap(), Some(return_type))?;
         let never_type = self.primitive_type(PrimitiveType::Never)?;
         if result.type_id != never_type && result.type_id != return_type {
             return Err(self.error("Type mismatch", Some(format!("Function {} returns type {}, yet {} was found", fun_path_string, self.format_type(return_type), self.format_type(result.type_id))), None));
@@ -129,6 +131,10 @@ impl<'ctx> CodeLowerer<'ctx> {
 
         if let Some(value) = self.r_value(&result) {
             self.builder.build_return(Some(&value)).expect("Return build failed");
+        }
+
+        if let Some(block) = original_block {
+            self.builder.position_at_end(block);
         }
         Ok(())
     }
