@@ -1,10 +1,8 @@
-fun main() -> i32 {
-    let result = math.foo(4);
-    result
+fun main() {
+    let e = 3;
+    let my_num = math.ComplexI32 { 5, e };
 }
 
 mod math {
-    fun foo(a: i32) -> i32 {
-        a
-    }
+    struct ComplexI32 { real: i32, imag: i32 };
 }

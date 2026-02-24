@@ -82,7 +82,7 @@ impl Template {
                 return Err(parser.error(CompilerErrorType::SyntaxError, "Expected a type for a const template".to_string(), None));
             }
         } else {
-            return Ok(Template::VarType(parser.next_name()?));
+            return Ok(Template::VarType(parser.next_name(false)?));
         }
     }
 }
@@ -114,9 +114,9 @@ impl TemplatesValues {
         parser.index += 1;
         let mut templates: Vec<ExprNode> = Vec::new();
         if !parser.is_next(">") {
-            templates.push(ExprNode::primary_from_def(parser)?);
+            templates.push(ExprNode::primary_from_def(parser)?.0);
             while parser.is_next(",") {
-                templates.push(ExprNode::primary_from_def(parser)?);
+                templates.push(ExprNode::primary_from_def(parser)?.0);
             }
             parser.ensure_next(">")?;
         }
@@ -301,6 +301,7 @@ pub enum PostfixOpr {
     Inv,
     Idx,
     Mem,
+    Con, // eg: Vec_2 { 4, 3 }
     Tmp // (template eg <>)
 }
 
@@ -389,8 +390,8 @@ pub struct Scope {
 pub enum ExprNodeEnum {
     InfixOpr(InfixOpr, Box<ExprNode>, Box<ExprNode>),
     PrefixOpr(PrefixOpr, Box<ExprNode>),
-    PostfixOpr(PostfixOpr, Box<ExprNode>, Box<Option<ExprNode>>),
-    Name(String),
+    PostfixOpr(PostfixOpr, Box<ExprNode>, Option<Box<ExprNode>>),
+    Name(String, bool),
     Literal(Literal),
     VarDeclaration(Box<Variable>),
     Scope(Scope),
@@ -412,9 +413,9 @@ pub struct Module {
 
 #[derive(PartialEq, Clone)]
 pub struct Struct {
-    name: String,
-    templates: Option<Templates>,
-    vars: Option<Variables>
+    pub name: String,
+    pub templates: Option<Templates>,
+    pub vars: Option<Variables>
 }
 
 #[derive(PartialEq, Clone)]
@@ -635,10 +636,13 @@ impl ToString for PrefixOpr {
 }
 
 impl PostfixOpr {
-    pub fn is_from_def(parser: &mut Parser) -> Result<Option<(Self, Option<ExprNode>)>, CompilerError> {
+    pub fn is_from_def(parser: &mut Parser, is_constructor_plausible: bool) -> Result<Option<(Self, Option<ExprNode>, bool)>, CompilerError> {
+        parser.skip_whitespace()?;
         let ch: char = parser.cur_char()?;
         parser.index += 1;
         let expr_result: Option<ExprNode>;
+        let mut is_result_constructor_plausible: bool = false;
+
         let result: PostfixOpr = match ch {
             '[' => {
                 expr_result = Some(ExprNode::from_def(parser)?);
@@ -651,20 +655,36 @@ impl PostfixOpr {
                 PostfixOpr::Inv
             }
             '<' => {
-                expr_result = Some(ExprNode::primary_from_def(parser)?);
+                expr_result = Some(ExprNode::from_def(parser)?);
                 parser.ensure_next(">")?;
+                is_result_constructor_plausible = is_constructor_plausible;
                 PostfixOpr::Tmp
             }
             '.' => {
                 let mut span: Span = parser.get_span_start();
-                let name: String = parser.next_name()?;
-                parser.end_span(&mut span);
-                expr_result = Some(ExprNode { value: ExprNodeEnum::Name(name), span });
+                if parser.is_name_start(true)? {
+                    let name: String = parser.next_name(true)?;
+                    parser.end_span(&mut span);
+                    expr_result = Some(ExprNode { value: ExprNodeEnum::Name(name, true), span });
+                } else {
+                    let name: String = parser.next_name(false)?;
+                    parser.end_span(&mut span);
+                    expr_result = Some(ExprNode { value: ExprNodeEnum::Name(name, false), span });  
+                    is_result_constructor_plausible = true;
+                }
                 PostfixOpr::Mem
-            }
+            },
+            '{' => if is_constructor_plausible {
+                expr_result = ExprNode::is_from_def(parser)?;
+                parser.ensure_next("}")?;
+                PostfixOpr::Con
+            } else {
+                return Ok(None);
+            },
             _ => { parser.index -= 1; return Ok(None); }
         };
-        Ok(Some((result, expr_result)))
+        println!("!{}:{}:{}!", is_constructor_plausible, is_result_constructor_plausible, ch);
+        Ok(Some((result, expr_result, is_result_constructor_plausible)))
     }
 }
 
@@ -682,22 +702,22 @@ impl VarType {
         if parser.is_next("[") {
             let arr_type: VarType = VarType::from_def(parser)?;
             parser.ensure_next(";")?;
-            let size_expr: ExprNode = ExprNode::primary_from_def(parser)?;
+            let size_expr: ExprNode = ExprNode::primary_from_def(parser)?.0;
             parser.ensure_next("]")?;
             return Ok(VarType::Array { arr_type: Box::new(arr_type), size_expr: Box::new(size_expr) });
         }
         if parser.cur_char()? == '(' {
-            let args: Variables = Variables::from_def(parser)?;
+            let args: Variables = Variables::from_def(parser, false)?;
             parser.ensure_next("->")?;
             let return_type: Box<VarType> = Box::new(VarType::from_def(parser)?);
             return Ok(VarType::Callback { args, return_type })
         }
-        if parser.is_name_start()? {
-            let expr: Box<ExprNode> = Box::new(ExprNode::primary_from_def(parser)?);
+        if parser.is_name_start(false)? {
+            let expr: Box<ExprNode> = Box::new(ExprNode::primary_from_def(parser)?.0);
             return Ok(VarType::Unresolved { expr });
         }
         let err_msg = format!("Type cannot start with char {}", parser.cur_char()?);
-        Err(parser.error(CompilerErrorType::SyntaxError, err_msg, None))
+        Err(parser.error(CompilerErrorType::SyntaxError, err_msg, Some("User made types must start with an uppercase letter".to_string())))
     }  
 
     pub fn is_void(&self) -> bool {
@@ -919,12 +939,12 @@ impl ExprNode {
     }
 
     pub fn from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
-        let mut root: Box<ExprNode> = Box::new(ExprNode::primary_from_def(parser)?);
+        let mut root: Box<ExprNode> = Box::new(ExprNode::primary_from_def(parser)?.0);
         
         let mut infix_span = parser.get_span_start();
         if let Some(infix_opr) = InfixOpr::is_from_def(parser)? {
             parser.end_span(&mut infix_span);
-            let next_node: ExprNode = ExprNode::primary_from_def(parser)?;
+            let next_node: ExprNode = ExprNode::primary_from_def(parser)?.0;
             root = Box::new(ExprNode{ value: ExprNodeEnum::InfixOpr(infix_opr, root, Box::new(next_node)), span: infix_span });
         }
         infix_span = parser.get_span_start();
@@ -932,7 +952,7 @@ impl ExprNode {
             parser.end_span(&mut infix_span);
             let prec = infix_opr.precedence();
             let is_left_to_right = infix_opr.is_left_to_right();
-            let next_node = ExprNode::primary_from_def(parser)?;
+            let next_node = ExprNode::primary_from_def(parser)?.0;
             let mut cur_node: &mut Box<ExprNode> = &mut root;
 
             loop {
@@ -968,12 +988,13 @@ impl ExprNode {
         return Ok(*root);
     }
 
-    pub fn primary_from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
+    pub fn primary_from_def(parser: &mut Parser) -> Result<(Self, bool), CompilerError> {
         parser.skip_whitespace()?;
         let mut result_span: Span = parser.get_span_start();
         let mut result_enum: ExprNodeEnum;
+        let mut is_constructor_plausible: bool = false;
         if let Some(prefix_opr) = PrefixOpr::is_from_def(parser)? {
-            result_enum = ExprNodeEnum::PrefixOpr(prefix_opr, Box::new(ExprNode::primary_from_def(parser)?));
+            result_enum = ExprNodeEnum::PrefixOpr(prefix_opr, Box::new(ExprNode::primary_from_def(parser)?.0));
         } else if let Some(new_var) = Variable::is_from_def(parser)? {
             result_enum = ExprNodeEnum::VarDeclaration(Box::new(new_var));
         } else if let Some(const_value) = Literal::is_from_def(parser)? {
@@ -989,7 +1010,7 @@ impl ExprNode {
         } else if parser.is_next("[") {
             let first_expr: ExprNode = ExprNode::from_def(parser)?;
             result_enum = if parser.is_next(";") {
-                let count_expr: ExprNode = ExprNode::primary_from_def(parser)?;
+                let count_expr: ExprNode = ExprNode::primary_from_def(parser)?.0;
                 parser.ensure_next("]")?;
                 ExprNodeEnum::Array(Vec::from([first_expr, count_expr]), true)
             } else {
@@ -1000,19 +1021,24 @@ impl ExprNode {
                 }
                 ExprNodeEnum::Array(vec, false)
             };
-        } else if parser.is_name_start()? {
-            let name: String = parser.next_name()?;
-            result_enum = ExprNodeEnum::Name(name);
+        } else if parser.is_name_start(false)? {
+            let name: String = parser.next_name(false)?;
+            result_enum = ExprNodeEnum::Name(name, false);
+            is_constructor_plausible = true;
+        } else if parser.is_name_start(true)? {
+            let name: String = parser.next_name(true)?;
+            result_enum = ExprNodeEnum::Name(name, true);
         } else {
             return Err(parser.error(CompilerErrorType::SyntaxError, "Missing / Unknown primary expression".to_string(), None));
         }
         parser.end_span(&mut result_span);
 
-        while let Some((postfix_opr, expr_node)) = PostfixOpr::is_from_def(parser)? {
-            result_enum = ExprNodeEnum::PostfixOpr(postfix_opr, Box::new(ExprNode { value: result_enum, span: result_span }), Box::new(expr_node));
+        while let Some((postfix_opr, expr_node, is_new_constructor_plausible)) = PostfixOpr::is_from_def(parser, is_constructor_plausible)? {
+            is_constructor_plausible = is_new_constructor_plausible;
+            result_enum = ExprNodeEnum::PostfixOpr(postfix_opr, Box::new(ExprNode { value: result_enum, span: result_span }), expr_node.map(|value| Box::new(value)));
             parser.end_span(&mut result_span);
         }
-        Ok(ExprNode { value: result_enum, span: result_span })
+        Ok((ExprNode { value: result_enum, span: result_span }, is_constructor_plausible))
     }
 }
 
@@ -1028,7 +1054,7 @@ impl ToString for ExprNode {
             ExprNodeEnum::Literal(const_value) => {
                 const_value.to_string()
             },
-            ExprNodeEnum::Name(name) => {
+            ExprNodeEnum::Name(name, _) => {
                 name.clone()
             },
             ExprNodeEnum::PostfixOpr(postfix_opr, left, right) => {
@@ -1037,6 +1063,7 @@ impl ToString for ExprNode {
                     PostfixOpr::Idx => format!("{}[{}]", left.to_string(), right_str),
                     PostfixOpr::Inv => format!("{}({})", left.to_string(), right_str),
                     PostfixOpr::Tmp => format!("{}<{}>", left.to_string(), right_str),
+                    PostfixOpr::Con => format!("{} {{ {} }}", left.to_string(), right_str),
                     PostfixOpr::Mem => format!("{}.{}", left.to_string(), right_str)
                 }
             },
@@ -1055,7 +1082,7 @@ impl Variable {
     pub fn arg_from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
         let mut span: Span = parser.get_span_start();
         let is_mut: bool = parser.is_next("mut");
-        let name: String = parser.next_name()?;
+        let name: String = parser.next_name(true)?;
         let mut var_type: VarType = VarType::UnresolvedInitExpr;
         let mut init_expr: Option<ExprNode> = None;
         if parser.is_next(":") {
@@ -1100,22 +1127,24 @@ pub struct Variables {
 }
 
 impl Variables {
-    pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
-        if parser.cur_char()? != '(' {
+    pub fn is_from_def(parser: &mut Parser, curly_brackets: bool) -> Result<Option<Self>, CompilerError> {
+        let opening_bracket = if curly_brackets { '{' } else { '(' };
+        if parser.cur_char()? != opening_bracket {
             return Ok(None);
         }
-        Ok(Some(Self::from_def(parser)?))
+        Ok(Some(Self::from_def(parser, curly_brackets)?))
     }
 
-    pub fn from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
+    pub fn from_def(parser: &mut Parser, curly_brackets: bool) -> Result<Self, CompilerError> {
         let mut variables: Vec<Variable> = Vec::new();
-        parser.ensure_next("(")?;
-        if !parser.is_next(")") {
+        let (opening_bracket, closing_bracket) = if curly_brackets { ("{", "}") } else { ("(", ")") };
+        parser.ensure_next(opening_bracket)?;
+        if !parser.is_next(closing_bracket) {
             variables.push(Variable::arg_from_def(parser)?);
             while parser.is_next(",") {
-                variables.push(Variable::arg_from_def(parser)?);                 
+                variables.push(Variable::arg_from_def(parser)?);
             }
-            parser.ensure_next(")")?;
+            parser.ensure_next(closing_bracket)?;
         }
         Ok(Self { variables })
     }
@@ -1165,9 +1194,9 @@ impl Function {
         if !parser.is_next("fun") {
             return Ok(None);
         }
-        let name: String = parser.next_name()?;
+        let name: String = parser.next_name(true)?;
         let templates: Option<Templates> = Templates::is_from_def(parser)?;
-        let args: Variables = Variables::from_def(parser)?;
+        let args: Variables = Variables::from_def(parser, false)?;
         let return_type = if parser.is_next("->") {
             VarType::from_def(parser)?
         } else {
@@ -1199,9 +1228,9 @@ impl Struct {
     }
 
     pub fn from_after_def(parser: &mut Parser) -> Result<Self, CompilerError> {
-        let name: String = parser.next_name()?;
+        let name: String = parser.next_name(false)?;
         let templates: Option<Templates> = Templates::is_from_def(parser)?;
-        let vars: Option<Variables> = Variables::is_from_def(parser)?;
+        let vars: Option<Variables> = Variables::is_from_def(parser, true)?;
         Ok(Self { name, templates, vars })
     }
 }
@@ -1221,7 +1250,7 @@ impl Enum {
         if !parser.is_next("enum") {
             return Ok(None);
         }
-        let name: String = parser.next_name()?;
+        let name: String = parser.next_name(false)?;
         let templates: Option<Templates> = Templates::is_from_def(parser)?;
         let structs: Structs = Structs::from_def(parser)?;
         Ok(Some(Self { name, templates, structs }))
@@ -1272,7 +1301,7 @@ impl Trait {
         if !parser.is_next("trait") {
             return Ok(None);
         }
-        let name: String = parser.next_name()?;
+        let name: String = parser.next_name(false)?;
         let templates: Option<Templates> = Templates::is_from_def(parser)?;
         let scope: Scope = Scope::from_def(parser)?;
         Ok(Some(Self{name, templates, scope}))
@@ -1375,7 +1404,7 @@ impl Module {
         if !parser.is_next("mod") {
             return Ok(None);
         }
-        let name: String = parser.next_name()?;
+        let name: String = parser.next_name(true)?;
         let scope: Scope = Scope::from_def(parser)?;
         Ok(Some(Module { name, scope }))
     }
@@ -1582,9 +1611,9 @@ impl<'fctx> Parser<'fctx> {
         return Err(self.error(CompilerErrorType::SyntaxError, "Script ended too early".to_string(), None));
     }
 
-    pub fn is_name_start(&mut self) -> Result<bool, CompilerError> {
+    pub fn is_name_start(&mut self, is_lower_case: bool) -> Result<bool, CompilerError> {
         let ch = self.cur_char()?;
-        Ok((ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z') || ch == '_')
+        Ok(((ch >= 'a' && ch <= 'z' && is_lower_case) || (!is_lower_case && ch >= 'A' && ch <= 'Z')) || ch == '_')
     }
 
     pub fn is_num_start(&mut self) -> Result<bool, CompilerError> {
@@ -1607,11 +1636,11 @@ impl<'fctx> Parser<'fctx> {
         Ok(result)
     }
 
-    pub fn next_name(&mut self) -> Result<String, CompilerError> {
+    pub fn next_name(&mut self, is_lower_case: bool) -> Result<String, CompilerError> {
         self.skip_whitespace()?;
         let start_index: usize = self.index;
         let ch: char = self.cur_char()?;
-        if !self.is_name_start()? {
+        if !self.is_name_start(is_lower_case)? {
             return Err(self.error(CompilerErrorType::SyntaxError, "Expected a name".to_string(), Some(format!("Expected a name, starting by 'a'-'z', 'A'-'Z' or '_'. found char '{}' instead", ch))));
         }
         self.index += 1;

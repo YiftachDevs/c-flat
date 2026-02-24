@@ -3,6 +3,7 @@ mod errors;
 mod code_lowerer;
 mod function_lowerer;
 mod expr_lowerer;
+mod type_lowerer;
 
 use inkwell::context::Context;
 

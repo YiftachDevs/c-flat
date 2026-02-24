@@ -31,7 +31,7 @@ impl<'ctx> CodeLowerer<'ctx> {
 
     pub fn find_fun_def_in_scope(&self, parent_scope: IRScopeId, name: &str) -> Option<&'ctx Function> {
         let ir_scope = self.ir_scope(parent_scope);
-        for fun in ir_scope.ast_def.functions.iter() {
+        for fun in ir_scope.ast_def.unwrap().functions.iter() {
             if fun.name == name {
                 return Some(fun);
             }
@@ -63,7 +63,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         let mut new_templates_values = self.ir_scope(parent_scope).templates_values.clone();
         new_templates_values.extend(templates_values.clone());
 
-        let fun_scope = self.scope_id(IRScope { path: IRScopePath::Function(fun_id), path_string: fun_path_string.clone(), templates_values: new_templates_values, ast_def: fun_def.scope.as_ref().unwrap() });
+        let fun_scope = self.scope_id(IRScope { path: IRScopePath::Function(fun_id), path_string: fun_path_string.clone(), templates_values: new_templates_values, ast_def: Some(fun_def.scope.as_ref().unwrap()) });
 
         let return_type: IRTypeId = self.get_type_from(fun_scope, &fun_def.return_type)?;
         let mut args: IRVariables = Vec::new();
