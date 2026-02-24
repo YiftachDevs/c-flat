@@ -1371,10 +1371,8 @@ impl Scope {
         if let Some(obj) = Module::is_from_def(parser)? {
             self.modules.push(obj);
         } else if let Some(strct) = Struct::is_from_def(parser)? {
-            parser.ensure_next(";")?;
             self.structs.push(strct);
         } else if let Some(enm) = Enum::is_from_def(parser)? {
-            parser.ensure_next(";")?;
             self.enums.push(enm);
         } else if let Some(imp) = Implementation::is_from_def(parser)? {
             self.implementations.push(imp);

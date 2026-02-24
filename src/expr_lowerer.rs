@@ -1,7 +1,7 @@
 use core::panic;
 use std::{any::Any, collections::HashMap};
 
-use inkwell::{types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum}, values::{BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue}};
+use inkwell::{types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum}, values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue}};
 
 use crate::{code_lowerer::*, errors::CompilerError, function_lowerer::IRFunScope, parser::{ExprNode, ExprNodeEnum, Function, Literal, PostfixOpr, PrimitiveType, Scope, Span, Statement, Struct, VarType}};
 
@@ -26,7 +26,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         if let Some(expr_value) = expr_result.llvm_value {
             Some(if let BasicValueEnum::PointerValue(ptr_value) = expr_value {
                 let llvm_type = self.ir_type(expr_result.type_id).llvm_type.unwrap();
-                self.builder.build_load(llvm_type, ptr_value, "side_load").unwrap()
+                self.build_load(llvm_type, ptr_value)
             } else {
                 expr_value
             })
@@ -35,7 +35,13 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
     }
 
-    pub fn get_type_from_expr(&self, ctx_scope: IRScopeId, expr: &ExprNode) -> Result<IRTypeId, CompilerError> {
+    pub fn build_load(&self, llvm_type: BasicTypeEnum<'ctx>, ptr_value: PointerValue<'ctx>) -> BasicValueEnum<'ctx> {
+        let load_value = self.builder.build_load(llvm_type, ptr_value, "tmp_load").unwrap();
+        load_value
+    }
+
+
+   /*  pub fn get_type_from_expr(&self, ctx_scope: IRScopeId, expr: &ExprNode) -> Result<IRTypeId, CompilerError> {
         let ir_ctx_scope: &IRScope<'_> = self.ir_scope(ctx_scope);
         match &expr.value {
             ExprNodeEnum::Name(name, _) => { // could be either template, module, struct, enum. (also fun name if after comes a struct / enum or recusively another fun name)
@@ -54,7 +60,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             },
             _ => todo!("CodeLowerer::get_type_from_expr 3")
         }
-    }
+    }*/
 
     pub fn lower_scope(&mut self, ir_fun_scope: &mut IRFunScope<'ctx>, scope: &Scope, context_type: Option<IRTypeId>) -> Result<IRExprValueResult<'ctx>, CompilerError> {
         let ctx_scope = self.ir_function(ir_fun_scope.fun).scope;
@@ -74,11 +80,16 @@ impl<'ctx> CodeLowerer<'ctx> {
                             return Err(self.error("Type mismatch", Some(err_description), Some(var.span)));
                         }
                         let llvm_ptr = if self.is_type_zero_sized(var_type)? { None } else {
-                            if let BasicValueEnum::PointerValue(ptr_value) = expr_value_result.llvm_value.unwrap()  {
-                                Some(ptr_value)
+                            let llvm_type = self.ir_type(var_type).llvm_type.unwrap();
+                            let llvm_value = expr_value_result.llvm_value.unwrap();
+                            if let BasicValueEnum::PointerValue(ptr_value) = llvm_value  {
+                                let llvm_ptr = self.get_alloca(var_type, &var.name);
+                                let load_value = self.build_load(llvm_type, ptr_value);
+                                self.builder.build_store(llvm_ptr, load_value).unwrap();
+                                Some(llvm_ptr)
                             } else {
                                 let llvm_ptr = self.get_alloca(var_type, &var.name);
-                                self.builder.build_store(llvm_ptr, expr_value_result.llvm_value.unwrap()).unwrap();
+                                self.builder.build_store(llvm_ptr, llvm_value).unwrap();
                                 Some(llvm_ptr)
                             }
                         };
@@ -123,7 +134,7 @@ impl<'ctx> CodeLowerer<'ctx> {
     pub fn lower_expr(&mut self, ir_fun_scope: &mut IRFunScope<'ctx>, expr: &ExprNode, context_type: Option<IRTypeId>) -> Result<IRExprResult<'ctx>, CompilerError> {
         match &expr.value {
             ExprNodeEnum::Literal(literal) => {
-                Ok(IRExprResult::Value(self.lower_expr_literal(literal, context_type)?))
+                Ok(IRExprResult::Value(self.lower_expr_literal(literal, context_type, expr.span)?))
             },
             ExprNodeEnum::Scope(scope) => {
                 Ok(IRExprResult::Value(self.lower_scope(ir_fun_scope, scope, context_type)?))
@@ -214,15 +225,31 @@ impl<'ctx> CodeLowerer<'ctx> {
             IRExprResult::ModuleScope(scope) => {
                 if let Some(new_scope) = self.get_module_scope_in_scope(scope, right_expr_name.as_str()) {
                     Ok(IRExprResult::ModuleScope(new_scope))
-                } else if let Some(fun_def) = self.find_fun_def_in_scope(scope, right_expr_name.as_str()) {
-                    return Ok(self.lower_fun_name(scope, fun_def, right_expr.span)?);
-                } else if let Some(struct_def) = self.find_struct_def_in_scope(scope, right_expr_name.as_str()) {
-                    return Ok(self.lower_struct_name(scope, struct_def, right_expr.span)?);
+                } else if let Some((fun_scope, fun_def)) = self.find_fun_def_in_scope(scope, right_expr_name.as_str()) {
+                    return Ok(self.lower_fun_name(fun_scope, fun_def, right_expr.span)?);
+                } else if let Some((struct_scope, struct_def)) = self.find_struct_def_in_scope(scope, right_expr_name.as_str()) {
+                    return Ok(self.lower_struct_name(struct_scope, struct_def, right_expr.span)?);
                 } else {
                     return Err(self.error("Missing module / function / type", None, Some(right_expr.span)));
                 }
             },
-            _ => todo!()
+            IRExprResult::Value(expr_value_result) => {
+                let ir_type = self.ir_type(expr_value_result.type_id);
+                match &ir_type.type_enum {
+                    IRTypeEnum::Struct { parent_scope, scope, templates_values, args, def, vars_built } => {
+                        if let Some((i, arg)) = args.iter().enumerate().find(|(_, arg)| arg.name == right_expr_name) {
+                            let ptr_value = expr_value_result.llvm_value.unwrap().into_pointer_value();
+                            let arg_name = format!("{}.{}", ptr_value.get_name().to_string_lossy(), arg.name);
+                            let arg_ptr = self.builder.build_struct_gep(ir_type.llvm_type.unwrap(), ptr_value, i as u32, arg_name.as_str()).unwrap();
+                            return Ok(IRExprResult::Value(IRExprValueResult { type_id: arg.type_id, llvm_value: Some(arg_ptr.into()) }));
+                        } else {
+                            return Err(self.error("Missing struct member / function", None, Some(right_expr.span)));
+                        }
+                    },
+                    _ => todo!("lower_postfix_opr_member 2")
+                }
+            }
+            _ => todo!("lower_postfix_opr_member 3")
         }
     }
 
@@ -279,10 +306,12 @@ impl<'ctx> CodeLowerer<'ctx> {
             match &self.ir_type(type_id).type_enum {
                 IRTypeEnum::Struct { parent_scope, scope, templates_values, args, def, vars_built } => {
                     let context_types = args.iter().map(|arg| arg.type_id).collect::<Vec<IRTypeId>>();
+                    let def_args = def.vars.as_ref().unwrap();
                     let llvm_args = self.lower_args_values(ir_fun_scope, right_expr, &context_types)?;
-                    let llvm_ptr = self.get_alloca(type_id, "tmp_struct_constructor_rename_me");
+                    let llvm_ptr = self.get_alloca(type_id, "tmp_struct");
                     for (i, llvm_arg) in llvm_args.iter().enumerate() {
-                        let arg_ptr = self.builder.build_struct_gep(self.ir_type(type_id).llvm_type.unwrap(), llvm_ptr, i as u32, "struct_arg_rename_me").unwrap();
+                        let arg_name = format!("{}.{}", llvm_ptr.get_name().to_string_lossy(), def_args.variables[i].name);
+                        let arg_ptr = self.builder.build_struct_gep(self.ir_type(type_id).llvm_type.unwrap(), llvm_ptr, i as u32, arg_name.as_str()).unwrap();
                         self.builder.build_store(arg_ptr, *llvm_arg).unwrap();
                     }
                     Ok(IRExprResult::Value(IRExprValueResult { type_id, llvm_value: Some(llvm_ptr.into()) }))
@@ -300,16 +329,19 @@ impl<'ctx> CodeLowerer<'ctx> {
             let llvm_value: Option<BasicValueEnum<'_>> = if let Some(ptr_value) = var.llvm_ptr { Some(ptr_value.into()) } else { None };
             return Ok(IRExprResult::Value(IRExprValueResult{ type_id: var.type_id, llvm_value: llvm_value }));
         }
-        let global_scope = self.get_global_scope();
-        if let Some(fun_def) = self.find_fun_def_in_scope(global_scope, name) {
-            return Ok(self.lower_fun_name(global_scope, fun_def, span)?);
+        let fun_scope = self.ir_function(ir_fun_scope.fun).parent_scope;
+        if let Some((actual_scope, fun_def)) = self.find_fun_def_in_scope(fun_scope, name) {
+            return Ok(self.lower_fun_name(actual_scope, fun_def, span)?);
         }
-        if let Some(struct_def) = self.find_struct_def_in_scope(global_scope, name) {
-            return Ok(self.lower_struct_name(global_scope, struct_def, span)?);
+        if let Some((actual_scope, struct_def)) = self.find_struct_def_in_scope(fun_scope, name) {
+            return Ok(self.lower_struct_name(actual_scope, struct_def, span)?);
         }
-        if let Some(module) = self.get_module_scope_in_scope(global_scope, name) {
+        if let Some(module) = self.get_module_scope_in_scope(fun_scope, name) {
             return Ok(IRExprResult::ModuleScope(module));
         }
+        /*if let Some(prim_t) = self.primitive_type_from(name) {
+            return Ok(IRExprResult::Type(prim_t));
+        }*/
         return Err(self.error("Unrecognized name", None, Some(span)));
     }
 
@@ -329,13 +361,13 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
     }
 
-    fn lower_expr_literal(&mut self, literal: &Literal, context_type: Option<IRTypeId>) -> Result<IRExprValueResult<'ctx>, CompilerError> {
-        match &literal {
+    fn lower_expr_literal(&mut self, literal: &Literal, context_type: Option<IRTypeId>, span: Span) -> Result<IRExprValueResult<'ctx>, CompilerError> {
+        let result = match &literal {
             Literal::Bool(v) => {
-                Ok(IRExprValueResult{ type_id: self.primitive_type(PrimitiveType::Bool)?, llvm_value: Some(self.llvm_context.bool_type().const_int(*v as u64, false).into()) })
+                IRExprValueResult{ type_id: self.primitive_type(PrimitiveType::Bool)?, llvm_value: Some(self.llvm_context.bool_type().const_int(*v as u64, false).into()) }
             },
             Literal::Char(ch) => {
-                Ok(IRExprValueResult{ type_id: self.primitive_type(PrimitiveType::Char)?, llvm_value: Some(self.llvm_context.i32_type().const_int(*ch as u64, false).into())})
+                IRExprValueResult{ type_id: self.primitive_type(PrimitiveType::Char)?, llvm_value: Some(self.llvm_context.i32_type().const_int(*ch as u64, false).into())}
             },
             Literal::UnresolvedInteger(int) => {
                 let default = (self.primitive_type(PrimitiveType::I32)?, self.llvm_context.i32_type());
@@ -348,7 +380,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 } else {
                     default
                 };
-                Ok(IRExprValueResult{ type_id: int_type_id, llvm_value: Some(llvm_int_type.const_int(*int as u64, false).into()) })
+                IRExprValueResult{ type_id: int_type_id, llvm_value: Some(llvm_int_type.const_int(*int as u64, false).into()) }
             },
             Literal::Float(float) => {
                 let default = (self.primitive_type(PrimitiveType::F32)?, self.llvm_context.f32_type());
@@ -361,12 +393,19 @@ impl<'ctx> CodeLowerer<'ctx> {
                 } else {
                     default
                 };                  
-                Ok(IRExprValueResult{ type_id: float_type_id, llvm_value: Some(llvm_float_type.const_float(*float).into()) })
+                IRExprValueResult{ type_id: float_type_id, llvm_value: Some(llvm_float_type.const_float(*float).into()) }
             },
             Literal::Void => {
-                Ok(IRExprValueResult{ type_id: self.primitive_type(PrimitiveType::Void)?, llvm_value: None }) 
+                IRExprValueResult{ type_id: self.primitive_type(PrimitiveType::Void)?, llvm_value: None }
             }
             _ => todo!()
+        };
+        if let Some(ctx_t) = context_type {
+            if ctx_t != result.type_id {
+                let err_description: String = format!("Expected '{}', received '{}'", self.format_type(ctx_t), self.format_type(result.type_id));
+                return Err(self.error("Type mismatch", Some(err_description), Some(span)));
+            }
         }
+        Ok(result)
     }
 }

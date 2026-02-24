@@ -84,6 +84,7 @@ pub enum IRScopePath {
 
 #[derive(PartialEq, Clone)]
 pub struct IRScope<'ctx> {
+    pub parent_scope: Option<IRScopeId>,
     pub path: IRScopePath,
     pub path_string: String,
     pub templates_values: IRTemplatesValues,
@@ -169,7 +170,8 @@ impl<'ctx> CodeLowerer<'ctx> {
                 Ok(new_id)
             },
             VarType::Unresolved { expr } => {
-                self.get_type_from_expr(ctx_scope, expr)
+                todo!("impl CodeLowerer::get_type_from 3")
+                // self.lower_expr(ctx_scope, expr)
             }
             _ => todo!("impl CodeLowerer::get_type_from 2")
         }
@@ -249,15 +251,19 @@ impl<'ctx> CodeLowerer<'ctx> {
                 let mut new_parent_path = if let IRScopePath::ModulePath(path) = ir_parent_scope.path.clone() { path } else { panic!("CodeLowerer::get_module_scope_in_scope") };
                 new_parent_path.push(name.to_string());
                 let path_string = self.format_child_scope_path(parent_scope, name, &HashMap::new());
-                let ir_scope = IRScope { path: IRScopePath::ModulePath(new_parent_path), templates_values: HashMap::new(), ast_def: Some(&module.scope), path_string };
+                let ir_scope = IRScope { parent_scope: Some(parent_scope), path: IRScopePath::ModulePath(new_parent_path), templates_values: HashMap::new(), ast_def: Some(&module.scope), path_string };
                 return Some(self.scope_id(ir_scope));
             }
         }
-        None
+        if let Some(grand_parent_scope) = ir_parent_scope.parent_scope {
+            self.get_module_scope_in_scope(grand_parent_scope, name)
+        } else {
+            None
+        }
     }
     
     pub fn get_global_scope(&mut self) -> IRScopeId {
-        self.scope_id(IRScope{ path: IRScopePath::ModulePath(Vec::new()), path_string: "".to_string(), templates_values: HashMap::new(), ast_def: Some(&self.ast_scope)})
+        self.scope_id(IRScope{ parent_scope: None, path: IRScopePath::ModulePath(Vec::new()), path_string: "".to_string(), templates_values: HashMap::new(), ast_def: Some(&self.ast_scope)})
     }
 
     pub fn format_scope_path(&self, scope: IRScopeId) -> String {
@@ -283,7 +289,9 @@ impl<'ctx> CodeLowerer<'ctx> {
     }
 
     pub fn format_child_scope_path(&self, parent_scope: IRScopeId, name: &str, templates_values: &IRTemplatesValues) -> String {
-        format!("{}.{}{}", self.format_scope_path(parent_scope), name, self.format_templates_values(templates_values))
+        let mut parent_str = self.format_scope_path(parent_scope);
+        if !parent_str.is_empty() { parent_str.push('.');}
+        format!("{}{}{}", parent_str, name, self.format_templates_values(templates_values))
     }
 
     pub fn format_templates_values(&self, templates_values: &IRTemplatesValues) -> String {

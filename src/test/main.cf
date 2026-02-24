@@ -1,8 +1,14 @@
 fun main() {
-    let e = 3;
-    let my_num = math.ComplexI32 { 5, e };
+    let e = math.get_vec_2_x(math.Vec_2 { 10.0, 12.0 });
 }
 
 mod math {
-    struct ComplexI32 { real: i32, imag: i32 };
+    struct Vec_2 {
+        x: f32,
+        y: f32
+    }
+
+    fun get_vec_2_x(vec: Vec_2) -> f32 {
+        vec.x
+    }
 }
