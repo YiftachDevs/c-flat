@@ -2,20 +2,45 @@ use std::any::Any;
 
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 
-use crate::{code_lowerer::{CodeLowerer, IRScope, IRScopeId, IRScopePath, IRTemplatesValues, IRType, IRTypeEnum, IRTypeId, IRVariable, IRVariables}, errors::CompilerError, parser::{Span, Struct}};
+use crate::{code_lowerer::{CodeLowerer, IRContext, IRScope, IRScopeId, IRScopePath, IRTemplatesValues, IRType, IRTypeEnum, IRTypeId, IRVariable, IRVariables, PrimitiveType}, errors::CompilerError, parser::{Span, Struct}};
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn find_struct_def_in_scope(&self, parent_scope: IRScopeId, name: &str) -> Option<(IRScopeId, &'ctx Struct)> {
         let ir_scope = self.ir_scope(parent_scope);
-        for strct in ir_scope.ast_def.unwrap().structs.iter() {
-            if strct.name == name {
-                return Some((parent_scope, strct));
+        if let Some(ast_def) = ir_scope.ast_def {
+            for strct in ast_def.structs.iter() {
+                if strct.name == name {
+                    return Some((parent_scope, strct));
+                }
             }
         }
         if let Some(grand_parent_scope) = ir_scope.parent_scope {
             self.find_struct_def_in_scope(grand_parent_scope, name)
         } else {
             None
+        }
+    }
+
+    pub fn primitive_type_from(&mut self, name: &str) -> Option<PrimitiveType> {
+        match name {
+            "!" => Some(PrimitiveType::Never),
+            "()" => Some(PrimitiveType::Void),
+            "bool" => Some(PrimitiveType::Bool),
+            "char" => Some(PrimitiveType::Char),
+            "u8" => Some(PrimitiveType::U8),
+            "i8" => Some(PrimitiveType::I8),
+            "u16" => Some(PrimitiveType::U16),
+            "i16" => Some(PrimitiveType::I16),
+            "f16" => Some(PrimitiveType::F16),
+            "u32" => Some(PrimitiveType::U32),
+            "i32" => Some(PrimitiveType::I32),
+            "f32" => Some(PrimitiveType::F32),
+            "u64" => Some(PrimitiveType::U64),
+            "i64" => Some(PrimitiveType::I64),
+            "f64" => Some(PrimitiveType::F64),
+            "u128" => Some(PrimitiveType::U128),
+            "i128" => Some(PrimitiveType::I128),
+            _ => None
         }
     }
 
@@ -52,11 +77,12 @@ impl<'ctx> CodeLowerer<'ctx> {
         let ir_type_enum = IRTypeEnum::Struct { parent_scope, scope: struct_scope, templates_values, def: struct_def, args: Vec::new(), vars_built: false };
         self.types_table.push(IRType { type_enum: ir_type_enum, llvm_type: None });
 
+        let mut ir_context = IRContext::ScopeContext(struct_scope);
         let mut members: IRVariables = Vec::new();
         let mut members_llvm_types: Vec<BasicTypeEnum> = Vec::new();
         if let Some(def_members) = struct_def.vars.as_ref() {
             for member in def_members.variables.iter() {
-                let ir_var: IRVariable = self.get_ir_var(struct_scope, member)?;
+                let ir_var: IRVariable = self.get_ir_var(&mut ir_context, member)?;
                 if let Some(llvm_type) = self.ir_type(ir_var.type_id).llvm_type {
                     members_llvm_types.push(llvm_type); 
                     members.push(ir_var);

@@ -17,7 +17,7 @@ use inkwell::types::VoidType;
 use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
 
 use crate::errors::{CompilerError, CompilerErrorType};
-use crate::parser::{ExprNode, ExprNodeEnum, FileContext, Function, Literal, PrimitiveType, Scope, Span, Struct, Template, Templates, TemplatesValues, VarType, Variable};
+use crate::parser::{ExprNode, ExprNodeEnum, FileContext, Function, Literal, Scope, Span, Struct, Template, Templates, Variable};
 
 pub type IRTypeId = usize;
 pub type IRFunctionId = usize;
@@ -56,6 +56,74 @@ pub enum IRTemplateKey {
 
 pub type IRTemplatesValues = HashMap<IRTemplateKey, IRTemplateValue>;
 
+#[derive(Eq, PartialEq, Clone, Hash, Copy)]
+pub enum PrimitiveType {
+    U8,
+    I8,
+    U16,
+    I16,
+    U32,
+    I32,
+    U64,
+    I64,
+    U128,
+    I128,
+    F16,
+    F32,
+    F64,
+    Char,
+    Bool,
+    Void,
+    Never
+}
+
+impl PrimitiveType {
+    pub fn is_int(&self) -> bool {
+        match self {
+            PrimitiveType::I8 | PrimitiveType::I16 | PrimitiveType::I32 | PrimitiveType::I64 | PrimitiveType::I128 => true,
+            _ => false
+        }
+    }
+    
+    pub fn is_uint(&self) -> bool {
+        match self {
+            PrimitiveType::U8 | PrimitiveType::U16 | PrimitiveType::U32 | PrimitiveType::U64 | PrimitiveType::U128 | PrimitiveType::Char => true,
+            _ => false
+        }
+    }
+
+    pub fn is_float(&self) -> bool {
+        match self {
+            PrimitiveType::F16 | PrimitiveType::F32 | PrimitiveType::F64 => true,
+            _ => false
+        }
+    }
+}
+
+impl ToString for PrimitiveType {
+    fn to_string(&self) -> String {
+        match self {
+            PrimitiveType::U8 => "u8".to_string(),
+            PrimitiveType::I8 => "i8".to_string(),
+            PrimitiveType::U16 => "u16".to_string(),
+            PrimitiveType::I16 => "i16".to_string(),
+            PrimitiveType::U32 => "u32".to_string(),
+            PrimitiveType::I32 => "i32".to_string(),
+            PrimitiveType::U64 => "u64".to_string(),
+            PrimitiveType::I64 => "i64".to_string(),
+            PrimitiveType::U128 => "u128".to_string(),
+            PrimitiveType::I128 => "i128".to_string(),
+            PrimitiveType::F16 => "f16".to_string(),
+            PrimitiveType::F32 => "f32".to_string(),
+            PrimitiveType::F64 => "f64".to_string(),
+            PrimitiveType::Char => "char".to_string(),
+            PrimitiveType::Bool => "bool".to_string(),
+            PrimitiveType::Void => "()".to_string(),
+            PrimitiveType::Never => "!".to_string()
+        }
+    }
+}
+
 #[derive(PartialEq)]
 pub struct IRType<'ctx> {
     pub type_enum: IRTypeEnum<'ctx>,
@@ -89,6 +157,25 @@ pub struct IRScope<'ctx> {
     pub path_string: String,
     pub templates_values: IRTemplatesValues,
     pub ast_def: Option<&'ctx Scope>
+}
+
+pub struct IRFunContext<'ctx> {
+    pub fun: IRFunctionId,
+    pub vars: IRVariables<'ctx>
+}
+
+pub enum IRContext<'ctx> {
+    FunContext(IRFunContext<'ctx>),
+    ScopeContext(IRScopeId)
+}
+
+impl<'ctx> IRContext<'ctx> {
+    pub fn into_fun_context(&mut self) -> &mut IRFunContext<'ctx> {
+        match self {
+            IRContext::FunContext(fun_context) => fun_context,
+            _ => panic!("ensure_fun_context")
+        }
+    }
 }
 
 pub struct CodeLowerer<'ctx> {
@@ -140,90 +227,22 @@ impl<'ctx> CodeLowerer<'ctx> {
         id
     }
 
-    pub fn get_type_from(&mut self, ctx_scope: IRScopeId, var_type: &VarType) -> Result<IRTypeId, CompilerError> {
-        if let Some(existing_id) = self.find_type_from(ctx_scope, var_type) {
-            return Ok(existing_id);
-        }
-        let new_id = self.types_table.len();
-        match &var_type {
-            VarType::Primitive(primitive_type) => {
-                let llvm_type = match primitive_type {
-                    PrimitiveType::I8 | PrimitiveType::U8 => Some(self.llvm_context.i8_type().into()),
-                    PrimitiveType::I16 | PrimitiveType::U16 => Some(self.llvm_context.i16_type().into()),
-                    PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::Char => Some(self.llvm_context.i32_type().into()),
-                    PrimitiveType::I64 | PrimitiveType::U64 => Some(self.llvm_context.i64_type().into()),
-                    PrimitiveType::I128 | PrimitiveType::U128 => Some(self.llvm_context.i128_type().into()),
-                    PrimitiveType::F16 => Some(self.llvm_context.f16_type().into()),
-                    PrimitiveType::F32 => Some(self.llvm_context.f32_type().into()),
-                    PrimitiveType::F64 => Some(self.llvm_context.f64_type().into()),
-                    PrimitiveType::Bool => Some(self.llvm_context.bool_type().into()),
-                    PrimitiveType::Void | PrimitiveType::Never => None
-                };
-                let ir_type = IRType { type_enum: IRTypeEnum::Primitive(*primitive_type), llvm_type };
-                self.types_table.push(ir_type);
-                Ok(new_id)
-            },
-            VarType::Pointer { ptr_type, is_ref } => {
-                let ptr_type_id: IRTypeId = self.get_type_from(ctx_scope, ptr_type)?;
-                let ir_type: IRType<'_> = IRType { type_enum: IRTypeEnum::Pointer { ptr_type_id, is_ref: *is_ref }, llvm_type: Some(self.llvm_context.ptr_type(inkwell::AddressSpace::from(0)).into()) };
-                self.types_table.push(ir_type);
-                Ok(new_id)
-            },
-            VarType::Unresolved { expr } => {
-                todo!("impl CodeLowerer::get_type_from 3")
-                // self.lower_expr(ctx_scope, expr)
-            }
-            _ => todo!("impl CodeLowerer::get_type_from 2")
-        }
-    }
-    
-    fn find_type_from(&self, ctx_scope: IRScopeId, var_type: &VarType) -> Option<IRTypeId> {
-        for (i, ir_type) in self.types_table.iter().enumerate() {
-            match &ir_type.type_enum {
-                IRTypeEnum::Primitive(other_prim_type) => {
-                    if let VarType::Primitive(prim_type) = var_type && other_prim_type == prim_type {
-                        return Some(i);
-                    }
-                },
-                IRTypeEnum::Pointer { ptr_type_id, is_ref } => {
-                    let is_cur_ref = is_ref;
-                    if let VarType::Pointer { ptr_type, is_ref } = var_type {
-                        if is_cur_ref == is_ref && let Some(existing_ptr_type) = self.find_type_from(ctx_scope, ptr_type) && existing_ptr_type == *ptr_type_id {
-                            return Some(i);
-                        }
-                    }
-                },
-                IRTypeEnum::Struct { parent_scope, scope, templates_values, args, def, vars_built } => {
-                    // TODO
-                    
-                },
-                _ => todo!("impl CodeLowerer::_find_type")
-            }
-        }
-        None
-    }
-
     pub fn primitive_type(&mut self, prim: PrimitiveType) -> Result<IRTypeId, CompilerError> {
-        let ctx_scope = self.get_global_scope();
-        match prim {
-            PrimitiveType::Never => self.get_type_from(ctx_scope, &VarType::Primitive(PrimitiveType::Never)),
-            PrimitiveType::Void => self.get_type_from(ctx_scope, &VarType::Primitive(PrimitiveType::Void)),
-            PrimitiveType::Bool => self.get_type_from(ctx_scope, &VarType::Primitive(PrimitiveType::Bool)),
-            PrimitiveType::Char => self.get_type_from(ctx_scope, &VarType::Primitive(PrimitiveType::Char)),
-            PrimitiveType::U8 => self.get_type_from(ctx_scope, &VarType::Primitive(PrimitiveType::U8)),
-            PrimitiveType::I8 => self.get_type_from(ctx_scope, &VarType::Primitive(PrimitiveType::I8)),
-            PrimitiveType::U16 => self.get_type_from(ctx_scope, &VarType::Primitive(PrimitiveType::U16)),
-            PrimitiveType::I16 => self.get_type_from(ctx_scope, &VarType::Primitive(PrimitiveType::I16)),
-            PrimitiveType::F16 => self.get_type_from(ctx_scope, &VarType::Primitive(PrimitiveType::F16)),
-            PrimitiveType::U32 => self.get_type_from(ctx_scope, &VarType::Primitive(PrimitiveType::U32)),
-            PrimitiveType::I32 => self.get_type_from(ctx_scope, &VarType::Primitive(PrimitiveType::I32)),
-            PrimitiveType::F32 => self.get_type_from(ctx_scope, &VarType::Primitive(PrimitiveType::F32)),
-            PrimitiveType::U64 => self.get_type_from(ctx_scope, &VarType::Primitive(PrimitiveType::U64)),
-            PrimitiveType::I64 => self.get_type_from(ctx_scope, &VarType::Primitive(PrimitiveType::I64)),
-            PrimitiveType::F64 => self.get_type_from(ctx_scope, &VarType::Primitive(PrimitiveType::F64)),
-            PrimitiveType::U128 => self.get_type_from(ctx_scope, &VarType::Primitive(PrimitiveType::U128)),
-            PrimitiveType::I128 => self.get_type_from(ctx_scope, &VarType::Primitive(PrimitiveType::I128))
-        }
+        let ir_type_enum = IRTypeEnum::Primitive(prim);
+        let llvm_type: Option<BasicTypeEnum> = match prim {
+            PrimitiveType::I8 | PrimitiveType::U8 => Some(self.llvm_context.i8_type().into()),
+            PrimitiveType::I16 | PrimitiveType::U16 => Some(self.llvm_context.i16_type().into()),
+            PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::Char => Some(self.llvm_context.i32_type().into()),
+            PrimitiveType::I64 | PrimitiveType::U64 => Some(self.llvm_context.i64_type().into()),
+            PrimitiveType::I128 | PrimitiveType::U128 => Some(self.llvm_context.i128_type().into()),
+            PrimitiveType::F16 => Some(self.llvm_context.f16_type().into()),
+            PrimitiveType::F32 => Some(self.llvm_context.f32_type().into()),
+            PrimitiveType::F64 => Some(self.llvm_context.f64_type().into()),
+            PrimitiveType::Bool => Some(self.llvm_context.bool_type().into()),
+            PrimitiveType::Void => None,
+            PrimitiveType::Never => None
+        };
+        Ok(self.type_id(IRType { type_enum: ir_type_enum, llvm_type }))
     }
 
     pub fn is_type_zero_sized(&mut self, type_id: IRTypeId) -> Result<bool, CompilerError> {
@@ -232,27 +251,35 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(type_id == void_type || type_id == never_type)
     }
 
-    pub fn get_templates_keys_from(&mut self, ctx_scope: IRScopeId, ast_templates: &Templates) -> Result<Vec<IRTemplateKey>, CompilerError> {
+    pub fn get_templates_keys_from(&mut self, ir_context: &mut IRContext<'ctx>, ast_templates: &Templates) -> Result<Vec<IRTemplateKey>, CompilerError> {
         let mut result: Vec<IRTemplateKey> = Vec::new();
         for ast_template in ast_templates.templates.iter() {
             let template = match ast_template {
-                Template::VarType(name) => IRTemplateKey::Type(name.clone()),
-                Template::Literal(name, var_type) => IRTemplateKey::Const(name.clone(), self.get_type_from(ctx_scope, &var_type)?)
+                Template::VarType(name) => IRTemplateKey::Type(name.clone())
             };
             result.push(template);
         }
         Ok(result)
     }
 
+    pub fn get_context_parent_scope(&mut self, ir_context: &IRContext<'ctx>) -> IRScopeId {
+        match ir_context {
+            IRContext::FunContext(fun) => self.ir_function(fun.fun).parent_scope,
+            IRContext::ScopeContext(scope) => *scope
+        }
+    }
+
     pub fn get_module_scope_in_scope(&mut self, parent_scope: IRScopeId, name: &str) -> Option<IRScopeId> {
         let ir_parent_scope: &IRScope<'_> = self.ir_scope(parent_scope);
-        for module in ir_parent_scope.ast_def.unwrap().modules.iter() {
-            if module.name == name {
-                let mut new_parent_path = if let IRScopePath::ModulePath(path) = ir_parent_scope.path.clone() { path } else { panic!("CodeLowerer::get_module_scope_in_scope") };
-                new_parent_path.push(name.to_string());
-                let path_string = self.format_child_scope_path(parent_scope, name, &HashMap::new());
-                let ir_scope = IRScope { parent_scope: Some(parent_scope), path: IRScopePath::ModulePath(new_parent_path), templates_values: HashMap::new(), ast_def: Some(&module.scope), path_string };
-                return Some(self.scope_id(ir_scope));
+        if let Some(ast_def) = ir_parent_scope.ast_def {
+            for module in ast_def.modules.iter() {
+                if module.name == name {
+                    let mut new_parent_path = if let IRScopePath::ModulePath(path) = ir_parent_scope.path.clone() { path } else { panic!("CodeLowerer::get_module_scope_in_scope") };
+                    new_parent_path.push(name.to_string());
+                    let path_string = self.format_child_scope_path(parent_scope, name, &HashMap::new());
+                    let ir_scope = IRScope { parent_scope: Some(parent_scope), path: IRScopePath::ModulePath(new_parent_path), templates_values: HashMap::new(), ast_def: Some(&module.scope), path_string };
+                    return Some(self.scope_id(ir_scope));
+                }
             }
         }
         if let Some(grand_parent_scope) = ir_parent_scope.parent_scope {

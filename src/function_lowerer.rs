@@ -1,15 +1,11 @@
 
 use inkwell::{types::{BasicMetadataTypeEnum, BasicType}, values::{FunctionValue, PointerValue}};
-use crate::{code_lowerer::*, errors::CompilerError, parser::{Function, PrimitiveType, Span, Template, Variable}};
-
-pub struct IRFunScope<'ctx> {
-    pub fun: IRFunctionId,
-    pub vars: IRVariables<'ctx>
-}
+use crate::{code_lowerer::*, errors::CompilerError, parser::{Function, Span, Variable}};
 
 impl<'ctx> CodeLowerer<'ctx> {
-    pub fn get_ir_var(&mut self, ctx_scope: IRScopeId, var: &Variable) -> Result<IRVariable<'ctx>, CompilerError> {
-        let type_id =  self.get_type_from(ctx_scope, &var.var_type)?;
+    pub fn get_ir_var(&mut self, ir_context: &mut IRContext<'ctx>, var: &Variable) -> Result<IRVariable<'ctx>, CompilerError> {
+        let type_id = self.get_type(ir_context, var.var_type.as_ref().unwrap(), None)?;
+        println!("e");
         Ok(IRVariable { name: var.name.clone(), type_id, is_mut: var.is_mut, llvm_ptr: None })
     }
 
@@ -69,11 +65,12 @@ impl<'ctx> CodeLowerer<'ctx> {
 
         let fun_scope = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Function(fun_id), path_string: fun_path_string.clone(), templates_values: new_templates_values, ast_def: Some(fun_def.scope.as_ref().unwrap()) });
 
-        let return_type: IRTypeId = self.get_type_from(fun_scope, &fun_def.return_type)?;
+        let mut ir_context = IRContext::ScopeContext(fun_scope);
+        let return_type: IRTypeId = if let Some(return_t) = &fun_def.return_type { self.get_type(&mut ir_context, return_t, None)? } else { self.primitive_type(PrimitiveType::Void)? };
         let mut args: IRVariables = Vec::new();
         let mut args_llvm_types: Vec<BasicMetadataTypeEnum> = Vec::new();
         for arg in fun_def.args.variables.iter() {
-            let ir_var: IRVariable = self.get_ir_var(fun_scope, arg)?;
+            let ir_var: IRVariable = self.get_ir_var(&mut ir_context, arg)?;
             if let Some(llvm_type) = self.ir_type(ir_var.type_id).llvm_type {
                 args_llvm_types.push(llvm_type.into()); 
                 args.push(ir_var);
@@ -115,7 +112,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         let original_block = self.builder.get_insert_block();
         self.builder.position_at_end(entry_block);
 
-        let mut ir_fun_scope = IRFunScope { fun: fun, vars: Vec::new() };
+        let mut ir_fun_scope = IRFunContext { fun: fun, vars: Vec::new() };
 
         for arg in ir_fun.args.iter() {
             let mut new_arg = arg.clone();
@@ -127,7 +124,8 @@ impl<'ctx> CodeLowerer<'ctx> {
             self.builder.build_store(arg.llvm_ptr.unwrap(), arg_value).unwrap();
         }
 
-        let result = self.lower_scope(&mut ir_fun_scope, ir_fun.ast_def.scope.as_ref().unwrap(), Some(return_type))?;
+        let mut ir_context = IRContext::FunContext(ir_fun_scope);
+        let result = self.lower_scope(&mut ir_context, ir_fun.ast_def.scope.as_ref().unwrap(), Some(return_type))?;
         let never_type = self.primitive_type(PrimitiveType::Never)?;
         if result.type_id != never_type && result.type_id != return_type {
             return Err(self.error("Type mismatch", Some(format!("Function {} returns type {}, yet {} was found", fun_path_string, self.format_type(return_type), self.format_type(result.type_id))), None));
