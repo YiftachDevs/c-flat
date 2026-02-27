@@ -4,6 +4,7 @@ mod code_lowerer;
 mod function_lowerer;
 mod expr_lowerer;
 mod type_lowerer;
+mod impl_lowerer;
 
 use inkwell::context::Context;
 

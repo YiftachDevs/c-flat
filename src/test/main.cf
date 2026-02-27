@@ -1,15 +1,9 @@
-fun main() -> f32 {
-    let e = math.get_vec_2_x(math.Vec_2 { 10.0, 12.0 });
-    e
+fun main() -> Pair<f64, Pair<bool, i32>> {
+    let pair = Pair<f64, Pair<bool, i32>> { 4.0, Pair<bool, i32> { true, 4 } };
+    pair
 }
 
-mod math {
-    struct Vec_2 {
-        x: f32,
-        y: f32
-    }
-
-    fun get_vec_2_x(vec: Vec_2) -> f32 {
-        vec.x
-    }
+struct Pair<T_1, T_2> {
+    item_1: T_1,
+    item_2: T_2
 }

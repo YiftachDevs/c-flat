@@ -276,10 +276,10 @@ pub struct Enum {
 
 #[derive(PartialEq, Clone)]
 pub struct Implementation {
-    templates: Option<Templates>,
-    opt_trait: Option<ExprNode>,
-    target_type: ExprNode,
-    scope: Scope
+    pub templates: Option<Templates>,
+    pub opt_trait: Option<ExprNode>,
+    pub target_type: ExprNode,
+    pub scope: Scope
 }
 
 #[derive(PartialEq, Clone)]
@@ -303,7 +303,7 @@ impl ConditionalChain {
             return Ok(None);
         };
 
-        let cond_expr: Option<ExprNode> = Some(ExprNode::from_def(parser)?);
+        let cond_expr: Option<ExprNode> = Some(ExprNode::from_def(parser, true)?);
         let then_scope: Scope = Scope::from_def(parser)?;
         let else_node: Option<Box<ConditionalChain>> = if parser.is_next("else") {
             if let Some(cond_chain) = ConditionalChain::is_from_def(parser)? {
@@ -322,9 +322,9 @@ impl ControlFlow {
         let result: ControlFlow = if parser.is_next("skip") {
             ControlFlow::Skip
         } else if parser.is_next("return") {
-            ControlFlow::Return(ExprNode::is_from_def(parser)?)
+            ControlFlow::Return(ExprNode::is_from_def(parser, true)?)
         } else if parser.is_next("stop") {
-            ControlFlow::Stop(ExprNode::is_from_def(parser)?)
+            ControlFlow::Stop(ExprNode::is_from_def(parser, true)?)
         } else {
             return Ok(None);
         };
@@ -333,9 +333,12 @@ impl ControlFlow {
 }
 
 impl InfixOpr {
-    pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
+    pub fn is_from_def(parser: &mut Parser,is_value_expr: bool) -> Result<Option<Self>, CompilerError> {
         parser.skip_whitespace()?;
         let ch: char = parser.cur_char()?;
+        if !is_value_expr && ch != ',' {
+            return Ok(None);
+        }
         parser.index += 1;
         let result: InfixOpr = match ch {
             'a' => if parser.cur_char()? == 's' {
@@ -471,17 +474,17 @@ impl PostfixOpr {
 
         let result: PostfixOpr = match ch {
             '[' => {
-                expr_result = Some(ExprNode::from_def(parser)?);
+                expr_result = Some(ExprNode::from_def(parser, true)?);
                 parser.ensure_next("]")?;
                 PostfixOpr::Idx
             }
             '(' => {
-                expr_result = ExprNode::is_from_def(parser)?;
+                expr_result = ExprNode::is_from_def(parser, true)?;
                 parser.ensure_next(")")?;
                 PostfixOpr::Inv
             }
             '<' => {
-                expr_result = Some(ExprNode::from_def(parser)?);
+                expr_result = Some(ExprNode::from_def(parser, false)?);
                 parser.ensure_next(">")?;
                 is_result_constructor_plausible = is_constructor_plausible;
                 PostfixOpr::Tmp
@@ -501,7 +504,7 @@ impl PostfixOpr {
                 PostfixOpr::Mem
             },
             '{' => if is_constructor_plausible {
-                expr_result = ExprNode::is_from_def(parser)?;
+                expr_result = ExprNode::is_from_def(parser, true)?;
                 parser.ensure_next("}")?;
                 PostfixOpr::Con
             } else {
@@ -697,25 +700,25 @@ impl ToString for Literal {
 }
 
 impl ExprNode {
-    pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
+    pub fn is_from_def(parser: &mut Parser, is_value_expr: bool) -> Result<Option<Self>, CompilerError> {
         let ch: char = parser.cur_char()?;
         if ch == ';' || ch == ')' {
             return Ok(None);
         }
-        return Ok(Some(ExprNode::from_def(parser)?));
+        return Ok(Some(ExprNode::from_def(parser, is_value_expr)?));
     }
 
-    pub fn from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
+    pub fn from_def(parser: &mut Parser, is_value_expr: bool) -> Result<Self, CompilerError> {
         let mut root: Box<ExprNode> = Box::new(ExprNode::primary_from_def(parser, true)?.0);
         
         let mut infix_span = parser.get_span_start();
-        if let Some(infix_opr) = InfixOpr::is_from_def(parser)? {
+        if let Some(infix_opr) = InfixOpr::is_from_def(parser, is_value_expr)? {
             parser.end_span(&mut infix_span);
             let next_node: ExprNode = ExprNode::primary_from_def(parser, true)?.0;
             root = Box::new(ExprNode{ value: ExprNodeEnum::InfixOpr(infix_opr, root, Box::new(next_node)), span: infix_span });
         }
         infix_span = parser.get_span_start();
-        while let Some(infix_opr) = InfixOpr::is_from_def(parser)? {
+        while let Some(infix_opr) = InfixOpr::is_from_def(parser,is_value_expr)? {
             parser.end_span(&mut infix_span);
             let prec = infix_opr.precedence();
             let is_left_to_right = infix_opr.is_left_to_right();
@@ -771,20 +774,20 @@ impl ExprNode {
         } else if let Some(scope) = Scope::is_from_def(parser)? {
             result_enum = ExprNodeEnum::Scope(Box::new(scope));
         } else if parser.is_next("(") {
-            let inner_expr: ExprNode = ExprNode::from_def(parser)?;
+            let inner_expr: ExprNode = ExprNode::from_def(parser, true)?;
             parser.ensure_next(")")?;
             result_enum = inner_expr.value;
         } else if parser.is_next("[") {
-            let first_expr: ExprNode = ExprNode::from_def(parser)?;
+            let first_expr: ExprNode = ExprNode::from_def(parser, true)?;
             result_enum = if parser.is_next(";") {
-                let count_expr: ExprNode = ExprNode::primary_from_def(parser, true)?.0;
+                let count_expr: ExprNode = ExprNode::from_def(parser, true)?;
                 parser.ensure_next("]")?;
                 ExprNodeEnum::Array(Vec::from([first_expr, count_expr]), true)
             } else {
                 let mut vec: Vec<ExprNode> = Vec::from([first_expr]);
                 while !parser.is_next("]") {
                     parser.ensure_next(",")?;
-                    vec.push(ExprNode::from_def(parser)?);
+                    vec.push(ExprNode::from_def(parser, true)?);
                 }
                 ExprNodeEnum::Array(vec, false)
             };
@@ -856,7 +859,7 @@ impl Variable {
             var_type = Some(ExprNode::primary_from_def(parser, false)?.0);
         }
         if parser.is_next("=") {
-            let expr: ExprNode = ExprNode::from_def(parser)?;
+            let expr: ExprNode = ExprNode::from_def(parser, true)?;
             init_expr = Some(expr);
         } else if var_type == None {
             return Err(parser.error(CompilerErrorType::SyntaxError, "Invalid var declaration".to_string(), Some("Cannot infer type. Expected either a type declaration ':' or expression assigment '='".to_string())));
@@ -897,6 +900,7 @@ pub struct Variables {
 
 impl Variables {
     pub fn is_from_def(parser: &mut Parser, curly_brackets: bool) -> Result<Option<Self>, CompilerError> {
+        parser.skip_whitespace()?;
         let opening_bracket = if curly_brackets { '{' } else { '(' };
         if parser.cur_char()? != opening_bracket {
             return Ok(None);
@@ -1047,11 +1051,11 @@ impl Implementation {
             return Ok(None);
         }
         let templates: Option<Templates> = Templates::is_from_def(parser)?;
-        let mut target_type: ExprNode = ExprNode::from_def(parser)?;
+        let mut target_type: ExprNode = ExprNode::primary_from_def(parser, false)?.0;
         let mut opt_trait: Option<ExprNode> = None;
         if parser.is_next("for") {
             opt_trait = Some(target_type);
-            target_type = ExprNode::from_def(parser)?;
+            target_type = ExprNode::primary_from_def(parser, false)?.0;
         }
         let scope: Scope = Scope::from_def(parser)?;
         Ok(Some(Self{templates, opt_trait, target_type, scope}))
@@ -1099,7 +1103,7 @@ impl Statement {
             parser.ensure_next(";")?;
             return Ok(Statement::ControlFlow(control_flow));
         } else {
-            let expr: ExprNode = ExprNode::from_def(parser)?;
+            let expr: ExprNode = ExprNode::from_def(parser, true)?;
             let is_final_value: bool = !parser.is_next(";");
             return Ok(Statement::Expression { expr, is_final_value });
         }

@@ -5,7 +5,6 @@ use crate::{code_lowerer::*, errors::CompilerError, parser::{Function, Span, Var
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn get_ir_var(&mut self, ir_context: &mut IRContext<'ctx>, var: &Variable) -> Result<IRVariable<'ctx>, CompilerError> {
         let type_id = self.get_type(ir_context, var.var_type.as_ref().unwrap(), None)?;
-        println!("e");
         Ok(IRVariable { name: var.name.clone(), type_id, is_mut: var.is_mut, llvm_ptr: None })
     }
 
@@ -39,7 +38,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
     }
 
-    fn get_fun(&mut self, parent_scope: IRScopeId, name: &str, templates_values: &IRTemplatesValues) -> Option<IRFunctionId> {
+    fn get_fun(&mut self, parent_scope: IRScopeId, name: &str, templates_values: &IRTemplatesMap) -> Option<IRFunctionId> {
         for (i, fun) in self.funs_table.iter().enumerate() {
             if fun.parent_scope == parent_scope && fun.ast_def.name == name && fun.templates_values == *templates_values {
                 return Some(i);
@@ -48,7 +47,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         None
     }
 
-    pub fn lower_fun(&mut self, parent_scope: IRScopeId, name: &str, templates_values: IRTemplatesValues, call_span: Option<Span>) -> Result<IRFunctionId, CompilerError> {
+    pub fn lower_fun(&mut self, parent_scope: IRScopeId, name: &str, templates_values: IRTemplatesMap, call_span: Option<Span>) -> Result<IRFunctionId, CompilerError> {
         if let Some(id) = self.get_fun(parent_scope, name, &templates_values) {
             return Ok(id);
         }
@@ -57,7 +56,8 @@ impl<'ctx> CodeLowerer<'ctx> {
         } else {
             return Err(self.error("Missing function", Some(format!("Called a non existing function '{}'", name)), call_span));
         };
-        let fun_path_string: String = self.format_child_scope_path(parent_scope, name, &templates_values);
+        let templates_keys = self.get_templates_keys_from(&fun_def.templates)?;
+        let fun_path_string: String = self.format_child_scope_path(parent_scope, name, &templates_values, &templates_keys);
         let fun_id = self.funs_table.len();
 
         let mut new_templates_values = self.ir_scope(parent_scope).templates_values.clone();
@@ -89,6 +89,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             parent_scope: parent_scope,
             scope: fun_scope,
             templates_values: templates_values.clone(),
+            templates_keys: templates_keys,
             args: args,
             return_type: return_type,
             llvm_type: fun_llvm_type,

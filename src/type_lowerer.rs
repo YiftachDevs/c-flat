@@ -2,7 +2,7 @@ use std::any::Any;
 
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 
-use crate::{code_lowerer::{CodeLowerer, IRContext, IRScope, IRScopeId, IRScopePath, IRTemplatesValues, IRType, IRTypeEnum, IRTypeId, IRVariable, IRVariables, PrimitiveType}, errors::CompilerError, parser::{Span, Struct}};
+use crate::{code_lowerer::{CodeLowerer, IRContext, IRScope, IRScopeId, IRScopePath, IRTemplatesMap, IRType, IRTypeEnum, IRTypeId, IRVariable, IRVariables, PrimitiveType}, errors::CompilerError, parser::{Span, Struct}};
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn find_struct_def_in_scope(&self, parent_scope: IRScopeId, name: &str) -> Option<(IRScopeId, &'ctx Struct)> {
@@ -44,10 +44,10 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
     }
 
-    fn find_type_in_scope(&mut self, _parent_scope: IRScopeId, name: &str, _templates_values: &IRTemplatesValues) -> Option<IRTypeId> {
+    fn find_type_in_scope(&mut self, _parent_scope: IRScopeId, name: &str, _templates_values: &IRTemplatesMap) -> Option<IRTypeId> {
         for (i, ir_type) in self.types_table.iter().enumerate() {
             match &ir_type.type_enum {
-                IRTypeEnum::Struct { parent_scope, scope, templates_values, args, def, vars_built } => {
+                IRTypeEnum::Struct { parent_scope, scope, templates_values, args, def, vars_built, templates_keys } => {
                     if _parent_scope == *parent_scope && def.name == name && _templates_values == templates_values {
                         return Some(i);
                     }
@@ -58,7 +58,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         None
     }
 
-    pub fn lower_struct(&mut self, parent_scope: IRScopeId, name: &str, templates_values: IRTemplatesValues, call_span: Option<Span>) -> Result<IRTypeId, CompilerError> {
+    pub fn lower_struct(&mut self, parent_scope: IRScopeId, name: &str, templates_values: IRTemplatesMap, call_span: Option<Span>) -> Result<IRTypeId, CompilerError> {
         if let Some(id) = self.find_type_in_scope(parent_scope, name, &templates_values) {
             return Ok(id);
         }
@@ -67,15 +67,16 @@ impl<'ctx> CodeLowerer<'ctx> {
         } else {
             return Err(self.error("Missing struct", Some(format!("Called a non existing structure '{}'", name)), call_span));
         };
-        let struct_path_string: String = self.format_child_scope_path(parent_scope, name, &templates_values);
+        let templates_keys = self.get_templates_keys_from(&struct_def.templates)?;
+        let struct_path_string: String = self.format_child_scope_path(parent_scope, name, &templates_values, &templates_keys);
 
         let mut new_templates_values = self.ir_scope(parent_scope).templates_values.clone();
         new_templates_values.extend(templates_values.clone());
 
         let struct_id: usize = self.types_table.len();
         let struct_scope = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Type(struct_id), path_string: struct_path_string.clone(), templates_values: new_templates_values, ast_def: None });
-        let ir_type_enum = IRTypeEnum::Struct { parent_scope, scope: struct_scope, templates_values, def: struct_def, args: Vec::new(), vars_built: false };
-        self.types_table.push(IRType { type_enum: ir_type_enum, llvm_type: None });
+        let ir_type_enum = IRTypeEnum::Struct { parent_scope, scope: struct_scope, templates_values, def: struct_def, args: Vec::new(), vars_built: false, templates_keys };
+        self.types_table.push(IRType { type_enum: ir_type_enum, llvm_type: None, lowered_impls: Vec::new() });
 
         let mut ir_context = IRContext::ScopeContext(struct_scope);
         let mut members: IRVariables = Vec::new();
@@ -92,7 +93,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         // members_llvm_types.as_slice(), false
         let struct_llvm_type = self.llvm_context.opaque_struct_type(struct_path_string.as_str());
         struct_llvm_type.set_body(members_llvm_types.as_slice(), false);
-        if let IRTypeEnum::Struct { parent_scope, scope, templates_values, args, def, vars_built } = &mut self.types_table[struct_id].type_enum {
+        if let IRTypeEnum::Struct { parent_scope, scope, templates_values, args, def, vars_built, templates_keys } = &mut self.types_table[struct_id].type_enum {
             *args = members;
         }
         self.types_table[struct_id].llvm_type = Some(struct_llvm_type.into());
