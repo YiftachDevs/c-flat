@@ -5,7 +5,7 @@ use crate::{code_lowerer::*, errors::CompilerError, parser::{Function, Span, Var
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn get_ir_var(&mut self, ir_context: &mut IRContext<'ctx>, var: &Variable) -> Result<IRVariable<'ctx>, CompilerError> {
         let type_id = self.get_type(ir_context, var.var_type.as_ref().unwrap(), None)?;
-        Ok(IRVariable { name: var.name.clone(), type_id, is_mut: var.is_mut, llvm_ptr: None })
+        Ok(IRVariable { name: var.name.clone(), type_id, is_mut: var.is_mut, llvm_value: None })
     }
 
     pub fn get_alloca(&self, type_id: IRTypeId, name: &str) -> PointerValue<'ctx> {
@@ -38,17 +38,17 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
     }
 
-    fn get_fun(&mut self, parent_scope: IRScopeId, name: &str, templates_values: &IRTemplatesMap) -> Option<IRFunctionId> {
+    fn get_fun(&mut self, parent_scope: IRScopeId, name: &str, templates_map: &IRTemplatesMap) -> Option<IRFunctionId> {
         for (i, fun) in self.funs_table.iter().enumerate() {
-            if fun.parent_scope == parent_scope && fun.ast_def.name == name && fun.templates_values == *templates_values {
+            if fun.parent_scope == parent_scope && fun.ast_def.name == name && fun.templates_map == *templates_map {
                 return Some(i);
             }
         }
         None
     }
 
-    pub fn lower_fun(&mut self, parent_scope: IRScopeId, name: &str, templates_values: IRTemplatesMap, call_span: Option<Span>) -> Result<IRFunctionId, CompilerError> {
-        if let Some(id) = self.get_fun(parent_scope, name, &templates_values) {
+    pub fn lower_fun(&mut self, parent_scope: IRScopeId, name: &str, templates_map: IRTemplatesMap, call_span: Option<Span>) -> Result<IRFunctionId, CompilerError> {
+        if let Some(id) = self.get_fun(parent_scope, name, &templates_map) {
             return Ok(id);
         }
         let (_, fun_def) = if let Some(def) = self.find_fun_def_in_scope(parent_scope, name) {
@@ -56,14 +56,13 @@ impl<'ctx> CodeLowerer<'ctx> {
         } else {
             return Err(self.error("Missing function", Some(format!("Called a non existing function '{}'", name)), call_span));
         };
-        let templates_keys = self.get_templates_keys_from(&fun_def.templates)?;
-        let fun_path_string: String = self.format_child_scope_path(parent_scope, name, &templates_values, &templates_keys);
+        let fun_path_string: String = self.format_child_scope_path(parent_scope, name, &templates_map);
         let fun_id = self.funs_table.len();
 
-        let mut new_templates_values = self.ir_scope(parent_scope).templates_values.clone();
-        new_templates_values.extend(templates_values.clone());
+        let mut new_templates_map = self.ir_scope(parent_scope).templates_map.clone();
+        new_templates_map.extend(templates_map.clone());
 
-        let fun_scope = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Function(fun_id), path_string: fun_path_string.clone(), templates_values: new_templates_values, ast_def: Some(fun_def.scope.as_ref().unwrap()) });
+        let fun_scope = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Function(fun_id), path_string: fun_path_string.clone(), templates_map: new_templates_map, ast_def: Some(fun_def.scope.as_ref().unwrap()) });
 
         let mut ir_context = IRContext::ScopeContext(fun_scope);
         let return_type: IRTypeId = if let Some(return_t) = &fun_def.return_type { self.get_type(&mut ir_context, return_t, None)? } else { self.primitive_type(PrimitiveType::Void)? };
@@ -88,8 +87,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         let ir_fun = IRFunction {
             parent_scope: parent_scope,
             scope: fun_scope,
-            templates_values: templates_values.clone(),
-            templates_keys: templates_keys,
+            templates_map: templates_map.clone(),
             args: args,
             return_type: return_type,
             llvm_type: fun_llvm_type,
@@ -115,14 +113,12 @@ impl<'ctx> CodeLowerer<'ctx> {
 
         let mut ir_fun_scope = IRFunContext { fun: fun, vars: Vec::new() };
 
-        for arg in ir_fun.args.iter() {
-            let mut new_arg = arg.clone();
-            new_arg.llvm_ptr = Some(self.get_alloca(arg.type_id, arg.name.as_str()));
-            ir_fun_scope.vars.push(new_arg);
-        }
-        for (i, arg) in ir_fun_scope.vars.iter_mut().enumerate() {
+        for (i, arg) in ir_fun.args.iter().enumerate() {
             let arg_value = llvm_value.get_nth_param(i as u32).unwrap();
-            self.builder.build_store(arg.llvm_ptr.unwrap(), arg_value).unwrap();
+            arg_value.set_name(&arg.name);
+            let mut new_arg = arg.clone();
+            new_arg.llvm_value = Some(arg_value);
+            ir_fun_scope.vars.push(new_arg);
         }
 
         let mut ir_context = IRContext::FunContext(ir_fun_scope);
@@ -134,6 +130,8 @@ impl<'ctx> CodeLowerer<'ctx> {
 
         if let Some(value) = self.r_value(&result) {
             self.builder.build_return(Some(&value)).expect("Return build failed");
+        } else {
+            self.builder.build_return(None).expect("Return build failed");
         }
 
         if let Some(block) = original_block {

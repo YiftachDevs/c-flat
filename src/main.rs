@@ -6,6 +6,7 @@ mod expr_lowerer;
 mod type_lowerer;
 mod impl_lowerer;
 
+use indexmap::IndexMap;
 use inkwell::context::Context;
 
 use colored::*;
@@ -40,7 +41,7 @@ fn main() {
     let mut code_lowerer = CodeLowerer::new(&main_scope, file_context, &llvm_context);
 
     let global_scope = code_lowerer.get_global_scope();
-    let main_fun_result = code_lowerer.lower_fun(global_scope, "main", HashMap::new(), None);
+    let main_fun_result = code_lowerer.lower_fun(global_scope, "main", IndexMap::new(), None);
 
     if let Err(err) = main_fun_result {
         eprintln!("{}", err);

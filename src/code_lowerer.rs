@@ -4,6 +4,7 @@ use std::hash::Hash;
 use std::path::Path;
 
 
+use indexmap::IndexMap;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
@@ -23,13 +24,14 @@ pub type IRTypeId = usize;
 pub type IRFunctionId = usize;
 pub type IRScopeId = usize;
 pub type IRTraitId = usize;
+pub type IRImplId = usize;
 
 #[derive(PartialEq, Clone)]
 pub struct IRVariable<'ctx> {
     pub name: String,
     pub type_id: IRTypeId,
     pub is_mut: bool,
-    pub llvm_ptr: Option<PointerValue<'ctx>>
+    pub llvm_value: Option<BasicValueEnum<'ctx>>
 }
 
 pub type IRVariables<'ctx> = Vec<IRVariable<'ctx>>;
@@ -40,7 +42,7 @@ pub enum IRTypeEnum<'ctx> {
     Pointer { ptr_type_id: IRTypeId, is_ref: bool },
     Array { arr_type: IRTypeId, size: usize },
     Callback { args: IRVariables<'ctx>, return_type: IRTypeId },
-    Struct { parent_scope: IRScopeId, scope: IRScopeId, templates_values: IRTemplatesMap, templates_keys: Vec<IRTemplateKey>, args: IRVariables<'ctx>, def: &'ctx Struct, vars_built: bool }
+    Struct { parent_scope: IRScopeId, scope: IRScopeId, templates_map: IRTemplatesMap, args: IRVariables<'ctx>, def: &'ctx Struct, vars_built: bool }
 }
 
 pub type IRTemplateValue = IRTypeId;
@@ -50,7 +52,7 @@ pub struct IRTemplateKey {
     pub name: String
 }
 
-pub type IRTemplatesMap = HashMap<IRTemplateKey, IRTemplateValue>;
+pub type IRTemplatesMap = IndexMap<IRTemplateKey, IRTemplateValue>;
 
 #[derive(Eq, PartialEq, Clone, Hash, Copy)]
 pub enum PrimitiveType {
@@ -124,22 +126,22 @@ impl ToString for PrimitiveType {
 pub struct IRType<'ctx> {
     pub type_enum: IRTypeEnum<'ctx>,
     pub llvm_type: Option<BasicTypeEnum<'ctx>>,
-    pub lowered_impls: Vec<IRImpl<'ctx>>
+    pub lowered_impls: Vec<IRImplId>
 }
 
 #[derive(PartialEq)]
 pub struct IRImpl<'ctx> {
-    scope: IRScopeId,
-    trait_id: Option<IRTraitId>,
-    ast_def: &'ctx Implementation
+    pub scope: IRScopeId,
+    pub type_id: IRTypeId,
+    pub trait_id: Option<IRTraitId>,
+    pub ast_def: &'ctx Implementation
 }
 
 #[derive(PartialEq)]
 pub struct IRFunction<'ctx> {
     pub parent_scope: IRScopeId,
     pub scope: IRScopeId,
-    pub templates_keys: Vec<IRTemplateKey>,
-    pub templates_values: IRTemplatesMap,
+    pub templates_map: IRTemplatesMap,
     pub args: IRVariables<'ctx>,
     pub return_type: IRTypeId,
     pub llvm_type: FunctionType<'ctx>,
@@ -147,12 +149,12 @@ pub struct IRFunction<'ctx> {
     pub ast_def: &'ctx Function
 }
 
-
 #[derive(PartialEq, Clone)]
 pub enum IRScopePath {
     ModulePath(Vec<String>),
-    Function(IRFunctionId), // add TypeImpl(...)
-    Type(IRTypeId)
+    Function(IRFunctionId),
+    Type(IRTypeId),
+    Impl(IRImplId)
 }
 
 #[derive(PartialEq, Clone)]
@@ -160,7 +162,7 @@ pub struct IRScope<'ctx> {
     pub parent_scope: Option<IRScopeId>,
     pub path: IRScopePath,
     pub path_string: String,
-    pub templates_values: IRTemplatesMap,
+    pub templates_map: IRTemplatesMap,
     pub ast_def: Option<&'ctx Scope>
 }
 
@@ -171,7 +173,8 @@ pub struct IRFunContext<'ctx> {
 
 pub enum IRContext<'ctx> {
     FunContext(IRFunContext<'ctx>),
-    ScopeContext(IRScopeId)
+    ScopeContext(IRScopeId),
+    ImplDefContext(IRScopeId, Vec<IRTemplateKey>, IRTemplatesMap)
 }
 
 impl<'ctx> IRContext<'ctx> {
@@ -192,18 +195,20 @@ pub struct CodeLowerer<'ctx> {
     pub types_table: Vec<IRType<'ctx>>,
     pub funs_table: Vec<IRFunction<'ctx>>,
     pub scopes_table: Vec<IRScope<'ctx>>,
+    pub impls_table: Vec<IRImpl<'ctx>>,
 }
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn new(ast_scope: &'ctx Scope, file_context: FileContext, llvm_context: &'ctx Context) -> Self {
         let module: Module = llvm_context.create_module("main_module");
         let builder: Builder<'_> = llvm_context.create_builder();
-        CodeLowerer { ast_scope, file_context, llvm_context, module, builder, types_table: Vec::new(), funs_table: Vec::new(), scopes_table: Vec::new() }
+        CodeLowerer { ast_scope, file_context, llvm_context, module, builder, types_table: Vec::new(), funs_table: Vec::new(), scopes_table: Vec::new(), impls_table: Vec::new() }
     }
 
     pub fn ir_type(&self, type_id: IRTypeId) -> &IRType<'ctx> { &self.types_table[type_id] }
     pub fn ir_function(&self, fun_id: IRFunctionId) -> &IRFunction<'ctx> { &self.funs_table[fun_id] }
     pub fn ir_scope(&self, scope_id: IRScopeId) -> &IRScope<'ctx> { &self.scopes_table[scope_id] }
+    pub fn ir_impl(&self, impl_id: IRImplId) -> &IRImpl<'ctx> { &self.impls_table[impl_id] }
 
     pub fn scope_id(&mut self, ir_scope: IRScope<'ctx>) -> IRScopeId {
         if let Some((i, _)) = self.scopes_table.iter().enumerate().find(|(_, cur_ir)| **cur_ir == ir_scope) {
@@ -229,6 +234,15 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
         let id = self.types_table.len();
         self.types_table.push(ir_type);
+        id
+    }
+
+    pub fn impl_id(&mut self, ir_impl: IRImpl<'ctx>) -> IRImplId {
+        if let Some((i, _)) = self.impls_table.iter().enumerate().find(|(_, cur_ir)| **cur_ir == ir_impl) {
+            return i;
+        }
+        let id = self.impls_table.len();
+        self.impls_table.push(ir_impl);
         id
     }
 
@@ -274,7 +288,8 @@ impl<'ctx> CodeLowerer<'ctx> {
     pub fn get_context_scope(&mut self, ir_context: &IRContext<'ctx>) -> IRScopeId {
         match ir_context {
             IRContext::FunContext(fun) => self.ir_function(fun.fun).scope,
-            IRContext::ScopeContext(scope) => *scope
+            IRContext::ScopeContext(scope) => *scope,
+            IRContext::ImplDefContext(parent_scope, _, _) => *parent_scope
         }
     }
 
@@ -285,8 +300,8 @@ impl<'ctx> CodeLowerer<'ctx> {
                 if module.name == name {
                     let mut new_parent_path = if let IRScopePath::ModulePath(path) = ir_parent_scope.path.clone() { path } else { panic!("CodeLowerer::get_module_scope_in_scope") };
                     new_parent_path.push(name.to_string());
-                    let path_string = self.format_child_scope_path(parent_scope, name, &HashMap::new(), &Vec::new());
-                    let ir_scope = IRScope { parent_scope: Some(parent_scope), path: IRScopePath::ModulePath(new_parent_path), templates_values: HashMap::new(), ast_def: Some(&module.scope), path_string };
+                    let path_string = self.format_child_scope_path(parent_scope, name, &IndexMap::new());
+                    let ir_scope = IRScope { parent_scope: Some(parent_scope), path: IRScopePath::ModulePath(new_parent_path), templates_map: IndexMap::new(), ast_def: Some(&module.scope), path_string };
                     return Some(self.scope_id(ir_scope));
                 }
             }
@@ -299,7 +314,7 @@ impl<'ctx> CodeLowerer<'ctx> {
     }
     
     pub fn get_global_scope(&mut self) -> IRScopeId {
-        self.scope_id(IRScope{ parent_scope: None, path: IRScopePath::ModulePath(Vec::new()), path_string: "".to_string(), templates_values: HashMap::new(), ast_def: Some(&self.ast_scope)})
+        self.scope_id(IRScope{ parent_scope: None, path: IRScopePath::ModulePath(Vec::new()), path_string: "".to_string(), templates_map: IndexMap::new(), ast_def: Some(&self.ast_scope)})
     }
 
     pub fn format_scope_path(&self, scope: IRScopeId) -> String {
@@ -311,13 +326,17 @@ impl<'ctx> CodeLowerer<'ctx> {
             IRScopePath::Function(fun) => {
                 let ir_fun = self.ir_function(*fun);
                 let ir_scope = self.ir_scope(ir_fun.scope);
-                self.format_child_scope_path(scope, &ir_fun.ast_def.name, &ir_scope.templates_values, &ir_fun.templates_keys)
+                self.format_child_scope_path(scope, &ir_fun.ast_def.name, &ir_scope.templates_map)
+            },
+            IRScopePath::Impl(impl_id) => {
+                let ir_impl = self.ir_impl(*impl_id);
+                self.format_type(ir_impl.type_id)
             },
             IRScopePath::Type(type_id) => {
                 let ir_type = self.ir_type(*type_id);
                 match &ir_type.type_enum {
-                    IRTypeEnum::Struct { parent_scope, scope, templates_values, args, def, vars_built, templates_keys } => {
-                        self.format_child_scope_path(*parent_scope, &def.name, &self.ir_scope(*scope).templates_values, templates_keys)
+                    IRTypeEnum::Struct { parent_scope, scope, templates_map, args, def, vars_built } => {
+                        self.format_child_scope_path(*parent_scope, &def.name, &self.ir_scope(*scope).templates_map)
                     },
                     _ => todo!("format_scope_path")
                 }
@@ -325,17 +344,17 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
     }
 
-    pub fn format_child_scope_path(&self, parent_scope: IRScopeId, name: &str, templates_map: &IRTemplatesMap, templates_keys: &Vec<IRTemplateKey>) -> String {
+    pub fn format_child_scope_path(&self, parent_scope: IRScopeId, name: &str, templates_map: &IRTemplatesMap) -> String {
         let mut parent_str = self.format_scope_path(parent_scope);
         if !parent_str.is_empty() { parent_str.push('.');}
-        format!("{}{}{}", parent_str, name, self.format_templates_values(templates_map, templates_keys))
+        format!("{}{}{}", parent_str, name, self.format_templates_values(templates_map))
     }
 
-    pub fn format_templates_values(&self, templates_map: &IRTemplatesMap, templates_keys: &Vec<IRTemplateKey>) -> String {
+    pub fn format_templates_values(&self, templates_map: &IRTemplatesMap) -> String {
         if templates_map.is_empty() {
             "".to_string()
         } else {
-            let templates_values_str = templates_keys.iter().map(|key| self.format_type(templates_map[key])).collect::<Vec<String>>().join(", ");
+            let templates_values_str = templates_map.iter().map(|(_, value)| self.format_type(*value)).collect::<Vec<String>>().join(", ");
             format!("<{}>", templates_values_str)
         }
     }
@@ -352,7 +371,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 let ptr_char = if *is_ref { "&" } else { "*" };
                 format!("{}{}", ptr_char, ptr_type_string)
             },
-            IRTypeEnum::Struct { parent_scope, scope, templates_values, args, def, vars_built, templates_keys } => {
+            IRTypeEnum::Struct { parent_scope, scope, templates_map, args, def, vars_built } => {
                 self.format_scope_path(*scope)
             },
             _ => todo!("format_type")
