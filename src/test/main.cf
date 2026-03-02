@@ -1,15 +1,14 @@
 fun main() {
-    let vec = math.Vec_2<f32> { 5.0, 6.0 };
-    let x = math.get_x<f32>(vec);
+    let nothing = Nothing { };
+    let vec = Vec_2<f32> { 0.3, 0.4 };
+    let vec_wrapper = Wrapper<Vec_2<f32>> { vec };
+    debug<f32>(vec_wrapper.value.y)
 }
 
-mod math {
-    struct Vec_2<T> { x: T, y: T }
-    // i32 ? not
-    // Vec_2<i32> no
-    impl<T> Vec_2<Vec_2<T>> {
-        fun get_x(vec: Vec_2<T>) -> T {
-            vec.x
-        }
-    }
+struct Wrapper<T: i32> { value: T }
+struct Vec_2<T> { x: T, y: T }
+struct Nothing { }
+
+fun debug<T>(value: T) {
+
 }

@@ -27,7 +27,8 @@ impl<'ctx> CodeLowerer<'ctx> {
     }
 
     pub fn match_type(&mut self, parent_scope: IRScopeId, templates_keys: Vec<IRTemplateKey>, expr: &ExprNode, target_type: IRTypeId) -> Result<Option<IRTemplatesMap>, CompilerError> {
-        let ir_context = IRContext::ImplDefContext(parent_scope, templates_keys, IndexMap::new());
-        let expr_result = self.lower_expr(&mut ir_context, expr, context_type)
+        let mut ir_context = IRContext::ImplDefContext(parent_scope, templates_keys, IndexMap::new());
+        let expr_result = self.lower_expr(&mut ir_context, expr, Some(target_type))?;
+        Ok(None)
     }
 }

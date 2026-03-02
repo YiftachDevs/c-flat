@@ -83,7 +83,8 @@ pub struct Function {
     pub templates: Option<Templates>,
     pub args: Variables,
     pub return_type: Option<ExprNode>,
-    pub scope: Option<Scope>
+    pub scope: Option<Scope>,
+    pub span: Span,
 }
 
 #[derive(PartialEq, Clone)]
@@ -194,26 +195,22 @@ impl ToString for ConditionalChain {
 
 #[derive(PartialEq, Clone)]
 pub enum ControlFlow {
-    Return(Option<ExprNode>),
+    Return(ExprNode),
     Skip,
-    Stop(Option<ExprNode>)
+    Stop(ExprNode)
 }
 
 impl ToString for ControlFlow {
     fn to_string(&self) -> String {
         match self {
-            ControlFlow::Return(expr_node_opt) => {
+            ControlFlow::Return(expr_node) => {
                 let mut result: String = "return".to_string();
-                if let Some(expr_node) = expr_node_opt {
-                    result += format!(" {}", expr_node.to_string()).as_str();
-                }
+                result += format!(" {}", expr_node.to_string()).as_str();
                 result
             }
-            ControlFlow::Stop(expr_node_opt) => {
+            ControlFlow::Stop(expr_node) => {
                 let mut result: String = "stop".to_string();
-                if let Some(expr_node) = expr_node_opt {
-                    result += format!(" {}", expr_node.to_string()).as_str();
-                }
+                result += format!(" {}", expr_node.to_string()).as_str();
                 result
             }
             ControlFlow::Skip => "skip".to_string()
@@ -237,9 +234,10 @@ pub struct Scope {
 
 #[derive(PartialEq, Clone)]
 pub enum ExprNodeEnum {
+    Empty,
     InfixOpr(InfixOpr, Box<ExprNode>, Box<ExprNode>),
     PrefixOpr(PrefixOpr, Box<ExprNode>),
-    PostfixOpr(PostfixOpr, Box<ExprNode>, Option<Box<ExprNode>>),
+    PostfixOpr(PostfixOpr, Box<ExprNode>, Box<ExprNode>),
     Name(String, bool),
     Literal(Literal),
     VarDeclaration(Box<Variable>),
@@ -264,7 +262,7 @@ pub struct Module {
 pub struct Struct {
     pub name: String,
     pub templates: Option<Templates>,
-    pub vars: Option<Variables>
+    pub vars: Variables
 }
 
 #[derive(PartialEq, Clone)]
@@ -322,9 +320,9 @@ impl ControlFlow {
         let result: ControlFlow = if parser.is_next("skip") {
             ControlFlow::Skip
         } else if parser.is_next("return") {
-            ControlFlow::Return(ExprNode::is_from_def(parser, true)?)
+            ControlFlow::Return(ExprNode::from_def(parser, true)?)
         } else if parser.is_next("stop") {
-            ControlFlow::Stop(ExprNode::is_from_def(parser, true)?)
+            ControlFlow::Stop(ExprNode::from_def(parser, true)?)
         } else {
             return Ok(None);
         };
@@ -345,13 +343,13 @@ impl InfixOpr {
                 parser.index += 1; InfixOpr::As
             } else {
                 parser.index -= 1;
-                return Err(parser.error(CompilerErrorType::SyntaxError, "Expected an infix operator".to_string(), Some("Expected an infix operator, did you mean 'as'?".to_string())));
+                return Err(parser.error(CompilerErrorType::SyntaxError(SyntaxError::ExpectedInfixOpr)));
             },
             'i' => if parser.cur_char()? == 's' {
                 parser.index += 1; InfixOpr::Is
             } else {
                 parser.index -= 1;
-                return Err(parser.error(CompilerErrorType::SyntaxError, "Expected an infix operator".to_string(), Some("Expected an infix operator, did you mean 'is'?".to_string())));
+                return Err(parser.error(CompilerErrorType::SyntaxError(SyntaxError::ExpectedInfixOpr)));
             },
             '*' => InfixOpr::Mul,
             '/' => InfixOpr::Div,
@@ -372,7 +370,7 @@ impl InfixOpr {
                 parser.index += 1; InfixOpr::Neq
             } else {
                 parser.index -= 1;
-                return Err(parser.error(CompilerErrorType::SyntaxError, "Expected an infix operator".to_string(), Some("Expected an infix operator, found the '!' prefix operator instead".to_string())));
+                return Err(parser.error(CompilerErrorType::SyntaxError(SyntaxError::ExpectedInfixOpr)));
             },
             '&' => if parser.cur_char()? == '&' { parser.index += 1; InfixOpr::LAnd } else { InfixOpr::And },
             '^' => InfixOpr::Xor,
@@ -465,26 +463,26 @@ impl ToString for PrefixOpr {
 }
 
 impl PostfixOpr {
-    pub fn is_from_def(parser: &mut Parser, is_constructor_plausible: bool) -> Result<Option<(Self, Option<ExprNode>, bool)>, CompilerError> {
+    pub fn is_from_def(parser: &mut Parser, is_constructor_plausible: bool) -> Result<Option<(Self, ExprNode, bool)>, CompilerError> {
         parser.skip_whitespace()?;
         let ch: char = parser.cur_char()?;
         parser.index += 1;
-        let expr_result: Option<ExprNode>;
+        let expr_result: ExprNode;
         let mut is_result_constructor_plausible: bool = false;
 
         let result: PostfixOpr = match ch {
             '[' => {
-                expr_result = Some(ExprNode::from_def(parser, true)?);
+                expr_result = ExprNode::from_def(parser, true)?;
                 parser.ensure_next("]")?;
                 PostfixOpr::Idx
             }
             '(' => {
-                expr_result = ExprNode::is_from_def(parser, true)?;
+                expr_result = ExprNode::from_def(parser, true)?;
                 parser.ensure_next(")")?;
                 PostfixOpr::Inv
             }
             '<' => {
-                expr_result = Some(ExprNode::from_def(parser, false)?);
+                expr_result = ExprNode::from_def(parser, false)?;
                 parser.ensure_next(">")?;
                 is_result_constructor_plausible = is_constructor_plausible;
                 PostfixOpr::Tmp
@@ -494,17 +492,17 @@ impl PostfixOpr {
                 if parser.is_name_start(true)? {
                     let name: String = parser.next_name(true)?;
                     parser.end_span(&mut span);
-                    expr_result = Some(ExprNode { value: ExprNodeEnum::Name(name, true), span });
+                    expr_result = ExprNode { value: ExprNodeEnum::Name(name, true), span };
                 } else {
                     let name: String = parser.next_name(false)?;
                     parser.end_span(&mut span);
-                    expr_result = Some(ExprNode { value: ExprNodeEnum::Name(name, false), span });  
+                    expr_result = ExprNode { value: ExprNodeEnum::Name(name, false), span };  
                     is_result_constructor_plausible = true;
                 }
                 PostfixOpr::Mem
             },
             '{' => if is_constructor_plausible {
-                expr_result = ExprNode::is_from_def(parser, true)?;
+                expr_result = ExprNode::from_def(parser, true)?;
                 parser.ensure_next("}")?;
                 PostfixOpr::Con
             } else {
@@ -609,7 +607,7 @@ impl Literal {
         parser.skip_whitespace()?;
         let ch: char = parser.cur_char()?;
         if !(ch >= '0' && ch <= '9') {
-            return Err(parser.error(CompilerErrorType::SyntaxError, format!("Expected a numeral, found char '{}'", ch), Some("A numeral must start with char 0 - 9".to_string())));
+            return Err(parser.error(CompilerErrorType::SyntaxError(SyntaxError::ExpectedNumeral)));
         }
         #[derive(PartialEq, Clone)]
         enum NumType { Dec, Hex, Bin }
@@ -700,25 +698,29 @@ impl ToString for Literal {
 }
 
 impl ExprNode {
-    pub fn is_from_def(parser: &mut Parser, is_value_expr: bool) -> Result<Option<Self>, CompilerError> {
+    /*pub fn is_from_def(parser: &mut Parser, is_value_expr: bool) -> Result<Option<Self>, CompilerError> {
         let ch: char = parser.cur_char()?;
-        if ch == ';' || ch == ')' {
+        if ch == ';' || ch == ')' || ch == '}' {
             return Ok(None);
         }
         return Ok(Some(ExprNode::from_def(parser, is_value_expr)?));
-    }
+    }*/
 
     pub fn from_def(parser: &mut Parser, is_value_expr: bool) -> Result<Self, CompilerError> {
         let mut root: Box<ExprNode> = Box::new(ExprNode::primary_from_def(parser, true)?.0);
-        
+        if root.value == ExprNodeEnum::Empty {
+            return Ok(*root);
+        }
         let mut infix_span = parser.get_span_start();
         if let Some(infix_opr) = InfixOpr::is_from_def(parser, is_value_expr)? {
             parser.end_span(&mut infix_span);
             let next_node: ExprNode = ExprNode::primary_from_def(parser, true)?.0;
             root = Box::new(ExprNode{ value: ExprNodeEnum::InfixOpr(infix_opr, root, Box::new(next_node)), span: infix_span });
         }
-        infix_span = parser.get_span_start();
-        while let Some(infix_opr) = InfixOpr::is_from_def(parser,is_value_expr)? {
+        loop {
+            parser.skip_whitespace()?;
+            infix_span = parser.get_span_start();
+            let infix_opr = match InfixOpr::is_from_def(parser,is_value_expr)? { Some(opr) => opr, None => break };
             parser.end_span(&mut infix_span);
             let prec = infix_opr.precedence();
             let is_left_to_right = infix_opr.is_left_to_right();
@@ -763,7 +765,14 @@ impl ExprNode {
         let mut result_span: Span = parser.get_span_start();
         let mut result_enum: ExprNodeEnum;
         let mut is_result_constructor_plausible: bool = false;
-        if let Some(prefix_opr) = PrefixOpr::is_from_def(parser)? {
+        let ch: char = parser.cur_char()?;
+        if ch == ';' || ch == ')' || ch == '}' || ch == '>' || ch == ']' {
+            parser.index += 1;
+            parser.end_span(&mut result_span);
+            parser.index -= 1;
+            result_enum = ExprNodeEnum::Empty;
+            return Ok((ExprNode { value: result_enum, span: result_span }, false));
+        } else if let Some(prefix_opr) = PrefixOpr::is_from_def(parser)? {
             result_enum = ExprNodeEnum::PrefixOpr(prefix_opr, Box::new(ExprNode::primary_from_def(parser, is_constructor_plausible)?.0));
         } else if let Some(new_var) = Variable::is_from_def(parser)? {
             result_enum = ExprNodeEnum::VarDeclaration(Box::new(new_var));
@@ -799,13 +808,13 @@ impl ExprNode {
             let name: String = parser.next_name(true)?;
             result_enum = ExprNodeEnum::Name(name, true);
         } else {
-            return Err(parser.error(CompilerErrorType::SyntaxError, "Missing / Unknown primary expression".to_string(), None));
+            return Err(parser.error(CompilerErrorType::SyntaxError(SyntaxError::ExpectedPrimaryExpression)));
         }
         parser.end_span(&mut result_span);
 
         while let Some((postfix_opr, expr_node, is_new_constructor_plausible)) = PostfixOpr::is_from_def(parser, is_result_constructor_plausible)? {
             is_result_constructor_plausible = is_new_constructor_plausible;
-            result_enum = ExprNodeEnum::PostfixOpr(postfix_opr, Box::new(ExprNode { value: result_enum, span: result_span }), expr_node.map(|value| Box::new(value)));
+            result_enum = ExprNodeEnum::PostfixOpr(postfix_opr, Box::new(ExprNode { value: result_enum, span: result_span }), Box::new(expr_node));
             parser.end_span(&mut result_span);
         }
         Ok((ExprNode { value: result_enum, span: result_span }, is_result_constructor_plausible))
@@ -815,6 +824,7 @@ impl ExprNode {
 impl ToString for ExprNode {
     fn to_string(&self) -> String {
         match &self.value {
+            ExprNodeEnum::Empty => "".to_string(),
             ExprNodeEnum::PrefixOpr(prefix_opr, node) => {
                 format!("{}{}", prefix_opr.to_string(), node.to_string())
             },
@@ -828,13 +838,12 @@ impl ToString for ExprNode {
                 name.clone()
             },
             ExprNodeEnum::PostfixOpr(postfix_opr, left, right) => {
-                let right_str: String = if let Some(right_expr) = right.as_ref() { right_expr.to_string() } else { String::new() };
                 match postfix_opr {
-                    PostfixOpr::Idx => format!("{}[{}]", left.to_string(), right_str),
-                    PostfixOpr::Inv => format!("{}({})", left.to_string(), right_str),
-                    PostfixOpr::Tmp => format!("{}<{}>", left.to_string(), right_str),
-                    PostfixOpr::Con => format!("{} {{ {} }}", left.to_string(), right_str),
-                    PostfixOpr::Mem => format!("{}.{}", left.to_string(), right_str)
+                    PostfixOpr::Idx => format!("{}[{}]", left.to_string(), right.to_string()),
+                    PostfixOpr::Inv => format!("{}({})", left.to_string(), right.to_string()),
+                    PostfixOpr::Tmp => format!("{}<{}>", left.to_string(), right.to_string()),
+                    PostfixOpr::Con => format!("{} {{ {} }}", left.to_string(), right.to_string()),
+                    PostfixOpr::Mem => format!("{}.{}", left.to_string(), right.to_string())
                 }
             },
             ExprNodeEnum::VarDeclaration(var_box) => format!("let {}", var_box.to_string()),
@@ -862,7 +871,7 @@ impl Variable {
             let expr: ExprNode = ExprNode::from_def(parser, true)?;
             init_expr = Some(expr);
         } else if var_type == None {
-            return Err(parser.error(CompilerErrorType::SyntaxError, "Invalid var declaration".to_string(), Some("Cannot infer type. Expected either a type declaration ':' or expression assigment '='".to_string())));
+            return Err(parser.error(CompilerErrorType::SyntaxError(SyntaxError::UndeducibleType)));
         }
         parser.end_span(&mut span);
         return Ok(Self { name: name, var_type: var_type, init_expr: init_expr, is_mut: is_mut, span });
@@ -967,7 +976,9 @@ impl Function {
         if !parser.is_next("fun") {
             return Ok(None);
         }
+        let mut span: Span = parser.get_span_start();
         let name: String = parser.next_name(true)?;
+        parser.end_span(&mut span);
         let templates: Option<Templates> = Templates::is_from_def(parser)?;
         let args: Variables = Variables::from_def(parser, false)?;
         let return_type = if parser.is_next("->") {
@@ -976,7 +987,7 @@ impl Function {
             None
         };
         let scope: Option<Scope> = if parser.is_next(";") { None } else { Some(Scope::from_def(parser)?) };
-        Ok(Some(Self { name, templates, args, return_type, scope }))
+        Ok(Some(Self { name, templates, args, return_type, scope, span }))
     }
 }
 
@@ -1008,7 +1019,7 @@ impl Struct {
     pub fn from_after_def(parser: &mut Parser) -> Result<Self, CompilerError> {
         let name: String = parser.next_name(false)?;
         let templates: Option<Templates> = Templates::is_from_def(parser)?;
-        let vars: Option<Variables> = Variables::is_from_def(parser, true)?;
+        let vars: Variables = Variables::from_def(parser, true)?;
         Ok(Self { name, templates, vars })
     }
 }
@@ -1018,7 +1029,7 @@ impl ToString for Struct {
         return format!("{}{}{}",
             self.name,
             if let Some(templates) = self.templates.as_ref() { templates.to_string() } else { String::new() },
-            if let Some(vars) = self.vars.as_ref() { vars.to_string() } else { String::new() }
+            self.vars.to_string()
         )
     }
 }
@@ -1317,11 +1328,11 @@ impl<'fctx> Parser<'fctx> {
         }
     }
 
-    pub fn error(&mut self, err_type: CompilerErrorType, msg: String, description: Option<String>) -> CompilerError {
+    pub fn error(&mut self, err_type: CompilerErrorType) -> CompilerError {
         let chars: &Vec<char> = &self.cur_file();
         let line_end_idx: usize = chars[self.new_line_index..].iter().position(|&c| c == '\n').map(|pos| self.new_line_index + pos).unwrap_or(chars.len());
         let line_str: String = chars[self.new_line_index..line_end_idx].iter().collect();
-        CompilerError { err_type, msg, description, file: self.file_context.get_path(self.cur_file_id), span: Some(self.get_span_start()), line_str }
+        CompilerError { err_type, file: self.file_context.get_path(self.cur_file_id), span: Some(self.get_span_start()), line_str }
     }
 
     pub fn get_span_start(&mut self) -> Span {
@@ -1349,7 +1360,7 @@ impl<'fctx> Parser<'fctx> {
         let contents: String = match fs::read_to_string(path.as_str()) {
             Ok(text) => text,
             Err(e) => {
-                return Err(self.error(CompilerErrorType::LinkerError, format!("Failed to import file {}, {}", path, e), None));
+                return Err(self.error(CompilerErrorType::LinkerError(LinkerError::ImportFailed(path, e.to_string()))));
             }
         };
         let file_id: FileId = self.file_context.next_id(path);
@@ -1384,7 +1395,7 @@ impl<'fctx> Parser<'fctx> {
         if let Some(ch) = file_text.get(self.index).copied() {
             return Ok(ch);
         }
-        return Err(self.error(CompilerErrorType::SyntaxError, "Script ended too early".to_string(), None));
+        return Err(self.error(CompilerErrorType::SyntaxError(SyntaxError::ScriptEndedTooEarly)));
     }
 
     pub fn is_name_start(&mut self, is_lower_case: bool) -> Result<bool, CompilerError> {
@@ -1415,10 +1426,8 @@ impl<'fctx> Parser<'fctx> {
     pub fn next_name(&mut self, is_lower_case: bool) -> Result<String, CompilerError> {
         self.skip_whitespace()?;
         let start_index: usize = self.index;
-        let ch: char = self.cur_char()?;
         if !self.is_name_start(is_lower_case)? {
-            let description =format!("Expected a name, starting with an {} 'a'-'z'. found char '{}' instead", if is_lower_case { "lowercase" } else { "uppercase" }, ch);
-            return Err(self.error(CompilerErrorType::SyntaxError, "Expected a name".to_string(), Some(description)));
+            return Err(self.error(CompilerErrorType::SyntaxError(if is_lower_case { SyntaxError::ExpectedLowercaseName } else { SyntaxError::ExpectedUppercaseName })));
         }
         self.index += 1;
         while let Ok(ch) = self.cur_char() {
@@ -1492,9 +1501,9 @@ impl<'fctx> Parser<'fctx> {
         result
     }
 
-    pub fn ensure_next(&mut self, s: &str) -> Result<(), CompilerError> {
+    pub fn ensure_next(&mut self, s: &'static str) -> Result<(), CompilerError> {
         if !self.is_next(s) {
-            return Err(self.error(CompilerErrorType::SyntaxError, format!("Expected '{}'", s), None));
+            return Err(self.error(CompilerErrorType::SyntaxError(SyntaxError::ExpectedToken(s))));
         }
         Ok(())
     }

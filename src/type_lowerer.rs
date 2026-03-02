@@ -65,9 +65,8 @@ impl<'ctx> CodeLowerer<'ctx> {
         let (_, struct_def) = if let Some(def) = self.find_struct_def_in_scope(parent_scope, name) {
             def
         } else {
-            return Err(self.error("Missing struct", Some(format!("Called a non existing structure '{}'", name)), call_span));
+            panic!("lower_struct: Called a non existing structure '{}'", name);
         };
-        let templates_keys = self.get_templates_keys_from(&struct_def.templates)?;
         let struct_path_string: String = self.format_child_scope_path(parent_scope, name, &templates_map);
 
         let mut new_templates_map = self.ir_scope(parent_scope).templates_map.clone();
@@ -81,13 +80,11 @@ impl<'ctx> CodeLowerer<'ctx> {
         let mut ir_context = IRContext::ScopeContext(struct_scope);
         let mut members: IRVariables = Vec::new();
         let mut members_llvm_types: Vec<BasicTypeEnum> = Vec::new();
-        if let Some(def_members) = struct_def.vars.as_ref() {
-            for member in def_members.variables.iter() {
-                let ir_var: IRVariable = self.get_ir_var(&mut ir_context, member)?;
-                if let Some(llvm_type) = self.ir_type(ir_var.type_id).llvm_type {
-                    members_llvm_types.push(llvm_type); 
-                    members.push(ir_var);
-                }
+        for member in struct_def.vars.variables.iter() {
+            let ir_var: IRVariable = self.get_ir_var(&mut ir_context, member)?;
+            if let Some(llvm_type) = self.ir_type(ir_var.type_id).llvm_type {
+                members_llvm_types.push(llvm_type); 
+                members.push(ir_var);
             }
         }
         // members_llvm_types.as_slice(), false

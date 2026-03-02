@@ -1,6 +1,6 @@
 
 use inkwell::{types::{BasicMetadataTypeEnum, BasicType}, values::{FunctionValue, PointerValue}};
-use crate::{code_lowerer::*, errors::CompilerError, parser::{Function, Span, Variable}};
+use crate::{code_lowerer::*, errors::{CompilerError, SemanticError}, parser::{Function, Span, Variable}};
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn get_ir_var(&mut self, ir_context: &mut IRContext<'ctx>, var: &Variable) -> Result<IRVariable<'ctx>, CompilerError> {
@@ -54,7 +54,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         let (_, fun_def) = if let Some(def) = self.find_fun_def_in_scope(parent_scope, name) {
             def
         } else {
-            return Err(self.error("Missing function", Some(format!("Called a non existing function '{}'", name)), call_span));
+            panic!("Called a non existing function '{}'", name);
         };
         let fun_path_string: String = self.format_child_scope_path(parent_scope, name, &templates_map);
         let fun_id = self.funs_table.len();
@@ -103,7 +103,7 @@ impl<'ctx> CodeLowerer<'ctx> {
 
     fn lower_fun_scope(&mut self, fun: IRFunctionId) -> Result<(), CompilerError> {
         let ir_fun: &IRFunction<'_> = self.ir_function(fun);
-        let fun_path_string = self.ir_scope(ir_fun.scope).path_string.clone();
+        let fun_def = ir_fun.ast_def;
         let return_type = ir_fun.return_type;
         let llvm_value: FunctionValue<'_> = ir_fun.llvm_value;
         let entry_block = self.llvm_context.append_basic_block(llvm_value, "entry");
@@ -122,10 +122,10 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
 
         let mut ir_context = IRContext::FunContext(ir_fun_scope);
-        let result = self.lower_scope(&mut ir_context, ir_fun.ast_def.scope.as_ref().unwrap(), Some(return_type))?;
+        let result = self.lower_scope(&mut ir_context, fun_def.scope.as_ref().unwrap(), Some(return_type))?;
         let never_type = self.primitive_type(PrimitiveType::Never)?;
         if result.type_id != never_type && result.type_id != return_type {
-            return Err(self.error("Type mismatch", Some(format!("Function {} returns type {}, yet {} was found", fun_path_string, self.format_type(return_type), self.format_type(result.type_id))), None));
+            return Err(self.error(SemanticError::TypeMismatch { expected: self.format_type(return_type), got: self.format_type(result.type_id) }, Some(fun_def.span)));
         }
 
         if let Some(value) = self.r_value(&result) {

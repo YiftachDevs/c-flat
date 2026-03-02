@@ -17,7 +17,7 @@ use inkwell::types::FunctionType;
 use inkwell::types::VoidType;
 use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
 
-use crate::errors::{CompilerError, CompilerErrorType};
+use crate::errors::{CompilerError, CompilerErrorType, SemanticError};
 use crate::parser::{ExprNode, ExprNodeEnum, FileContext, Function, Implementation, Literal, Scope, Span, Struct, Template, Templates, Variable};
 
 pub type IRTypeId = usize;
@@ -49,7 +49,13 @@ pub type IRTemplateValue = IRTypeId;
 
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub struct IRTemplateKey {
-    pub name: String
+    pub name: String,
+    pub constraints: Vec<IRTemplateConstraint>
+}
+
+#[derive(PartialEq, Eq, Hash, Clone)]
+pub enum IRTemplateConstraint {
+    Type(IRTypeId)
 }
 
 pub type IRTemplatesMap = IndexMap<IRTemplateKey, IRTemplateValue>;
@@ -277,7 +283,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         if let Some(templates) = ast_templates {
             for ast_template in templates.templates.iter() {
                 let template = match ast_template {
-                    Template::VarType(name) => IRTemplateKey{name: name.clone()}
+                    Template::VarType(name) => IRTemplateKey { name: name.clone(), constraints: Vec::new() }
                 };
                 result.push(template);
             }
@@ -378,15 +384,15 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
     }
 
-    pub fn error(&self, msg: &str, description: Option<String>, opt_span: Option<Span>) -> CompilerError {
+    pub fn error(&self, err_type: SemanticError, opt_span: Option<Span>) -> CompilerError {
         if let Some(span) =  opt_span {
             let file: String = self.file_context.get_path(span.file_id);
             let chars: &Vec<char> = &self.file_context.files[&span.file_id];
             let line_end_idx: usize = chars[span.line_index..].iter().position(|&c| c == '\n').map(|pos| span.line_index + pos).unwrap_or(chars.len());
             let line_str: String = chars[span.line_index..line_end_idx].iter().collect();
-            CompilerError { err_type: CompilerErrorType::SemanticError, msg: msg.to_string(), description, file, span: Some(span), line_str }
+            CompilerError { err_type: CompilerErrorType::SemanticError(err_type), file, span: Some(span), line_str }
         } else {
-            CompilerError { err_type: CompilerErrorType::SemanticError, msg: msg.to_string(), description, file: "".to_string(), span: None, line_str: "".to_string() }
+            CompilerError { err_type: CompilerErrorType::SemanticError(err_type), file: "".to_string(), span: None, line_str: "".to_string() }
         }
     }
 
