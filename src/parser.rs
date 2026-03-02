@@ -282,9 +282,9 @@ pub struct Implementation {
 
 #[derive(PartialEq, Clone)]
 pub struct Trait {
-    name: String,
-    templates: Option<Templates>,
-    scope: Scope
+    pub name: String,
+    pub templates: Option<Templates>,
+    pub scope: Scope
 }
 
 impl ConditionalChain {

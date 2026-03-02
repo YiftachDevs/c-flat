@@ -4,7 +4,7 @@ use crate::{code_lowerer::*, errors::{CompilerError, SemanticError}, parser::{Fu
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn get_ir_var(&mut self, ir_context: &mut IRContext<'ctx>, var: &Variable) -> Result<IRVariable<'ctx>, CompilerError> {
-        let type_id = self.get_type(ir_context, var.var_type.as_ref().unwrap(), None)?;
+        let type_id = self.get_type(ir_context, var.var_type.as_ref().unwrap(), &IRContextType::Any)?;
         Ok(IRVariable { name: var.name.clone(), type_id, is_mut: var.is_mut, llvm_value: None })
     }
 
@@ -65,7 +65,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         let fun_scope = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Function(fun_id), path_string: fun_path_string.clone(), templates_map: new_templates_map, ast_def: Some(fun_def.scope.as_ref().unwrap()) });
 
         let mut ir_context = IRContext::ScopeContext(fun_scope);
-        let return_type: IRTypeId = if let Some(return_t) = &fun_def.return_type { self.get_type(&mut ir_context, return_t, None)? } else { self.primitive_type(PrimitiveType::Void)? };
+        let return_type: IRTypeId = if let Some(return_t) = &fun_def.return_type { self.get_type(&mut ir_context, return_t, &IRContextType::Any)? } else { self.primitive_type(PrimitiveType::Void)? };
         let mut args: IRVariables = Vec::new();
         let mut args_llvm_types: Vec<BasicMetadataTypeEnum> = Vec::new();
         for arg in fun_def.args.variables.iter() {
@@ -122,7 +122,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
 
         let mut ir_context = IRContext::FunContext(ir_fun_scope);
-        let result = self.lower_scope(&mut ir_context, fun_def.scope.as_ref().unwrap(), Some(return_type))?;
+        let result = self.lower_scope(&mut ir_context, fun_def.scope.as_ref().unwrap(), &IRContextType::Type(return_type))?;
         let never_type = self.primitive_type(PrimitiveType::Never)?;
         if result.type_id != never_type && result.type_id != return_type {
             return Err(self.error(SemanticError::TypeMismatch { expected: self.format_type(return_type), got: self.format_type(result.type_id) }, Some(fun_def.span)));

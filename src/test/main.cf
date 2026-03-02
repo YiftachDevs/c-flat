@@ -1,14 +1,16 @@
 fun main() {
-    let nothing = Nothing { };
-    let vec = Vec_2<f32> { 0.3, 0.4 };
-    let vec_wrapper = Wrapper<Vec_2<f32>> { vec };
-    debug<f32>(vec_wrapper.value.y)
+    let vec = Vec_2<i32> { 4, 3 }.add(Vec_2<i32> { -3, 2 });
 }
 
-struct Wrapper<T: i32> { value: T }
-struct Vec_2<T> { x: T, y: T }
-struct Nothing { }
+struct Vec_3<T: i32, f32> { x: T, y: T, z: T }
+struct Wrapper<T> { value: T }
 
-fun debug<T>(value: T) {
+trait Add<OtherT> {
+    fun add(self, other: OtherT) -> Self;
+}
 
+impl<T> Add<Vec_2<T>> for Vec_2<T> {
+    fun add(self, other: Self) -> Self {
+        Self { self.x + other.x, self.y + other.y }
+    }
 }

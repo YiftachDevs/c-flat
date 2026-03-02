@@ -50,12 +50,14 @@ pub type IRTemplateValue = IRTypeId;
 #[derive(PartialEq, Eq, Hash, Clone)]
 pub struct IRTemplateKey {
     pub name: String,
-    pub constraints: Vec<IRTemplateConstraint>
+    pub constraint: IRContextType
 }
 
 #[derive(PartialEq, Eq, Hash, Clone)]
-pub enum IRTemplateConstraint {
-    Type(IRTypeId)
+pub enum IRContextType {
+    Any,
+    Type(IRTypeId),
+    Impl(IRTypeId, Box<IRContextType>)
 }
 
 pub type IRTemplatesMap = IndexMap<IRTemplateKey, IRTemplateValue>;
@@ -132,7 +134,7 @@ impl ToString for PrimitiveType {
 pub struct IRType<'ctx> {
     pub type_enum: IRTypeEnum<'ctx>,
     pub llvm_type: Option<BasicTypeEnum<'ctx>>,
-    pub lowered_impls: Vec<IRImplId>
+    pub lowered_impls: Option<Vec<IRImplId>>
 }
 
 #[derive(PartialEq)]
@@ -140,6 +142,13 @@ pub struct IRImpl<'ctx> {
     pub scope: IRScopeId,
     pub type_id: IRTypeId,
     pub trait_id: Option<IRTraitId>,
+    pub ast_def: &'ctx Implementation
+}
+
+#[derive(PartialEq)]
+pub struct IRTrait<'ctx> {
+    pub scope: IRScopeId,
+    pub type_id: IRTypeId,
     pub ast_def: &'ctx Implementation
 }
 
@@ -180,7 +189,7 @@ pub struct IRFunContext<'ctx> {
 pub enum IRContext<'ctx> {
     FunContext(IRFunContext<'ctx>),
     ScopeContext(IRScopeId),
-    ImplDefContext(IRScopeId, Vec<IRTemplateKey>, IRTemplatesMap)
+    ImplDefContext(IRScopeId, Vec<IRTemplateKey>, IRTemplatesMap, IRTypeId)
 }
 
 impl<'ctx> IRContext<'ctx> {
@@ -202,19 +211,21 @@ pub struct CodeLowerer<'ctx> {
     pub funs_table: Vec<IRFunction<'ctx>>,
     pub scopes_table: Vec<IRScope<'ctx>>,
     pub impls_table: Vec<IRImpl<'ctx>>,
+    pub traits_table: Vec<IRTrait<'ctx>>,
 }
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn new(ast_scope: &'ctx Scope, file_context: FileContext, llvm_context: &'ctx Context) -> Self {
         let module: Module = llvm_context.create_module("main_module");
         let builder: Builder<'_> = llvm_context.create_builder();
-        CodeLowerer { ast_scope, file_context, llvm_context, module, builder, types_table: Vec::new(), funs_table: Vec::new(), scopes_table: Vec::new(), impls_table: Vec::new() }
+        CodeLowerer { ast_scope, file_context, llvm_context, module, builder, types_table: Vec::new(), funs_table: Vec::new(), scopes_table: Vec::new(), impls_table: Vec::new(), traits_table: Vec::new() }
     }
 
     pub fn ir_type(&self, type_id: IRTypeId) -> &IRType<'ctx> { &self.types_table[type_id] }
     pub fn ir_function(&self, fun_id: IRFunctionId) -> &IRFunction<'ctx> { &self.funs_table[fun_id] }
     pub fn ir_scope(&self, scope_id: IRScopeId) -> &IRScope<'ctx> { &self.scopes_table[scope_id] }
     pub fn ir_impl(&self, impl_id: IRImplId) -> &IRImpl<'ctx> { &self.impls_table[impl_id] }
+    pub fn ir_trait(&self, trait_id: IRTraitId) -> &IRTrait<'ctx> { &self.traits_table[trait_id] }
 
     pub fn scope_id(&mut self, ir_scope: IRScope<'ctx>) -> IRScopeId {
         if let Some((i, _)) = self.scopes_table.iter().enumerate().find(|(_, cur_ir)| **cur_ir == ir_scope) {
@@ -225,8 +236,17 @@ impl<'ctx> CodeLowerer<'ctx> {
         id
     }
 
+    pub fn trait_id(&mut self, ir_trait: IRTrait<'ctx>) -> IRTraitId {
+        if let Some((i, _)) = self.traits_table.iter().enumerate().find(|(_, cur_ir)| **cur_ir == ir_trait) {
+            return i;
+        }
+        let id = self.traits_table.len();
+        self.traits_table.push(ir_trait);
+        id
+    }
+
     pub fn fun_id(&mut self, ir_fun: IRFunction<'ctx>) -> IRFunctionId {
-        if let Some((i, _)) = self.funs_table.iter().enumerate().find(|(_, cur_ir)| **cur_ir == ir_fun) {
+        if let Some((i, _)) = self.funs_table.iter().enumerate().find(|(_, cur_ir)| cur_ir.parent_scope == ir_fun.parent_scope && cur_ir.ast_def.name == ir_fun.ast_def.name) {
             return i;
         }
         let id = self.funs_table.len();
@@ -235,7 +255,7 @@ impl<'ctx> CodeLowerer<'ctx> {
     }
 
     pub fn type_id(&mut self, ir_type: IRType<'ctx>) -> IRTypeId {
-        if let Some((i, _)) = self.types_table.iter().enumerate().find(|(_, cur_ir)| **cur_ir == ir_type) {
+        if let Some((i, _)) = self.types_table.iter().enumerate().find(|(_, cur_ir)| cur_ir.type_enum == ir_type.type_enum) {
             return i;
         }
         let id = self.types_table.len();
@@ -252,38 +272,12 @@ impl<'ctx> CodeLowerer<'ctx> {
         id
     }
 
-    pub fn primitive_type(&mut self, prim: PrimitiveType) -> Result<IRTypeId, CompilerError> {
-        let ir_type_enum = IRTypeEnum::Primitive(prim);
-        let llvm_type: Option<BasicTypeEnum> = match prim {
-            PrimitiveType::I8 | PrimitiveType::U8 => Some(self.llvm_context.i8_type().into()),
-            PrimitiveType::I16 | PrimitiveType::U16 => Some(self.llvm_context.i16_type().into()),
-            PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::Char => Some(self.llvm_context.i32_type().into()),
-            PrimitiveType::I64 | PrimitiveType::U64 => Some(self.llvm_context.i64_type().into()),
-            PrimitiveType::I128 | PrimitiveType::U128 => Some(self.llvm_context.i128_type().into()),
-            PrimitiveType::F16 => Some(self.llvm_context.f16_type().into()),
-            PrimitiveType::F32 => Some(self.llvm_context.f32_type().into()),
-            PrimitiveType::F64 => Some(self.llvm_context.f64_type().into()),
-            PrimitiveType::Bool => Some(self.llvm_context.bool_type().into()),
-            PrimitiveType::Void => None,
-            PrimitiveType::Never => None
-        };
-        let type_id = self.type_id(IRType { type_enum: ir_type_enum, llvm_type, lowered_impls: Vec::new() });
-
-        Ok(type_id)
-    }
-
-    pub fn is_type_zero_sized(&mut self, type_id: IRTypeId) -> Result<bool, CompilerError> {
-        let void_type = self.primitive_type(PrimitiveType::Void)?;
-        let never_type = self.primitive_type(PrimitiveType::Never)?;
-        Ok(type_id == void_type || type_id == never_type)
-    }
-
     pub fn get_templates_keys_from(&mut self, ast_templates: &Option<Templates>) -> Result<Vec<IRTemplateKey>, CompilerError> {
         let mut result: Vec<IRTemplateKey> = Vec::new();
         if let Some(templates) = ast_templates {
             for ast_template in templates.templates.iter() {
                 let template = match ast_template {
-                    Template::VarType(name) => IRTemplateKey { name: name.clone(), constraints: Vec::new() }
+                    Template::VarType(name) => IRTemplateKey { name: name.clone(), constraint: IRContextType::Any }
                 };
                 result.push(template);
             }
@@ -295,7 +289,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         match ir_context {
             IRContext::FunContext(fun) => self.ir_function(fun.fun).scope,
             IRContext::ScopeContext(scope) => *scope,
-            IRContext::ImplDefContext(parent_scope, _, _) => *parent_scope
+            IRContext::ImplDefContext(parent_scope, _, _, _) => *parent_scope
         }
     }
 

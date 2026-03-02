@@ -5,6 +5,7 @@ mod function_lowerer;
 mod expr_lowerer;
 mod type_lowerer;
 mod impl_lowerer;
+mod trait_lowerer;
 
 use indexmap::IndexMap;
 use inkwell::context::Context;

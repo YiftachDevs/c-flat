@@ -3,11 +3,12 @@ source_filename = "main_module"
 
 define void @main() {
 entry:
-  call void @"debug<f32>"(float 0x3FD99999A0000000)
+  %fun_call_tmp = call i32 @i32.get(i32 5)
   ret void
 }
 
-define void @"debug<f32>"(float %value) {
+define i32 @i32.get(i32 %self) {
 entry:
-  ret void
+  %fun_call_tmp = call i32 @i32.get(i32 %self)
+  ret i32 %fun_call_tmp
 }
