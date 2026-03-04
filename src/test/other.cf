@@ -5,7 +5,11 @@ mod Mod_1 {
         
     }
 }
-
+impl<T> Add<Vec_2<T>> for Vec_2<T> {
+    fun add(self: Self, other: Self) -> Self {
+        Self { self.x + other.x, self.y + other.y }
+    }
+}
 mod Mod_2 {
     struc Str;
 

@@ -2,23 +2,17 @@ use std::any::Any;
 
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 
-use crate::{code_lowerer::{CodeLowerer, IRContext, IRContextType, IRScope, IRScopeId, IRScopePath, IRTemplatesMap, IRType, IRTypeEnum, IRTypeId, IRVariable, IRVariables, PrimitiveType}, errors::{CompilerError, SemanticError}, parser::{Span, Struct}};
+use crate::{code_lowerer::{CodeLowerer, IRConstraint, IRConstraints, IRContext, IRContextType, IRScope, IRScopeId, IRScopePath, IRStruct, IRTemplateValue, IRTemplatesMap, IRType, IRTypeEnum, IRTypeId, IRVariable, IRVariables, PrimitiveType}, errors::{CompilerError, SemanticError}, parser::{ExprNode, Span, Struct, Templates}};
 
 impl<'ctx> CodeLowerer<'ctx> {
-    pub fn find_struct_def_in_scope(&self, parent_scope: IRScopeId, name: &str) -> Option<(IRScopeId, &'ctx Struct)> {
-        let ir_scope = self.ir_scope(parent_scope);
-        if let Some(ast_def) = ir_scope.ast_def {
-            for strct in ast_def.structs.iter() {
-                if strct.name == name {
-                    return Some((parent_scope, strct));
-                }
+    pub fn find_struct_def_in_scope(&self, parent_scope: IRScopeId, name: &str, opt_call_span: Option<Span>) -> Result<Option<(IRScopeId, &'ctx Struct)>, CompilerError> {
+        if let Some(actual_scope) = self.get_name_parent_scope(parent_scope, name, opt_call_span)? {
+            let ir_scope = self.ir_scope(actual_scope);
+            if let Some(def) = ir_scope.ast_def.unwrap().structs.iter().find(|def| def.name == name) {
+                return Ok(Some((actual_scope, def)));
             }
         }
-        if let Some(grand_parent_scope) = ir_scope.parent_scope {
-            self.find_struct_def_in_scope(grand_parent_scope, name)
-        } else {
-            None
-        }
+        Ok(None)
     }
 
     pub fn primitive_type(&mut self, prim: PrimitiveType) -> Result<IRTypeId, CompilerError> {
@@ -36,11 +30,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             PrimitiveType::Void => None,
             PrimitiveType::Never => None
         };
-        let type_id = self.type_id(IRType { type_enum: ir_type_enum, llvm_type, lowered_impls: None });
-        if let None = self.types_table[type_id].lowered_impls {
-            let global_scope = self.get_global_scope();
-            self.find_impls(global_scope, type_id)?;
-        }
+        let type_id = self.type_id(IRType { type_enum: ir_type_enum, llvm_type, lowered_impls: Vec::new() });
         Ok(type_id)
     }
 
@@ -73,11 +63,11 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
     }
 
-    fn find_type_in_scope(&mut self, _parent_scope: IRScopeId, name: &str, _templates_map: &IRTemplatesMap) -> Option<IRTypeId> {
+    fn find_existing_struct(&mut self, parent_scope: IRScopeId, name: &str, templates_map: &IRTemplatesMap) -> Option<IRTypeId> {
         for (i, ir_type) in self.types_table.iter().enumerate() {
             match &ir_type.type_enum {
-                IRTypeEnum::Struct { parent_scope, scope, templates_map, args, def, vars_built } => {
-                    if _parent_scope == *parent_scope && def.name == name && _templates_map == templates_map {
+                IRTypeEnum::Struct(_struct) => {
+                    if _struct.parent_scope == parent_scope && _struct.def.name == name && _struct.templates_map == *templates_map {
                         return Some(i);
                     }
                 },
@@ -87,26 +77,26 @@ impl<'ctx> CodeLowerer<'ctx> {
         None
     }
 
-    pub fn lower_struct(&mut self, parent_scope: IRScopeId, name: &str, templates_map: IRTemplatesMap, call_span: Option<Span>) -> Result<IRTypeId, CompilerError> {
-        if let Some(id) = self.find_type_in_scope(parent_scope, name, &templates_map) {
+    pub fn lower_struct(&mut self, parent_scope: IRScopeId, name: &str, templates_values: &[IRTemplateValue], call_span: Option<Span>) -> Result<IRTypeId, CompilerError> {
+        let struct_def = self.find_struct_def_in_scope(parent_scope, name, call_span)?.unwrap().1;
+        let templates_keys = self.get_templates_keys_from(&struct_def.templates)?;
+        let templates_map = self.merge_templates_keys_values(&templates_keys, templates_values, call_span)?;
+        if let Some(id) = self.find_existing_struct(parent_scope, name, &templates_map) {
             return Ok(id);
         }
-        let (_, struct_def) = if let Some(def) = self.find_struct_def_in_scope(parent_scope, name) {
-            def
-        } else {
-            panic!("lower_struct: Called a non existing structure '{}'", name);
-        };
         let struct_path_string: String = self.format_child_scope_path(parent_scope, name, &templates_map);
 
         let mut new_templates_map = self.ir_scope(parent_scope).templates_map.clone();
         new_templates_map.extend(templates_map.clone());
 
         let struct_id: usize = self.types_table.len();
-        let struct_scope = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Type(struct_id), path_string: struct_path_string.clone(), templates_map: new_templates_map, ast_def: None });
-        let ir_type_enum = IRTypeEnum::Struct { parent_scope, scope: struct_scope, templates_map, def: struct_def, args: Vec::new(), vars_built: false };
-        self.types_table.push(IRType { type_enum: ir_type_enum, llvm_type: None, lowered_impls: None });
-
+        let struct_scope = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Type(struct_id), templates_map: new_templates_map, ast_def: None });
+        let ir_type_enum = IRTypeEnum::Struct(IRStruct { parent_scope, scope: struct_scope, templates_map: templates_map.clone(), def: struct_def, args: Vec::new() });
         let mut ir_context = IRContext::ScopeContext(struct_scope);
+        self.types_table.push(IRType { type_enum: ir_type_enum, llvm_type: None, lowered_impls: Vec::new() });
+
+        self.ensure_templates_constraints(&mut ir_context, &templates_map, &struct_def.templates, call_span)?;
+
         let mut members: IRVariables = Vec::new();
         let mut members_llvm_types: Vec<BasicTypeEnum> = Vec::new();
         for member in struct_def.vars.variables.iter() {
@@ -116,27 +106,23 @@ impl<'ctx> CodeLowerer<'ctx> {
                 members.push(ir_var);
             }
         }
-        // members_llvm_types.as_slice(), false
         let struct_llvm_type = self.llvm_context.opaque_struct_type(struct_path_string.as_str());
         struct_llvm_type.set_body(members_llvm_types.as_slice(), false);
-        if let IRTypeEnum::Struct { parent_scope, scope, templates_map, args, def, vars_built } = &mut self.types_table[struct_id].type_enum {
-            *args = members;
+        if let IRTypeEnum::Struct(_struct) = &mut self.types_table[struct_id].type_enum {
+            _struct.args = members;
         }
         self.types_table[struct_id].llvm_type = Some(struct_llvm_type.into());
-
-        let global_scope = self.get_global_scope();
-        self.find_impls(global_scope, struct_id)?;
-
+        
         Ok(struct_id)
     }
 
-    pub fn ensure_type_matches(&mut self, type_id: IRTypeId, context_type: &IRContextType, span: Span) -> Result<(), CompilerError> {
+    pub fn ensure_type_matches(&mut self, type_id: IRTypeId, context_type: &IRContextType, span: Option<Span>) -> Result<(), CompilerError> {
         match context_type {
             IRContextType::Any => Ok(()),
-            IRContextType::Impl(_, other_context_type) => self.ensure_type_matches(type_id, other_context_type, span),
             IRContextType::Type(ctx_type_id) => if type_id == *ctx_type_id { Ok(()) } else {
-                Err(self.error(SemanticError::TypeMismatch { expected: self.format_type(*ctx_type_id), got: self.format_type(type_id) }, Some(span)))
-            }
+                Err(self.error(SemanticError::TypeMismatch { expected: self.format_type(*ctx_type_id), got: self.format_type(type_id) }, span))
+            },
+            IRContextType::Impl(_) => Ok(())
         }
     }
 }

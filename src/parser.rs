@@ -7,20 +7,21 @@ pub struct Templates {
 }
 
 impl Templates {
-    pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
-        if !parser.is_next("<") { return Ok(None); }
+    pub fn is_from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
         let mut templates: Vec<Template> = Vec::new();
+        if !parser.is_next("<") { return Ok(Templates { templates }); }
         loop {
             templates.push(Template::from_def(parser)?);
             if parser.is_next(">") { break; }
             parser.ensure_next(",")?;
         }
-        return Ok(Some(Templates { templates }));   
+        return Ok(Templates { templates });   
     }
 }
 
 impl ToString for Templates {
     fn to_string(&self) -> String {
+        if self.templates.is_empty() { return "".to_string(); }
         let str_vec: Vec<String> = self.templates.iter().map(|v| v.to_string()).collect();
         return format!("<{}>", str_vec.join(", "));
     }
@@ -29,21 +30,17 @@ impl ToString for Templates {
 #[derive(PartialEq, Clone)]
 pub enum Template {
     // Literal(String, ExprNode),
-    VarType(String)
+    VarType(String, Option<ExprNode>)
 }
 
 impl Template {
     pub fn from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
-        /*if parser.is_next("const") {
-            let arg: Variable = Variable::arg_from_def(parser)?;
-            if let Some(var_type) = arg.var_type {
-                return Ok(Template::Literal(arg.name, var_type));
-            } else {
-                return Err(parser.error(CompilerErrorType::SyntaxError, "Expected a type for a const template".to_string(), None));
-            }
-        } else {*/
-            return Ok(Template::VarType(parser.next_name(false)?));
-        //}
+        let key = parser.next_name(false)?;
+        let mut contraints = None;
+        if parser.is_next(":") {
+            contraints = Some(ExprNode::primary_from_def(parser, false)?.0);
+        }
+        return Ok(Template::VarType(key, contraints));
     }
 }
 
@@ -51,7 +48,13 @@ impl ToString for Template {
     fn to_string(&self) -> String {
         match self {
             //Template::Literal(name, var_type) => format!("const {}: {}", name, var_type.to_string()),
-            Template::VarType(name) => name.clone()
+            Template::VarType(name, opt_contraints) => {
+                if let Some(constraints) = opt_contraints {
+                    format!("{}: {}", name, constraints.to_string())
+                } else {
+                    name.clone()
+                }
+            }
         }
     }
 }
@@ -80,7 +83,7 @@ pub struct Variable {
 #[derive(PartialEq, Clone)]
 pub struct Function {
     pub name: String,
-    pub templates: Option<Templates>,
+    pub templates: Templates,
     pub args: Variables,
     pub return_type: Option<ExprNode>,
     pub scope: Option<Scope>,
@@ -261,20 +264,20 @@ pub struct Module {
 #[derive(PartialEq, Clone)]
 pub struct Struct {
     pub name: String,
-    pub templates: Option<Templates>,
+    pub templates: Templates,
     pub vars: Variables
 }
 
 #[derive(PartialEq, Clone)]
 pub struct Enum {
     name: String,
-    templates: Option<Templates>,
+    templates: Templates,
     structs: Structs
 }
 
 #[derive(PartialEq, Clone)]
 pub struct Implementation {
-    pub templates: Option<Templates>,
+    pub templates: Templates,
     pub opt_trait: Option<ExprNode>,
     pub target_type: ExprNode,
     pub scope: Scope
@@ -283,7 +286,7 @@ pub struct Implementation {
 #[derive(PartialEq, Clone)]
 pub struct Trait {
     pub name: String,
-    pub templates: Option<Templates>,
+    pub templates: Templates,
     pub scope: Scope
 }
 
@@ -979,7 +982,7 @@ impl Function {
         let mut span: Span = parser.get_span_start();
         let name: String = parser.next_name(true)?;
         parser.end_span(&mut span);
-        let templates: Option<Templates> = Templates::is_from_def(parser)?;
+        let templates: Templates = Templates::is_from_def(parser)?;
         let args: Variables = Variables::from_def(parser, false)?;
         let return_type = if parser.is_next("->") {
             Some(ExprNode::primary_from_def(parser, false)?.0)
@@ -994,9 +997,7 @@ impl Function {
 impl ToString for Function {
     fn to_string(&self) -> String {
         let mut result = format!("fun {}", self.name);
-        if let Some(templates) = self.templates.as_ref() {
-            result += templates.to_string().as_str();
-        }
+        result += self.templates.to_string().as_str();
         result += self.args.to_string().as_str();
         if let Some(return_type) = self.return_type.as_ref() {
             result += format!(" -> {}", return_type.to_string()).as_str();
@@ -1018,7 +1019,7 @@ impl Struct {
 
     pub fn from_after_def(parser: &mut Parser) -> Result<Self, CompilerError> {
         let name: String = parser.next_name(false)?;
-        let templates: Option<Templates> = Templates::is_from_def(parser)?;
+        let templates: Templates = Templates::is_from_def(parser)?;
         let vars: Variables = Variables::from_def(parser, true)?;
         Ok(Self { name, templates, vars })
     }
@@ -1028,7 +1029,7 @@ impl ToString for Struct {
     fn to_string(&self) -> String {
         return format!("{}{}{}",
             self.name,
-            if let Some(templates) = self.templates.as_ref() { templates.to_string() } else { String::new() },
+            self.templates.to_string(),
             self.vars.to_string()
         )
     }
@@ -1040,7 +1041,7 @@ impl Enum {
             return Ok(None);
         }
         let name: String = parser.next_name(false)?;
-        let templates: Option<Templates> = Templates::is_from_def(parser)?;
+        let templates: Templates = Templates::is_from_def(parser)?;
         let structs: Structs = Structs::from_def(parser)?;
         Ok(Some(Self { name, templates, structs }))
     }
@@ -1050,7 +1051,7 @@ impl ToString for Enum {
     fn to_string(&self) -> String {
         return format!("enum {}{}{};",
             self.name,
-            if let Some(templates) = self.templates.as_ref() { templates.to_string() } else { String::new() },
+            self.templates.to_string(),
             self.structs.to_string()
         )
     }
@@ -1061,7 +1062,7 @@ impl Implementation {
         if !parser.is_next("impl") {
             return Ok(None);
         }
-        let templates: Option<Templates> = Templates::is_from_def(parser)?;
+        let templates: Templates = Templates::is_from_def(parser)?;
         let mut target_type: ExprNode = ExprNode::primary_from_def(parser, false)?.0;
         let mut opt_trait: Option<ExprNode> = None;
         if parser.is_next("for") {
@@ -1075,7 +1076,7 @@ impl Implementation {
 
 impl ToString for Implementation {
     fn to_string(&self) -> String {
-        let mut result: String = format!("impl{} ", if let Some(templates) = self.templates.as_ref() { templates.to_string() } else { String::new() });
+        let mut result: String = format!("impl{} ", self.templates.to_string());
         result = if let Some(opt_trait) = self.opt_trait.as_ref() {
            format!("{}{} for {} {}", result, opt_trait.to_string(), self.target_type.to_string(), self.scope.to_string())
         } else {
@@ -1091,7 +1092,7 @@ impl Trait {
             return Ok(None);
         }
         let name: String = parser.next_name(false)?;
-        let templates: Option<Templates> = Templates::is_from_def(parser)?;
+        let templates: Templates = Templates::is_from_def(parser)?;
         let scope: Scope = Scope::from_def(parser)?;
         Ok(Some(Self{name, templates, scope}))
     }
@@ -1099,7 +1100,7 @@ impl Trait {
 
 impl ToString for Trait {
     fn to_string(&self) -> String {
-        format!("trait {}{} {}", self.name, if let Some(templates) = self.templates.as_ref() { templates.to_string() } else { String::new() }, self.scope.to_string())
+        format!("trait {}{} {}", self.name, self.templates.to_string(), self.scope.to_string())
     }
 }
 

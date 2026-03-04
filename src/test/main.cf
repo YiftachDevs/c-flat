@@ -1,16 +1,21 @@
 fun main() {
-    let vec = Vec_2<i32> { 4, 3 }.add(Vec_2<i32> { -3, 2 });
+    let vec_2 = math.Vec_2<f32> { 0.4, 0.3 };
+    vec_2.get_x();
 }
 
-struct Vec_3<T: i32, f32> { x: T, y: T, z: T }
-struct Wrapper<T> { value: T }
 
-trait Add<OtherT> {
-    fun add(self, other: OtherT) -> Self;
-}
+mod math {
+    struct Vec_2<T: f32> { x: T, y: T }
 
-impl<T> Add<Vec_2<T>> for Vec_2<T> {
-    fun add(self, other: Self) -> Self {
-        Self { self.x + other.x, self.y + other.y }
+    impl<T> Vec_2<T> {
+        fun get_x(self: Self) -> T {
+            self.y
+        }
+    }
+
+    impl<T: f32> Vec_2<T> {
+        fun get_x(self: Self) -> T {
+            self.x
+        }
     }
 }

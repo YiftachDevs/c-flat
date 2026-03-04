@@ -1,4 +1,4 @@
-use std::fmt;
+use std::fmt::{self, format};
 use colored::*;
 
 use crate::{code_lowerer::{self, CodeLowerer, IRTypeId}, parser::Span};
@@ -59,7 +59,11 @@ pub enum SemanticError {
     UnrecognizedName,
     ExpectedName,
     ExpectedStruct,
-    ExpectedFunction
+    ExpectedFunction,
+    ExpectedTrait,
+    InvalidTemplateValue{ key: String, type_str: String, templates_str: String },
+    CollidingImpl { type_str: String, fun_name: String },
+    CollidingNames { parent_scope: String, name: String },
 }
 
 impl SemanticError {
@@ -72,7 +76,11 @@ impl SemanticError {
             Self::UnrecognizedName => ("Unrecognized Name", None),
             Self::ExpectedName => ("Expected Name", None),
             Self::ExpectedStruct => ("Expected Struct", None),
-            Self::ExpectedFunction => ("Expected Function", None)
+            Self::ExpectedFunction => ("Expected Function", None),
+            Self::ExpectedTrait => ("Expected Trait", None),
+            Self::InvalidTemplateValue { key, type_str, templates_str } => ("Invalid Template Value", Some(format!("Template '{}' = '{}' does not follow given constraint: {}", key, type_str, templates_str))),
+            Self::CollidingImpl { type_str, fun_name } => ("Implementation Collision", Some(format!("Type '{}' has multiple implementations of the function '{}'", type_str, fun_name))),
+            Self::CollidingNames { parent_scope, name } => ("Name Collision", Some(format!("Name '{}' belongs to multiple definitions in scope '{}'", name, parent_scope)))
         }
     }
 }

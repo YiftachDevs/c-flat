@@ -24,18 +24,14 @@ impl<'ctx> CodeLowerer<'ctx> {
         alloca
     }
 
-    pub fn find_fun_def_in_scope(&self, parent_scope: IRScopeId, name: &str) -> Option<(IRScopeId, &'ctx Function)> {
-        let ir_scope = self.ir_scope(parent_scope);
-        for fun in ir_scope.ast_def.unwrap().functions.iter() {
-            if fun.name == name {
-                return Some((parent_scope, fun));
+    pub fn find_fun_def_in_scope(&self, parent_scope: IRScopeId, name: &str, opt_call_span: Option<Span>) -> Result<Option<(IRScopeId, &'ctx Function)>, CompilerError> {
+        if let Some(actual_scope) = self.get_name_parent_scope(parent_scope, name, opt_call_span)? {
+            let ir_scope = self.ir_scope(actual_scope);
+            if let Some(def) = ir_scope.ast_def.unwrap().functions.iter().find(|fun| fun.name == name) {
+                return Ok(Some((actual_scope, def)));
             }
         }
-        if let Some(grand_parent_scope) = ir_scope.parent_scope {
-            self.find_fun_def_in_scope(grand_parent_scope, name)
-        } else {
-            None
-        }
+        Ok(None)
     }
 
     fn get_fun(&mut self, parent_scope: IRScopeId, name: &str, templates_map: &IRTemplatesMap) -> Option<IRFunctionId> {
@@ -47,24 +43,26 @@ impl<'ctx> CodeLowerer<'ctx> {
         None
     }
 
-    pub fn lower_fun(&mut self, parent_scope: IRScopeId, name: &str, templates_map: IRTemplatesMap, call_span: Option<Span>) -> Result<IRFunctionId, CompilerError> {
+    pub fn lower_fun(&mut self, parent_scope: IRScopeId, name: &str, templates_values: &[IRTemplateValue], call_span: Option<Span>) -> Result<IRFunctionId, CompilerError> {
+        let fun_def = self.find_fun_def_in_scope(parent_scope, name, call_span)?.unwrap().1;
+        let templates_keys = self.get_templates_keys_from(&fun_def.templates)?;
+        let templates_map = self.merge_templates_keys_values(&templates_keys, templates_values, call_span)?;
         if let Some(id) = self.get_fun(parent_scope, name, &templates_map) {
             return Ok(id);
         }
-        let (_, fun_def) = if let Some(def) = self.find_fun_def_in_scope(parent_scope, name) {
-            def
-        } else {
-            panic!("Called a non existing function '{}'", name);
-        };
         let fun_path_string: String = self.format_child_scope_path(parent_scope, name, &templates_map);
         let fun_id = self.funs_table.len();
 
         let mut new_templates_map = self.ir_scope(parent_scope).templates_map.clone();
         new_templates_map.extend(templates_map.clone());
 
-        let fun_scope = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Function(fun_id), path_string: fun_path_string.clone(), templates_map: new_templates_map, ast_def: Some(fun_def.scope.as_ref().unwrap()) });
+        let fun_scope = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Function(fun_id), templates_map: new_templates_map, ast_def: Some(fun_def.scope.as_ref().unwrap()) });
 
         let mut ir_context = IRContext::ScopeContext(fun_scope);
+
+        self.ensure_templates_constraints(&mut ir_context, &templates_map, &fun_def.templates, call_span)?;
+
+
         let return_type: IRTypeId = if let Some(return_t) = &fun_def.return_type { self.get_type(&mut ir_context, return_t, &IRContextType::Any)? } else { self.primitive_type(PrimitiveType::Void)? };
         let mut args: IRVariables = Vec::new();
         let mut args_llvm_types: Vec<BasicMetadataTypeEnum> = Vec::new();
@@ -96,7 +94,9 @@ impl<'ctx> CodeLowerer<'ctx> {
         };
         self.funs_table.push(ir_fun);
 
-        self.lower_fun_scope(fun_id)?;
+        if let Some(_) = &fun_def.scope {
+            self.lower_fun_scope(fun_id)?;
+        }
 
         Ok(fun_id)
     }
