@@ -18,6 +18,7 @@ use inkwell::types::VoidType;
 use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
 
 use crate::errors::{CompilerError, CompilerErrorType, SemanticError};
+use crate::expr_lowerer::IRExprResult;
 use crate::parser::{ExprNode, ExprNodeEnum, FileContext, Function, Implementation, Literal, Scope, Span, Struct, Template, Templates, Trait, Variable};
 
 pub type IRTypeId = usize;
@@ -65,7 +66,7 @@ pub enum IRContextType {
 }
 
 pub struct IRConstraint {
-    pub types: Vec<IRTypeId>
+    pub traits: Vec<IRTraitId>
 }
 
 pub type IRTemplatesMap = IndexMap<IRTemplateKey, IRTemplateValue>;
@@ -143,7 +144,7 @@ impl ToString for PrimitiveType {
 pub struct IRType<'ctx> {
     pub type_enum: IRTypeEnum<'ctx>,
     pub llvm_type: Option<BasicTypeEnum<'ctx>>,
-    pub lowered_impls: Vec<IRImplId>
+    pub lowered_impls: Option<Vec<IRImplId>>
 }
 
 #[derive(PartialEq)]
@@ -151,6 +152,7 @@ pub struct IRImpl<'ctx> {
     pub scope: IRScopeId,
     pub type_id: IRTypeId,
     pub trait_id: Option<IRTraitId>,
+    pub templates_map: IRTemplatesMap,
     pub ast_def: &'ctx Implementation
 }
 
@@ -158,6 +160,8 @@ pub struct IRImpl<'ctx> {
 pub struct IRTrait<'ctx> {
     pub scope: IRScopeId,
     pub parent_scope: IRScopeId,
+    pub self_type: IRTypeId,
+    pub sub_traits: Vec<IRTraitId>,
     pub templates_map: IRTemplatesMap,
     pub ast_def: &'ctx Trait
 }
@@ -171,7 +175,8 @@ pub struct IRFunction<'ctx> {
     pub return_type: IRTypeId,
     pub llvm_type: FunctionType<'ctx>,
     pub llvm_value: FunctionValue<'ctx>,
-    pub ast_def: &'ctx Function
+    pub ast_def: &'ctx Function,
+    pub has_body: bool
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -218,7 +223,7 @@ pub struct CodeLowerer<'ctx> {
     pub module: Module<'ctx>,
     pub builder: Builder<'ctx>,
     pub types_table: Vec<IRType<'ctx>>,
-    pub funs_table: Vec<IRFunction<'ctx>>,
+    pub funs_table: Vec<Option<IRFunction<'ctx>>>,
     pub scopes_table: Vec<IRScope<'ctx>>,
     pub impls_table: Vec<IRImpl<'ctx>>,
     pub traits_table: Vec<IRTrait<'ctx>>,
@@ -231,8 +236,14 @@ impl<'ctx> CodeLowerer<'ctx> {
         CodeLowerer { ast_scope, file_context, llvm_context, module, builder, types_table: Vec::new(), funs_table: Vec::new(), scopes_table: Vec::new(), impls_table: Vec::new(), traits_table: Vec::new() }
     }
 
+    pub fn reserve_function_id(&mut self) -> IRFunctionId {
+        let id = self.funs_table.len();
+        self.funs_table.push(None);
+        id
+    }
+
     pub fn ir_type(&self, type_id: IRTypeId) -> &IRType<'ctx> { &self.types_table[type_id] }
-    pub fn ir_function(&self, fun_id: IRFunctionId) -> &IRFunction<'ctx> { &self.funs_table[fun_id] }
+    pub fn ir_function(&self, fun_id: IRFunctionId) -> &IRFunction<'ctx> { self.funs_table[fun_id].as_ref().unwrap() }
     pub fn ir_scope(&self, scope_id: IRScopeId) -> &IRScope<'ctx> { &self.scopes_table[scope_id] }
     pub fn ir_impl(&self, impl_id: IRImplId) -> &IRImpl<'ctx> { &self.impls_table[impl_id] }
     pub fn ir_trait(&self, trait_id: IRTraitId) -> &IRTrait<'ctx> { &self.traits_table[trait_id] }
@@ -256,11 +267,11 @@ impl<'ctx> CodeLowerer<'ctx> {
     }
 
     pub fn fun_id(&mut self, ir_fun: IRFunction<'ctx>) -> IRFunctionId {
-        if let Some((i, _)) = self.funs_table.iter().enumerate().find(|(_, cur_ir)| cur_ir.parent_scope == ir_fun.parent_scope && cur_ir.ast_def.name == ir_fun.ast_def.name) {
+        if let Some((i, _)) = self.funs_table.iter().enumerate().find(|(_, opt_cur_ir)| if let Some(cur_ir) = opt_cur_ir { cur_ir.parent_scope == ir_fun.parent_scope && cur_ir.ast_def.name == ir_fun.ast_def.name } else { false }) {
             return i;
         }
         let id = self.funs_table.len();
-        self.funs_table.push(ir_fun);
+        self.funs_table.push(Some(ir_fun));
         id
     }
 
@@ -293,13 +304,19 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(result)
     }
 
-    fn get_templates_constraints(&mut self, ir_context: &mut IRContext<'ctx>, ast_templates: &Templates) -> Result<IRConstraints, CompilerError> {
+    fn get_templates_constraints(&mut self, ir_context: &mut IRContext<'ctx>, templates_map: &IRTemplatesMap, ast_templates: &Templates) -> Result<IRConstraints, CompilerError> {
         let mut result: IRConstraints = IndexMap::new();
         for ast_template in ast_templates.templates.iter() {
             match ast_template {
                 Template::VarType(key, opt_constraint) => {
                     if let Some(constraint) = opt_constraint {
-                        result.insert(key.clone(), IRConstraint { types: vec![self.get_type(ir_context, constraint, &IRContextType::Any)?] });
+                        let expr_result = self.lower_expr(ir_context, constraint, &IRContextType::Type(templates_map[key]))?;
+                        match expr_result {
+                            IRExprResult::Trait(trait_id) => {
+                                result.insert(key.clone(), IRConstraint { traits: vec![trait_id] });
+                            },
+                            _ => return Err(self.error(SemanticError::ExpectedTrait, Some(constraint.span)))
+                        }
                     }
                 }
             };
@@ -308,11 +325,14 @@ impl<'ctx> CodeLowerer<'ctx> {
     }
 
     pub fn ensure_templates_constraints(&mut self, ir_context: &mut IRContext<'ctx>, templates_map: &IRTemplatesMap, ast_templates: &Templates, call_span: Option<Span>) -> Result<(), CompilerError> {
-        let constraints = self.get_templates_constraints(ir_context, ast_templates)?;
+        let constraints = self.get_templates_constraints(ir_context, templates_map, ast_templates)?;
         for (key, value) in templates_map.iter() { 
+            self.lower_impls(*value)?;
             if let Some(constraint) = constraints.get(key) {
-                if !constraint.types.contains(value) {
-                    return Err(self.error(SemanticError::InvalidTemplateValue { key: key.clone(), type_str: self.format_type(*value), templates_str: ast_templates.to_string() }, call_span));
+                for trait_id in &constraint.traits {
+                    if !self.type_impls_trait(*value, *trait_id)? {
+                        return Err(self.error(SemanticError::InvalidTemplateValue { key: key.clone(), type_str: self.format_type(*value), templates_str: ast_templates.to_string() }, call_span));
+                    }
                 }
             }
         }
@@ -412,7 +432,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             "".to_string()
         } else {
             let templates_values_str = templates_map.iter().map(|(_, value)| self.format_type(*value)).collect::<Vec<String>>().join(", ");
-            format!("<{}>", templates_values_str)
+            format!(":<{}>", templates_values_str)
         }
     }
 

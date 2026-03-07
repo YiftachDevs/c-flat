@@ -169,10 +169,11 @@ pub enum Conditional {
 
 #[derive(PartialEq, Clone)]
 pub struct ConditionalChain {
-    kind: Conditional,
-    cond_expr: Option<ExprNode>,
-    then_scope: Scope,
-    else_node: Option<Box<ConditionalChain>>
+    pub kind: Conditional,
+    pub cond_expr: Option<ExprNode>,
+    pub then_scope: Scope,
+    pub else_node: Option<Box<ConditionalChain>>,
+    pub span: Span
 }
 
 impl ToString for ConditionalChain {
@@ -238,6 +239,7 @@ pub struct Scope {
 #[derive(PartialEq, Clone)]
 pub enum ExprNodeEnum {
     Empty,
+    Void,
     InfixOpr(InfixOpr, Box<ExprNode>, Box<ExprNode>),
     PrefixOpr(PrefixOpr, Box<ExprNode>),
     PostfixOpr(PostfixOpr, Box<ExprNode>, Box<ExprNode>),
@@ -280,18 +282,20 @@ pub struct Implementation {
     pub templates: Templates,
     pub opt_trait: Option<ExprNode>,
     pub target_type: ExprNode,
-    pub scope: Scope
+    pub scope: Option<Scope>
 }
 
 #[derive(PartialEq, Clone)]
 pub struct Trait {
     pub name: String,
     pub templates: Templates,
-    pub scope: Scope
+    pub sub_traits: Option<Box<ExprNode>>,
+    pub scope: Option<Scope>
 }
 
 impl ConditionalChain {
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
+        let mut span = parser.get_span_start();
         let kind: Conditional = if parser.is_next("if") {
             Conditional::If
         } else if parser.is_next("for") {
@@ -303,6 +307,7 @@ impl ConditionalChain {
         } else {
             return Ok(None);
         };
+        parser.end_span(&mut span);
 
         let cond_expr: Option<ExprNode> = Some(ExprNode::from_def(parser, true)?);
         let then_scope: Scope = Scope::from_def(parser)?;
@@ -311,10 +316,10 @@ impl ConditionalChain {
                 Some(Box::new(cond_chain))
             } else {
                 let else_scope: Scope = Scope::from_def(parser)?;
-                Some(Box::new(ConditionalChain { kind: Conditional::Else, cond_expr: None, then_scope: else_scope, else_node: None }))
+                Some(Box::new(ConditionalChain { kind: Conditional::Else, cond_expr: None, then_scope: else_scope, else_node: None, span }))
             }
         } else { None };
-        return Ok(Some(ConditionalChain { kind, cond_expr, then_scope, else_node }));
+        return Ok(Some(ConditionalChain { kind, cond_expr, then_scope, else_node, span }));
     }
 }
 
@@ -466,55 +471,47 @@ impl ToString for PrefixOpr {
 }
 
 impl PostfixOpr {
-    pub fn is_from_def(parser: &mut Parser, is_constructor_plausible: bool) -> Result<Option<(Self, ExprNode, bool)>, CompilerError> {
+    pub fn is_from_def(parser: &mut Parser, is_type: bool, constructor: bool) -> Result<Option<(Self, ExprNode, bool)>, CompilerError> {
         parser.skip_whitespace()?;
-        let ch: char = parser.cur_char()?;
-        parser.index += 1;
         let expr_result: ExprNode;
-        let mut is_result_constructor_plausible: bool = false;
+        let mut is_cur_type: bool = false;
 
-        let result: PostfixOpr = match ch {
-            '[' => {
-                expr_result = ExprNode::from_def(parser, true)?;
-                parser.ensure_next("]")?;
-                PostfixOpr::Idx
-            }
-            '(' => {
-                expr_result = ExprNode::from_def(parser, true)?;
-                parser.ensure_next(")")?;
-                PostfixOpr::Inv
-            }
-            '<' => {
-                expr_result = ExprNode::from_def(parser, false)?;
-                parser.ensure_next(">")?;
-                is_result_constructor_plausible = is_constructor_plausible;
-                PostfixOpr::Tmp
-            }
-            '.' => {
-                let mut span: Span = parser.get_span_start();
-                if parser.is_name_start(true)? {
-                    let name: String = parser.next_name(true)?;
-                    parser.end_span(&mut span);
-                    expr_result = ExprNode { value: ExprNodeEnum::Name(name, true), span };
-                } else {
-                    let name: String = parser.next_name(false)?;
-                    parser.end_span(&mut span);
-                    expr_result = ExprNode { value: ExprNodeEnum::Name(name, false), span };  
-                    is_result_constructor_plausible = true;
-                }
-                PostfixOpr::Mem
-            },
-            '{' => if is_constructor_plausible {
-                expr_result = ExprNode::from_def(parser, true)?;
-                parser.ensure_next("}")?;
-                PostfixOpr::Con
+        let result = if parser.is_next("[") {
+            expr_result = ExprNode::from_def(parser, true)?;
+            parser.ensure_next("]")?;
+            PostfixOpr::Idx
+        } else if parser.is_next("(") {
+            expr_result = ExprNode::from_def(parser, true)?;
+            parser.ensure_next(")")?;
+            PostfixOpr::Inv
+        } else if parser.is_next(":<") {
+            expr_result = ExprNode::from_def(parser, false)?;
+            parser.ensure_next(">")?;
+            is_cur_type = true;
+            PostfixOpr::Tmp  
+        } else if parser.is_next(".") {
+            let mut span: Span = parser.get_span_start();
+            if parser.is_name_start(true)? {
+                let name: String = parser.next_name(true)?;
+                parser.end_span(&mut span);
+                expr_result = ExprNode { value: ExprNodeEnum::Name(name, true), span };
+            } else if parser.is_name_start(false)? {
+                let name: String = parser.next_name(false)?;
+                parser.end_span(&mut span);
+                expr_result = ExprNode { value: ExprNodeEnum::Name(name, false), span };  
+                is_cur_type = true;
             } else {
-                parser.index -= 1;
-                return Ok(None);
-            },
-            _ => { parser.index -= 1; return Ok(None); }
+                return Err(parser.error(CompilerErrorType::SyntaxError(SyntaxError::ExpectedName)));
+            }
+            PostfixOpr::Mem
+        } else if is_type && constructor && parser.is_next("{") {
+            expr_result = ExprNode::from_def(parser, true)?;
+            parser.ensure_next("}")?;
+            PostfixOpr::Con
+        } else {
+            return Ok(None);
         };
-        Ok(Some((result, expr_result, is_result_constructor_plausible)))
+        Ok(Some((result, expr_result, is_cur_type)))
     }
 }
 
@@ -763,11 +760,11 @@ impl ExprNode {
         return Ok(*root);
     }
 
-    pub fn primary_from_def(parser: &mut Parser, is_constructor_plausible: bool) -> Result<(Self, bool), CompilerError> {
+    pub fn primary_from_def(parser: &mut Parser, constructor: bool) -> Result<(Self, bool), CompilerError> {
         parser.skip_whitespace()?;
         let mut result_span: Span = parser.get_span_start();
         let mut result_enum: ExprNodeEnum;
-        let mut is_result_constructor_plausible: bool = false;
+        let mut is_type: bool = false;
         let ch: char = parser.cur_char()?;
         if ch == ';' || ch == ')' || ch == '}' || ch == '>' || ch == ']' {
             parser.index += 1;
@@ -775,8 +772,10 @@ impl ExprNode {
             parser.index -= 1;
             result_enum = ExprNodeEnum::Empty;
             return Ok((ExprNode { value: result_enum, span: result_span }, false));
+        } else if parser.is_next("()") {
+            result_enum = ExprNodeEnum::Void;
         } else if let Some(prefix_opr) = PrefixOpr::is_from_def(parser)? {
-            result_enum = ExprNodeEnum::PrefixOpr(prefix_opr, Box::new(ExprNode::primary_from_def(parser, is_constructor_plausible)?.0));
+            result_enum = ExprNodeEnum::PrefixOpr(prefix_opr, Box::new(ExprNode::primary_from_def(parser, constructor)?.0));
         } else if let Some(new_var) = Variable::is_from_def(parser)? {
             result_enum = ExprNodeEnum::VarDeclaration(Box::new(new_var));
         } else if let Some(const_value) = Literal::is_from_def(parser)? {
@@ -806,7 +805,7 @@ impl ExprNode {
         } else if parser.is_name_start(false)? {
             let name: String = parser.next_name(false)?;
             result_enum = ExprNodeEnum::Name(name, false);
-            is_result_constructor_plausible = is_constructor_plausible;
+            is_type = true;
         } else if parser.is_name_start(true)? {
             let name: String = parser.next_name(true)?;
             result_enum = ExprNodeEnum::Name(name, true);
@@ -815,12 +814,12 @@ impl ExprNode {
         }
         parser.end_span(&mut result_span);
 
-        while let Some((postfix_opr, expr_node, is_new_constructor_plausible)) = PostfixOpr::is_from_def(parser, is_result_constructor_plausible)? {
-            is_result_constructor_plausible = is_new_constructor_plausible;
+        while let Some((postfix_opr, expr_node, is_new_type)) = PostfixOpr::is_from_def(parser, is_type, constructor)? {
+            is_type = is_new_type;
             result_enum = ExprNodeEnum::PostfixOpr(postfix_opr, Box::new(ExprNode { value: result_enum, span: result_span }), Box::new(expr_node));
             parser.end_span(&mut result_span);
         }
-        Ok((ExprNode { value: result_enum, span: result_span }, is_result_constructor_plausible))
+        Ok((ExprNode { value: result_enum, span: result_span }, is_type))
     }
 }
 
@@ -828,6 +827,7 @@ impl ToString for ExprNode {
     fn to_string(&self) -> String {
         match &self.value {
             ExprNodeEnum::Empty => "".to_string(),
+            ExprNodeEnum::Void => "()".to_string(),
             ExprNodeEnum::PrefixOpr(prefix_opr, node) => {
                 format!("{}{}", prefix_opr.to_string(), node.to_string())
             },
@@ -1020,7 +1020,7 @@ impl Struct {
     pub fn from_after_def(parser: &mut Parser) -> Result<Self, CompilerError> {
         let name: String = parser.next_name(false)?;
         let templates: Templates = Templates::is_from_def(parser)?;
-        let vars: Variables = Variables::from_def(parser, true)?;
+        let vars: Variables = if parser.is_next(";") { Variables { variables: Vec::new() } } else { Variables::from_def(parser, true)? };
         Ok(Self { name, templates, vars })
     }
 }
@@ -1069,7 +1069,7 @@ impl Implementation {
             opt_trait = Some(target_type);
             target_type = ExprNode::primary_from_def(parser, false)?.0;
         }
-        let scope: Scope = Scope::from_def(parser)?;
+        let scope = if parser.is_next(";") { None } else { Some(Scope::from_def(parser)?) };
         Ok(Some(Self{templates, opt_trait, target_type, scope}))
     }
 }
@@ -1077,10 +1077,11 @@ impl Implementation {
 impl ToString for Implementation {
     fn to_string(&self) -> String {
         let mut result: String = format!("impl{} ", self.templates.to_string());
+        let scope_string = if let Some(scope) = &self.scope { scope.to_string() } else { "".to_string() };
         result = if let Some(opt_trait) = self.opt_trait.as_ref() {
-           format!("{}{} for {} {}", result, opt_trait.to_string(), self.target_type.to_string(), self.scope.to_string())
+           format!("{}{} for {} {}", result, opt_trait.to_string(), self.target_type.to_string(), scope_string)
         } else {
-            format!("{}{} {}", result, self.target_type.to_string(), self.scope.to_string())
+            format!("{}{} {}", result, self.target_type.to_string(), scope_string)
         };
         result
     }
@@ -1093,14 +1094,17 @@ impl Trait {
         }
         let name: String = parser.next_name(false)?;
         let templates: Templates = Templates::is_from_def(parser)?;
-        let scope: Scope = Scope::from_def(parser)?;
-        Ok(Some(Self{name, templates, scope}))
+        let sub_traits = if parser.is_next(":") {
+            Some(Box::new(ExprNode::primary_from_def(parser, false)?.0))
+        } else { None };
+        let scope = if parser.is_next(";") { None } else { Some(Scope::from_def(parser)?) };
+        Ok(Some(Self{name, templates, scope, sub_traits}))
     }
 }
 
 impl ToString for Trait {
     fn to_string(&self) -> String {
-        format!("trait {}{} {}", self.name, self.templates.to_string(), self.scope.to_string())
+        format!("trait {}{} {}", self.name, self.templates.to_string(), if let Some(scope) = &self.scope { scope.to_string() } else { "".to_string() })
     }
 }
 

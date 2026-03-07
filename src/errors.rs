@@ -32,6 +32,7 @@ pub enum SyntaxError {
     ScriptEndedTooEarly,
     ExpectedLowercaseName,
     ExpectedUppercaseName,
+    ExpectedName,
     ExpectedToken(&'static str)
 }
 
@@ -45,6 +46,7 @@ impl SyntaxError {
             Self::ScriptEndedTooEarly => ("Script Ended Too Early", None),
             Self::ExpectedLowercaseName => ("Expected Lowercase Name", None),
             Self::ExpectedUppercaseName => ("Expected Uppercase Name", None),
+            Self::ExpectedName => ("Expected Name", None),
             Self::ExpectedToken(tok) => ("Expected Specific Token", Some(format!("Expected '{}'", tok))),
         }
     }
@@ -56,6 +58,7 @@ pub enum SemanticError {
     ExpectedValueExpr,
     ExpectedTypeExpr,
     UnmatchedArgCount{ expected: usize },
+    UnmatchedTemplateCount{ expected: usize },
     UnrecognizedName,
     ExpectedName,
     ExpectedStruct,
@@ -64,6 +67,12 @@ pub enum SemanticError {
     InvalidTemplateValue{ key: String, type_str: String, templates_str: String },
     CollidingImpl { type_str: String, fun_name: String },
     CollidingNames { parent_scope: String, name: String },
+    MissingImpl { type_str: String, trait_str: String, fun_name: String },
+    NonExistingImpl { type_str: String, trait_str: String, fun_name: String },
+    IncorrectImpl { type_str: String, trait_str: String, fun_name: String },
+    MissingTrait { type_str: String, trait_str: String },
+    FunctionMissingBody { fun_str: String },
+    IncompleteConditionalChain
 }
 
 impl SemanticError {
@@ -73,6 +82,7 @@ impl SemanticError {
             Self::ExpectedValueExpr => ("Expected Value Expression", None),
             Self::ExpectedTypeExpr => ("Expected Type Expression", None),
             Self::UnmatchedArgCount { expected } => ("Unmatched Arg Count", Some(format!("Expected {} args", expected))),
+            Self::UnmatchedTemplateCount { expected } => ("Unmatched Template Count", Some(format!("Expected {} templates", expected))),
             Self::UnrecognizedName => ("Unrecognized Name", None),
             Self::ExpectedName => ("Expected Name", None),
             Self::ExpectedStruct => ("Expected Struct", None),
@@ -80,7 +90,13 @@ impl SemanticError {
             Self::ExpectedTrait => ("Expected Trait", None),
             Self::InvalidTemplateValue { key, type_str, templates_str } => ("Invalid Template Value", Some(format!("Template '{}' = '{}' does not follow given constraint: {}", key, type_str, templates_str))),
             Self::CollidingImpl { type_str, fun_name } => ("Implementation Collision", Some(format!("Type '{}' has multiple implementations of the function '{}'", type_str, fun_name))),
-            Self::CollidingNames { parent_scope, name } => ("Name Collision", Some(format!("Name '{}' belongs to multiple definitions in scope '{}'", name, parent_scope)))
+            Self::CollidingNames { parent_scope, name } => ("Name Collision", Some(format!("Name '{}' belongs to multiple definitions in scope '{}'", name, parent_scope))),
+            Self::MissingImpl { type_str, trait_str, fun_name } => ("Missing Function Implementation", Some(format!("Type '{}' which implements '{}' is missing function '{}'", type_str, trait_str, fun_name))),
+            Self::NonExistingImpl { type_str, trait_str, fun_name } => ("Non Existing Function implementation", Some(format!("Type '{}'s implementation of '{}' contains an unknown function '{}'", type_str, trait_str, fun_name))),
+            Self::IncorrectImpl { type_str, trait_str, fun_name } => ("Incorrect Function implementation", Some(format!("Type '{}'s implementation of '{}' doesn't match the trait '{}'", type_str, fun_name, trait_str))),
+            Self::MissingTrait { type_str, trait_str } => ("Missing Trait", Some(format!("Expected type '{}' to implement '{}'", type_str, trait_str))),
+            Self::FunctionMissingBody { fun_str } => ("Missing Function Body", Some(format!("Function '{}' called but has no body", fun_str))),
+            Self::IncompleteConditionalChain => ("Incomplete Conditional Chain", Some("Expected all paths to return a value".to_string()))
         }
     }
 }

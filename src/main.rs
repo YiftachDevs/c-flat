@@ -6,11 +6,18 @@ mod expr_lowerer;
 mod type_lowerer;
 mod impl_lowerer;
 mod trait_lowerer;
+mod infix_lowerer;
+mod postfix_lowerer;
+mod core_lowerer;
+mod conditional_chain;
 
 use indexmap::IndexMap;
 use inkwell::context::Context;
 
 use colored::*;
+use inkwell::module::Module;
+use inkwell::passes::{PassBuilderOptions, PassManager};
+use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::{env, path::Path};
@@ -18,6 +25,7 @@ use crate::code_lowerer::{CodeLowerer, IRTemplateKey, IRTemplateValue};
 use crate::code_lowerer::IRScope;
 use crate::code_lowerer::IRScopePath;
 use crate::parser::*;
+use inkwell::{OptimizationLevel, passes};
 
 fn main() {
     let str_path: &str = "src/test";
@@ -49,7 +57,42 @@ fn main() {
         return;
     }
 
+    if let Err(err) = run_pipeline(&code_lowerer.module) {
+        eprintln!("{}", err);
+        return;
+    }
+
     code_lowerer.export_ir_to_file(Path::new("output.ll"));
 
     println!("{}", "Done!".green());
+}
+
+fn run_pipeline(module: &Module) -> Result<(), String> {
+    Target::initialize_native(&InitializationConfig::default())
+        .map_err(|e| format!("Target init failed: {}", e))?;
+
+    let triple = TargetMachine::get_default_triple();
+    let target = Target::from_triple(&triple)
+        .map_err(|e| e.to_string())?;
+    
+    let target_machine = target
+        .create_target_machine(
+            &triple,
+            &TargetMachine::get_host_cpu_name().to_string(),
+            &TargetMachine::get_host_cpu_features().to_string(),
+            OptimizationLevel::Default,
+            RelocMode::Default,
+            CodeModel::Default,
+        )
+        .ok_or_else(|| "Failed to create target machine".to_string())?;
+
+    let options = PassBuilderOptions::create();
+    options.set_verify_each(true);
+
+    let passes = "always-inline,instcombine,simplifycfg,adce,globaldce";
+    
+    module.run_passes(passes, &target_machine, options)
+        .map_err(|e| format!("Pass execution failed: {:?}", e))?;
+
+    Ok(())
 }

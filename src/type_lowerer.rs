@@ -30,7 +30,9 @@ impl<'ctx> CodeLowerer<'ctx> {
             PrimitiveType::Void => None,
             PrimitiveType::Never => None
         };
-        let type_id = self.type_id(IRType { type_enum: ir_type_enum, llvm_type, lowered_impls: Vec::new() });
+        let type_id = self.type_id(IRType { type_enum: ir_type_enum, llvm_type, lowered_impls: None });
+        self.lower_impls(type_id)?;
+        
         Ok(type_id)
     }
 
@@ -93,7 +95,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         let struct_scope = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Type(struct_id), templates_map: new_templates_map, ast_def: None });
         let ir_type_enum = IRTypeEnum::Struct(IRStruct { parent_scope, scope: struct_scope, templates_map: templates_map.clone(), def: struct_def, args: Vec::new() });
         let mut ir_context = IRContext::ScopeContext(struct_scope);
-        self.types_table.push(IRType { type_enum: ir_type_enum, llvm_type: None, lowered_impls: Vec::new() });
+        self.types_table.push(IRType { type_enum: ir_type_enum, llvm_type: None, lowered_impls: None });
 
         self.ensure_templates_constraints(&mut ir_context, &templates_map, &struct_def.templates, call_span)?;
 
@@ -103,8 +105,8 @@ impl<'ctx> CodeLowerer<'ctx> {
             let ir_var: IRVariable = self.get_ir_var(&mut ir_context, member)?;
             if let Some(llvm_type) = self.ir_type(ir_var.type_id).llvm_type {
                 members_llvm_types.push(llvm_type); 
-                members.push(ir_var);
             }
+            members.push(ir_var);
         }
         let struct_llvm_type = self.llvm_context.opaque_struct_type(struct_path_string.as_str());
         struct_llvm_type.set_body(members_llvm_types.as_slice(), false);
