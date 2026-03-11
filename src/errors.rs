@@ -72,7 +72,9 @@ pub enum SemanticError {
     IncorrectImpl { type_str: String, trait_str: String, fun_name: String },
     MissingTrait { type_str: String, trait_str: String },
     FunctionMissingBody { fun_str: String },
-    IncompleteConditionalChain
+    IncompleteConditionalChain,
+    OutOfTheLoop { control_flow: String },
+    UnrecognizedLabel
 }
 
 impl SemanticError {
@@ -96,7 +98,9 @@ impl SemanticError {
             Self::IncorrectImpl { type_str, trait_str, fun_name } => ("Incorrect Function implementation", Some(format!("Type '{}'s implementation of '{}' doesn't match the trait '{}'", type_str, fun_name, trait_str))),
             Self::MissingTrait { type_str, trait_str } => ("Missing Trait", Some(format!("Expected type '{}' to implement '{}'", type_str, trait_str))),
             Self::FunctionMissingBody { fun_str } => ("Missing Function Body", Some(format!("Function '{}' called but has no body", fun_str))),
-            Self::IncompleteConditionalChain => ("Incomplete Conditional Chain", Some("Expected all paths to return a value".to_string()))
+            Self::IncompleteConditionalChain => ("Incomplete Conditional Chain", Some("Expected all paths to return a value".to_string())),
+            Self::OutOfTheLoop { control_flow } => ("Expected Loop", Some(format!("Cannot {} outside of a loop", control_flow))),
+            Self::UnrecognizedLabel => ("Unrecognized Label", None)
         }
     }
 }

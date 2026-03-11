@@ -29,7 +29,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             let impl_templates_keys = self.get_templates_keys_from(&impl_def.templates)?;
             if let Some(templates_map) = self.match_impl_type(parent_scope, impl_templates_keys, &impl_def.target_type, type_id)? {
                 let mut new_templates_map = self.ir_scope(parent_scope).templates_map.clone();
-                new_templates_map.insert("Self".to_string(), type_id );
+                new_templates_map.insert("Self".to_string(), type_id);
                 new_templates_map.extend(templates_map.clone());
 
                 let impl_id = self.impls_table.len();
@@ -146,6 +146,7 @@ impl<'ctx> CodeLowerer<'ctx> {
     }
 
     pub fn match_impl_type(&mut self, parent_scope: IRScopeId, templates_keys: Vec<IRTemplateKey>, expr: &ExprNode, target_type: IRTypeId) -> Result<Option<IRTemplatesMap>, CompilerError> {
+        let void_type = self.primitive_type(PrimitiveType::Void)?;
         let mut ir_context = IRContext::ImplDefContext(parent_scope, templates_keys, IndexMap::new());
         let expr_result = self.lower_expr(&mut ir_context, expr, &IRContextType::Impl(target_type))?;
         if let IRExprResult::Type(result_type) = expr_result && result_type == target_type && let IRContext::ImplDefContext(_, _, map) = ir_context {

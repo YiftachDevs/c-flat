@@ -119,12 +119,21 @@ impl<'ctx> CodeLowerer<'ctx> {
     }
 
     pub fn ensure_type_matches(&mut self, type_id: IRTypeId, context_type: &IRContextType, span: Option<Span>) -> Result<(), CompilerError> {
+        let never_type = self.primitive_type(PrimitiveType::Never)?;
         match context_type {
             IRContextType::Any => Ok(()),
-            IRContextType::Type(ctx_type_id) => if type_id == *ctx_type_id { Ok(()) } else {
+            IRContextType::Type(ctx_type_id) => if type_id == never_type || type_id == *ctx_type_id { Ok(()) } else {
                 Err(self.error(SemanticError::TypeMismatch { expected: self.format_type(*ctx_type_id), got: self.format_type(type_id) }, span))
             },
             IRContextType::Impl(_) => Ok(())
+        }
+    }
+
+    pub fn type_matches(&mut self, type_id: IRTypeId, context_type: &IRContextType) -> bool {
+        match context_type {
+            IRContextType::Any => true,
+            IRContextType::Type(ctx_type_id) => type_id == *ctx_type_id,
+            IRContextType::Impl(_) => true
         }
     }
 }

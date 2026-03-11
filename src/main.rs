@@ -20,6 +20,7 @@ use inkwell::passes::{PassBuilderOptions, PassManager};
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::process::{Command, Stdio};
 use std::{env, path::Path};
 use crate::code_lowerer::{CodeLowerer, IRTemplateKey, IRTemplateValue};
 use crate::code_lowerer::IRScope;
@@ -44,7 +45,7 @@ fn main() {
         return;
     }
 
-    println!("{}", main_scope.to_string());
+    // println!("{}", main_scope.to_string());
     
     let llvm_context: Context = Context::create();
     let mut code_lowerer = CodeLowerer::new(&main_scope, file_context, &llvm_context);
@@ -64,7 +65,24 @@ fn main() {
 
     code_lowerer.export_ir_to_file(Path::new("output.ll"));
 
-    println!("{}", "Done!".green());
+    if let Err(err) = Command::new("clang").arg("output.ll").arg("-o").arg("output_exec").output() {
+        eprintln!("{}", err);
+        return;
+    }
+
+    println!("{}", "Done! [Running Script]:".green());
+
+    let mut child = Command::new("./output_exec")
+    .stdin(Stdio::inherit())  
+    .stdout(Stdio::inherit())
+    .stderr(Stdio::inherit())
+    .spawn()                  
+    .expect("Failed to execute script");
+
+    let status = child.wait().expect("Failed to wait on child");
+
+    println!("\nScript exited with status: {}", status);
+
 }
 
 fn run_pipeline(module: &Module) -> Result<(), String> {

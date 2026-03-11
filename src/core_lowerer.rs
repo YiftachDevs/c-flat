@@ -7,10 +7,11 @@ impl<'ctx> CodeLowerer<'ctx> {
     pub fn impl_core_if_primitive(&mut self, type_id: IRTypeId) -> Result<(), CompilerError> {
         let ir_type = self.ir_type(type_id);
         if let IRTypeEnum::Primitive(primitive_type) = ir_type.type_enum {
-            if primitive_type == PrimitiveType::Void || primitive_type == PrimitiveType::Never {
+            if primitive_type == PrimitiveType::Never {
                 return Ok(());
             }
             let core_scope = self.get_core_scope();
+            let primitive_trait = self.lower_trait(core_scope, "Primitive", &Vec::new(), type_id, None)?;
             let numeral_trait = self.lower_trait(core_scope, "Numeral", &Vec::new(), type_id, None)?;
             if self.type_impls_trait(type_id, numeral_trait)? {
                 self.build_core_infix_opr_fun_body(type_id, InfixOpr::Add)?;
@@ -23,8 +24,10 @@ impl<'ctx> CodeLowerer<'ctx> {
                 self.build_core_infix_opr_fun_body(type_id, InfixOpr::Gtr)?;
                 self.build_core_infix_opr_fun_body(type_id, InfixOpr::Geq)?;
             }
-            self.build_core_infix_opr_fun_body(type_id, InfixOpr::Eq)?;
-            self.build_core_infix_opr_fun_body(type_id, InfixOpr::Neq)?;
+            if self.type_impls_trait(type_id, primitive_trait)? {
+                self.build_core_infix_opr_fun_body(type_id, InfixOpr::Eq)?;
+                self.build_core_infix_opr_fun_body(type_id, InfixOpr::Neq)?;
+            }
         }
         Ok(())
     }
@@ -82,8 +85,8 @@ impl<'ctx> CodeLowerer<'ctx> {
             let entry_block = self.llvm_context.append_basic_block(fun_value, "entry");
             let original_block = self.builder.get_insert_block();
             self.builder.position_at_end(entry_block);
-            let left_arg_value = fun_value.get_nth_param(0).unwrap();
-            let right_arg_value = fun_value.get_nth_param(1).unwrap();
+            let left_arg_value = fun_value.get_nth_param(0);
+            let right_arg_value = fun_value.get_nth_param(1);
             let res = self.build_core_opr(primitive_type, opr, left_arg_value, right_arg_value);
             self.builder.build_return(Some(&res)).unwrap();
 
@@ -101,7 +104,17 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(())
     }
 
-    fn build_core_opr(&mut self, primitive_type: PrimitiveType, opr: InfixOpr, arg_1: BasicValueEnum<'ctx>, arg_2: BasicValueEnum<'ctx>) -> BasicValueEnum<'ctx> {
+    fn build_core_opr(&mut self, primitive_type: PrimitiveType, opr: InfixOpr, arg_1: Option<BasicValueEnum<'ctx>>, arg_2: Option<BasicValueEnum<'ctx>>) -> BasicValueEnum<'ctx> {
+        if primitive_type == PrimitiveType::Void {
+            if opr == InfixOpr::Eq {
+                return self.llvm_context.bool_type().const_int(1, false).into()
+            }
+            if opr == InfixOpr::Neq {
+                return self.llvm_context.bool_type().const_int(0, false).into()
+            } 
+        }
+        let arg_1 = arg_1.unwrap();
+        let arg_2 = arg_2.unwrap();
         match opr {
             InfixOpr::Add => {
                 if primitive_type.is_int() || primitive_type.is_uint() {

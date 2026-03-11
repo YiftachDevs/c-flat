@@ -88,6 +88,7 @@ pub struct Function {
     pub return_type: Option<ExprNode>,
     pub scope: Option<Scope>,
     pub span: Span,
+    pub external: bool
 }
 
 #[derive(PartialEq, Clone)]
@@ -163,6 +164,7 @@ pub enum Conditional {
     If,
     For,
     While,
+    Loop,
     When,
     Else
 }
@@ -170,6 +172,7 @@ pub enum Conditional {
 #[derive(PartialEq, Clone)]
 pub struct ConditionalChain {
     pub kind: Conditional,
+    pub label: Option<Label>,
     pub cond_expr: Option<ExprNode>,
     pub then_scope: Scope,
     pub else_node: Option<Box<ConditionalChain>>,
@@ -182,6 +185,7 @@ impl ToString for ConditionalChain {
             Conditional::If => "if",
             Conditional::For => "for",
             Conditional::While => "while",
+            Conditional::Loop => "loop",
             Conditional::When => "when",
             Conditional::Else => ""
         };
@@ -200,24 +204,54 @@ impl ToString for ConditionalChain {
 #[derive(PartialEq, Clone)]
 pub enum ControlFlow {
     Return(ExprNode),
-    Skip,
-    Stop(ExprNode)
+    Skip { label: Option<Label>, span: Span },
+    Break { label: Option<Label>, expr: ExprNode, span: Span }
+}
+
+#[derive(PartialEq, Clone)]
+pub struct Label {
+    pub label: String,
+    pub span: Span
+}
+
+impl Label {
+    fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
+        let mut span = parser.get_span_start();
+        if !parser.is_next("@") {
+            return Ok(None);
+        }
+        parser.end_span(&mut span);
+        Ok(Some(Self { label: parser.next_name(true)?, span }))
+    }
+
+    fn to_string(&self) -> String {
+        format!("@{}", self.label)
+    }
 }
 
 impl ToString for ControlFlow {
     fn to_string(&self) -> String {
         match self {
-            ControlFlow::Return(expr_node) => {
+            ControlFlow::Return(expr) => {
                 let mut result: String = "return".to_string();
-                result += format!(" {}", expr_node.to_string()).as_str();
+                result += format!(" {}", expr.to_string()).as_str();
                 result
             }
-            ControlFlow::Stop(expr_node) => {
-                let mut result: String = "stop".to_string();
-                result += format!(" {}", expr_node.to_string()).as_str();
+            ControlFlow::Break { label, expr, span } => {
+                let mut result: String = "break".to_string();
+                if let Some(label) = label {
+                    result += format!(" {}", label.to_string()).as_str();
+                }
+                result += format!(" {}", expr.to_string()).as_str();
                 result
             }
-            ControlFlow::Skip => "skip".to_string()
+            ControlFlow::Skip { label, span } => {
+                let mut result = "skip".to_string();
+                if let Some(label) = label {
+                    result += format!(" {}", label.to_string()).as_str();
+                }
+                result
+            }
         }
     }
 }
@@ -296,41 +330,49 @@ pub struct Trait {
 impl ConditionalChain {
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
         let mut span = parser.get_span_start();
+        let label = Label::is_from_def(parser)?;
         let kind: Conditional = if parser.is_next("if") {
             Conditional::If
         } else if parser.is_next("for") {
             Conditional::For
         } else if parser.is_next("while") {
             Conditional::While
+        } else if parser.is_next("loop") {
+            Conditional::Loop
         } else if parser.is_next("when") {
             Conditional::When
         } else {
             return Ok(None);
         };
         parser.end_span(&mut span);
+        let cond_expr: Option<ExprNode> = if kind != Conditional::Loop { Some(ExprNode::from_def(parser, true)?) } else { None };
 
-        let cond_expr: Option<ExprNode> = Some(ExprNode::from_def(parser, true)?);
         let then_scope: Scope = Scope::from_def(parser)?;
-        let else_node: Option<Box<ConditionalChain>> = if parser.is_next("else") {
+        let else_node: Option<Box<ConditionalChain>> = if kind != Conditional::Loop && parser.is_next("else") {
             if let Some(cond_chain) = ConditionalChain::is_from_def(parser)? {
                 Some(Box::new(cond_chain))
             } else {
                 let else_scope: Scope = Scope::from_def(parser)?;
-                Some(Box::new(ConditionalChain { kind: Conditional::Else, cond_expr: None, then_scope: else_scope, else_node: None, span }))
+                Some(Box::new(ConditionalChain { kind: Conditional::Else, label: label.clone(), cond_expr: None, then_scope: else_scope, else_node: None, span }))
             }
         } else { None };
-        return Ok(Some(ConditionalChain { kind, cond_expr, then_scope, else_node, span }));
+        return Ok(Some(ConditionalChain { kind, label, cond_expr, then_scope, else_node, span }));
     }
 }
 
 impl ControlFlow {
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
+        let mut span = parser.get_span_start();
         let result: ControlFlow = if parser.is_next("skip") {
-            ControlFlow::Skip
+            parser.end_span(&mut span);
+            let label = Label::is_from_def(parser)?;
+            ControlFlow::Skip { label, span }
         } else if parser.is_next("return") {
             ControlFlow::Return(ExprNode::from_def(parser, true)?)
-        } else if parser.is_next("stop") {
-            ControlFlow::Stop(ExprNode::from_def(parser, true)?)
+        } else if parser.is_next("break") {
+            parser.end_span(&mut span);
+            let label = Label::is_from_def(parser)?;
+            ControlFlow::Break { label, expr: ExprNode::from_def(parser, true)?, span }
         } else {
             return Ok(None);
         };
@@ -976,7 +1018,10 @@ impl ToString for Structs {
 
 impl Function {
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
+        let prev_parser_idx = parser.index;
+        let external = parser.is_next("extern");
         if !parser.is_next("fun") {
+            if external { parser.index = prev_parser_idx; }
             return Ok(None);
         }
         let mut span: Span = parser.get_span_start();
@@ -990,7 +1035,7 @@ impl Function {
             None
         };
         let scope: Option<Scope> = if parser.is_next(";") { None } else { Some(Scope::from_def(parser)?) };
-        Ok(Some(Self { name, templates, args, return_type, scope, span }))
+        Ok(Some(Self { name, templates, args, return_type, scope, span, external }))
     }
 }
 

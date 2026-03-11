@@ -1,6 +1,6 @@
 use inkwell::values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum};
 
-use crate::{code_lowerer::{CodeLowerer, IRContext, IRContextType, IRTypeEnum, IRTypeId}, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprResult, IRExprValueResult}, parser::{ExprNode, ExprNodeEnum, PostfixOpr, Span}};
+use crate::{code_lowerer::{CodeLowerer, IRContext, IRContextType, IRTypeEnum, IRTypeId, PrimitiveType}, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprResult, IRExprValueResult}, parser::{ExprNode, ExprNodeEnum, PostfixOpr, Span}};
 
 
 
@@ -91,12 +91,12 @@ impl<'ctx> CodeLowerer<'ctx> {
                 if let Some(fun_result) = self.lower_impl_fun_name(expr_value_result.type_id, name.as_str(), Some(expr_value_result), right_expr.span)? {
                     return Ok(fun_result);
                 }
+                let void_id = self.primitive_type(PrimitiveType::Void)?;
                 let ir_type = self.ir_type(expr_value_result.type_id);
                 match &ir_type.type_enum {
                     IRTypeEnum::Struct(_struct) => {
                         if let Some((i, arg)) = _struct.args.iter().enumerate().find(|(_, arg)| arg.name == name) {
-                            println!("ee! {}", self.format_type(expr_value_result.type_id));
-                            let arg_value = if let Some(_) = arg.llvm_value {
+                            let arg_value = if arg.type_id != void_id {
                                 let llvm_value = expr_value_result.llvm_value.unwrap();
                                 let arg_name = format!("{}.{}", llvm_value.get_name().to_string_lossy(), arg.name);
                                 match llvm_value {
@@ -109,7 +109,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                                     _ => panic!("lower_postfix_opr_member 2")
                                 }
                             } else { None };
-                
+
                             return Ok(IRExprResult::Value(IRExprValueResult { type_id: arg.type_id, llvm_value: arg_value }));
                         }
                         else {
@@ -131,8 +131,8 @@ impl<'ctx> CodeLowerer<'ctx> {
                     return Err(self.error(SemanticError::TypeMismatch { expected: self.format_type(ctx_self), got: self.format_type(self_value.type_id) }, Some(span)));
                 }
                 let mut res = self.lower_args_values(ir_context, right_expr, &args_context_types)?.into_iter().filter_map(|res| res.llvm_value).collect::<Vec<BasicValueEnum<'ctx>>>();
-                if let Some(self_value) = self_value.llvm_value {
-                    res.insert(0, self_value);
+                if let Some(self_llvm_value) = self_value.llvm_value {
+                    res.insert(0, self_llvm_value);
                 }
                 res
             } else {

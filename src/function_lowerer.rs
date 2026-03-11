@@ -81,7 +81,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             self.llvm_context.void_type().fn_type(args_llvm_types.as_slice(), false)
         };
 
-        let has_body = if let Some(_) = &fun_def.scope { true } else { false };
+        let has_body = if let Some(_) = &fun_def.scope { true } else { fun_def.external };
 
         let fun_llvm_value = self.module.add_function(fun_path_string.as_str(), fun_llvm_type, None);
 
@@ -98,7 +98,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         };
         self.funs_table[fun_id] = Some(ir_fun);
 
-        if has_body {
+        if let Some(_) = &fun_def.scope {
             self.lower_fun_scope(fun_id)?;
         }
 
@@ -116,7 +116,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         let original_block = self.builder.get_insert_block();
         self.builder.position_at_end(entry_block);
 
-        let mut ir_fun_scope = IRFunContext { fun: fun, vars: Vec::new() };
+        let mut ir_fun_scope = IRFunContext { fun: fun, vars: Vec::new(), loop_stack: Vec::new() };
 
         for (i, arg) in ir_fun.args.iter().enumerate() {
             let mut new_arg = arg.clone();
@@ -130,15 +130,17 @@ impl<'ctx> CodeLowerer<'ctx> {
 
         let mut ir_context = IRContext::FunContext(ir_fun_scope);
         let result = self.lower_scope(&mut ir_context, fun_def.scope.as_ref().unwrap(), &IRContextType::Type(return_type))?;
-        let never_type = self.primitive_type(PrimitiveType::Never)?;
+        /*let never_type = self.primitive_type(PrimitiveType::Never)?;
         if result.type_id != never_type && result.type_id != return_type {
             return Err(self.error(SemanticError::TypeMismatch { expected: self.format_type(return_type), got: self.format_type(result.type_id) }, Some(fun_def.span)));
-        }
+        }*/
 
         if let Some(value) = self.r_value(&result) {
             self.builder.build_return(Some(&value)).expect("Return build failed");
-        } else {
+        } else if result.type_id == void_type {
             self.builder.build_return(None).expect("Return build failed");
+        } else {
+            self.builder.build_unreachable().unwrap();
         }
 
         if let Some(block) = original_block {

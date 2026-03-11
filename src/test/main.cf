@@ -1,12 +1,49 @@
-fun main() {
-    let vec = math.Vec_2:<()> { (), () };
-    let a = if foo(vec.x, ()) {
-        foo((), ());
-        3
-    } else { 6 };
+fun main() -> i32 {
+    loop {
+        let external_char = getchar();
+        
+        if external_char == 'q' {
+            return 0;
+        }
+
+        let internal_result = while getchar() != '\n' {
+            let c = getchar();
+            
+            if c == '*' {
+                break 3;
+            }   
+            if c == '!' {
+                skip;
+            }
+            break 4;
+        } else {
+            54
+        };
+
+        if internal_result == 54 {
+            break internal_result + 5;
+        } else if internal_result == 4 {
+            break 123;
+        } else {
+            return internal_result;
+        }
+    }
 }
 
-fun foo(a: (), b: ()) -> bool { false }
+impl char {
+    fun to_int<T: Integer>(self: Self) -> T {
+        self as T - '0' as T
+    }
+}
+
+impl<T: Integer> T {
+    fun to_char(self: Self) -> char {
+        ('0' as Self + self) as char
+    }
+}
+
+extern fun getchar() -> char;
+extern fun putchar(chr: char) -> char;
 
 impl<T> T {
     fun get(self: Self) -> Self { self }
@@ -22,6 +59,12 @@ mod math {
     impl<T> Add:<Self> for Vec_2:<T> {
         fun add(self: Self, other: Self) -> Self {
             Self { self.x, self.y }
+        }
+    }
+
+    impl<T> Vec_2:<T> {
+        fun len_pow(self: Self) -> T {
+            self.x * self.x + self.y * self.y
         }
     }
 }
@@ -43,7 +86,7 @@ impl Float for f16;
 impl Float for f32;
 impl Float for f64;
 
-trait Numeral;
+trait Numeral: Primitive;
 impl Numeral for u8;
 impl Numeral for i8;
 impl Numeral for i16;
@@ -74,6 +117,7 @@ impl Primitive for f32;
 impl Primitive for f64;
 impl Primitive for bool;
 impl Primitive for char;
+impl Primitive for ();
 
 trait Add<T> { fun add(self: Self, other: T) -> Self; }
 trait Sub<T> { fun sub(self: Self, other: T) -> Self; }

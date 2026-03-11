@@ -4,14 +4,15 @@ use std::{any::Any, collections::HashMap};
 use indexmap::IndexMap;
 use inkwell::{types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum}, values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue}};
 
-use crate::{code_lowerer::*, errors::{CompilerError, SemanticError}, function_lowerer, parser::{ExprNode, ExprNodeEnum, Function, Literal, PostfixOpr, Scope, Span, Statement, Struct, Templates, Trait}};
+use crate::{code_lowerer::*, conditional_chain, errors::{CompilerError, SemanticError}, function_lowerer, parser::{ExprNode, ExprNodeEnum, Function, Literal, PostfixOpr, Scope, Span, Statement, Struct, Templates, Trait}};
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct IRExprValueResult<'ctx> {
     pub type_id: IRTypeId,
     pub llvm_value: Option<BasicValueEnum<'ctx>>
 }
 
+#[derive(PartialEq)]
 pub enum IRExprResult<'ctx> {
     Empty,
     Void,
@@ -26,6 +27,26 @@ pub enum IRExprResult<'ctx> {
     EnumName(IRScopeId, String),
     ModuleScope(IRScopeId),
     NoImplMatch
+}
+
+impl<'ctx> IRExprResult<'ctx> {
+    pub fn to_string_temp(&self) -> &'static str {
+        match self {
+            IRExprResult::Empty => "Empty",
+            IRExprResult::Void => "Void",
+            IRExprResult::Value(_) => "Value",
+            IRExprResult::CommaSeperated(_, _) => "CommaSeperated",
+            IRExprResult::Type(_) => "Type",
+            IRExprResult::Trait(_) => "Trait",
+            IRExprResult::Function(_, _) => "Function",
+            IRExprResult::FunctionName(_, _, _, _) => "FunctionName",
+            IRExprResult::StructName(_, _) => "StructName",
+            IRExprResult::TraitName(_, _, _) => "TraitName",
+            IRExprResult::EnumName(_, _) => "EnumName",
+            IRExprResult::ModuleScope(_) => "ModuleScope",
+            IRExprResult::NoImplMatch => "NoImplMatch"
+        }
+    }
 }
 
 impl<'ctx> CodeLowerer<'ctx> {
@@ -48,7 +69,13 @@ impl<'ctx> CodeLowerer<'ctx> {
     }
 
     pub fn lower_scope(&mut self, ir_context: &mut IRContext<'ctx>, scope: &Scope, context_type: &IRContextType) -> Result<IRExprValueResult<'ctx>, CompilerError> {
-        for statement in scope.statements.iter() {
+        let prev_vars_len = ir_context.into_fun_context().vars.len();
+
+        let mut scope_result = IRExprValueResult { type_id: self.primitive_type(PrimitiveType::Void)?, llvm_value: None };
+
+        for (i, statement) in scope.statements.iter().enumerate() {
+            let is_final_statement = i == scope.statements.len() - 1;
+            let ctx_t = if is_final_statement { context_type } else { &IRContextType::Any }; 
             match statement {
                 Statement::VarDeclaration(var) => {
                     let ir_var = if let Some(init_expr) = var.init_expr.as_ref() {
@@ -61,7 +88,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                         };
                         IRVariable { name: var.name.clone(), type_id: var_type, is_mut: var.is_mut, llvm_value: llvm_value }
                     } else {
-                        let var_type = self.get_type(ir_context, var.var_type.as_ref().unwrap(), context_type)?;
+                        let var_type = self.get_type(ir_context, var.var_type.as_ref().unwrap(), &IRContextType::Any)?;
                         let llvm_ptr = self.get_alloca(var_type, &var.name).into();
                         IRVariable { name: var.name.clone(), type_id: var_type, is_mut: var.is_mut, llvm_value: Some(llvm_ptr) }
                     };
@@ -69,18 +96,35 @@ impl<'ctx> CodeLowerer<'ctx> {
                 },
                 Statement::Expression { expr, is_final_value } => {
                     if *is_final_value {
-                        let expr_result = self.get_value(ir_context, expr, context_type, true)?;
-                        return Ok(expr_result);
+                        scope_result = self.get_value(ir_context, expr, context_type, true)?;
+                        break;
                     } else {
                         let expr_result = self.get_value(ir_context, expr, &IRContextType::Any, false)?;
+                        if expr_result.type_id == self.primitive_type(PrimitiveType::Never)? {
+                            scope_result = expr_result;
+                            break;
+                        }
                     }
+                },
+                Statement::ConditionalChain(conditional_chain) => {
+                    let expr_result = self.lower_conditional_chain(ir_context, conditional_chain, ctx_t)?;
+                    if is_final_statement || expr_result.type_id == self.primitive_type(PrimitiveType::Never)? {
+                        scope_result = expr_result;
+                        break;
+                    }
+                },
+                Statement::ControlFlow(control_flow) => {
+                    scope_result = self.lower_control_flow(ir_context, control_flow, ctx_t)?;
+                    break;
                 }
                 _ => { todo!() }
             }
         }
 
-        let scope_type = self.primitive_type(PrimitiveType::Void)?;
-        Ok(IRExprValueResult { type_id: scope_type, llvm_value: None })
+        ir_context.into_fun_context().vars.drain(prev_vars_len..);
+
+        self.ensure_type_matches(scope_result.type_id, context_type, Some(scope.span))?;
+        Ok(scope_result)
     }
 
     pub fn ensure_expr_result_value(&mut self, expr_result: &IRExprResult<'ctx>, ensure_type: bool, span: Span, context_type: &IRContextType) -> Result<IRExprValueResult<'ctx>, CompilerError> {
@@ -91,7 +135,8 @@ impl<'ctx> CodeLowerer<'ctx> {
             return Ok(*expr_value);
         }
         if let IRExprResult::Void = expr_result {
-            return Ok(IRExprValueResult { type_id: self.primitive_type(PrimitiveType::Void)?, llvm_value: None });
+            let void_type =  self.primitive_type(PrimitiveType::Void)?;
+            return self.ensure_expr_result_value(&IRExprResult::Value(IRExprValueResult { type_id: void_type, llvm_value: None }), ensure_type, span, context_type);
         }
         return Err(self.error(SemanticError::ExpectedValueExpr, Some(span)));
     }
@@ -151,7 +196,13 @@ impl<'ctx> CodeLowerer<'ctx> {
             ExprNodeEnum::ConditionalChain(conditional_chain) => {
                 IRExprResult::Value(self.lower_conditional_chain(ir_context, conditional_chain, context_type)?)
             },
-            ExprNodeEnum::Void => IRExprResult::Void,
+            ExprNodeEnum::Void => {
+                if let IRContext::FunContext(_) = ir_context {
+                    IRExprResult::Void
+                } else {
+                    IRExprResult::Type(self.ensure_expr_result_type(&IRExprResult::Void, expr.span, &IRContextType::Any)?)
+                }
+            },
             ExprNodeEnum::Empty => IRExprResult::Empty,
             _ => todo!("lower_expr 2")
         };

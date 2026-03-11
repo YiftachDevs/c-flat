@@ -5,6 +5,7 @@ use std::path::Path;
 
 
 use indexmap::IndexMap;
+use inkwell::basic_block::BasicBlock;
 use inkwell::builder::Builder;
 use inkwell::context::Context;
 use inkwell::module::Module;
@@ -18,8 +19,8 @@ use inkwell::types::VoidType;
 use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
 
 use crate::errors::{CompilerError, CompilerErrorType, SemanticError};
-use crate::expr_lowerer::IRExprResult;
-use crate::parser::{ExprNode, ExprNodeEnum, FileContext, Function, Implementation, Literal, Scope, Span, Struct, Template, Templates, Trait, Variable};
+use crate::expr_lowerer::{IRExprResult, IRExprValueResult};
+use crate::parser::{ConditionalChain, ExprNode, ExprNodeEnum, FileContext, Function, Implementation, Label, Literal, Scope, Span, Struct, Template, Templates, Trait, Variable};
 
 pub type IRTypeId = usize;
 pub type IRFunctionId = usize;
@@ -196,9 +197,23 @@ pub struct IRScope<'ctx> {
     pub ast_def: Option<&'ctx Scope>
 }
 
+
+#[derive(Clone)]
+pub struct IRLoop<'ctx> {
+    pub loop_block: BasicBlock<'ctx>,
+    pub merge_block: BasicBlock<'ctx>,
+    pub label: Option<Label>,
+    pub span: Span,
+    pub ctx_type: IRContextType,
+    pub phi_values: IRPhiValues<'ctx>
+}
+
+pub type IRPhiValues<'ctx> = Vec<(IRExprValueResult<'ctx>, BasicBlock<'ctx>)>;
+
 pub struct IRFunContext<'ctx> {
     pub fun: IRFunctionId,
-    pub vars: IRVariables<'ctx>
+    pub vars: IRVariables<'ctx>,
+    pub loop_stack: Vec<IRLoop<'ctx>>
 }
 
 pub enum IRContext<'ctx> {
@@ -346,7 +361,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             IRContext::ImplDefContext(parent_scope, _, _) => *parent_scope
         }
     }
-
+    
     pub fn get_name_parent_scope(&self, parent_scope: IRScopeId, name: &str, opt_call_span: Option<Span>) -> Result<Option<IRScopeId>, CompilerError> {
         let ir_scope = self.ir_scope(parent_scope);
         let fun_results_len = if let Some(ast_def) = ir_scope.ast_def { ast_def.functions.iter().filter(|def| def.name == name).count() } else { 0 };
