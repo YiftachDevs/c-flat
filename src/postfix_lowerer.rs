@@ -12,10 +12,10 @@ impl<'ctx> CodeLowerer<'ctx> {
                 self.lower_postfix_opr_member(ir_context, left_expr_result, right_expr, context_type, left_expr.span)
             },
             PostfixOpr::Inv => {
-                self.lower_postfix_opr_invoke(ir_context, left_expr_result, right_expr, context_type, left_expr.span)
+                Ok(IRExprResult::Value(self.lower_postfix_opr_invoke(ir_context, left_expr_result, right_expr, context_type, left_expr.span)?))
             },
             PostfixOpr::Con => {
-                self.lower_postfix_opr_constructor(ir_context, left_expr_result, right_expr, context_type, left_expr.span)
+                Ok(IRExprResult::Value(self.lower_postfix_opr_constructor(ir_context, left_expr_result, right_expr, context_type, left_expr.span)?))
             },
             PostfixOpr::Tmp => {
                 self.lower_postfix_opr_templates(ir_context, left_expr_result, right_expr, context_type, left_expr.span)
@@ -38,11 +38,15 @@ impl<'ctx> CodeLowerer<'ctx> {
             let struct_def = self.find_struct_def_in_scope(parent_scope, struct_name.as_str(), Some(span))?.unwrap().1;
             let templates_len = struct_def.templates.templates.len();
             let context_types = if let IRContextType::Impl(ctx_type) = context_type {
-                if let IRTypeEnum::Struct(ir_struct) = &self.ir_type(*ctx_type).type_enum {
+                let templates = if let IRTypeEnum::Struct(ir_struct) = &self.ir_type(*ctx_type).type_enum {
                     ir_struct.templates_map.iter().map(|(_, value)| IRContextType::Impl(*value)).collect::<Vec<IRContextType>>()
                 } else {
+                    Vec::new()
+                };
+                if templates.len() != templates_len {
                     return Ok(IRExprResult::NoImplMatch);
                 }
+                templates
             } else {
                 vec![IRContextType::Any; templates_len]
             };
@@ -91,12 +95,11 @@ impl<'ctx> CodeLowerer<'ctx> {
                 if let Some(fun_result) = self.lower_impl_fun_name(expr_value_result.type_id, name.as_str(), Some(expr_value_result), right_expr.span)? {
                     return Ok(fun_result);
                 }
-                let void_id = self.primitive_type(PrimitiveType::Void)?;
                 let ir_type = self.ir_type(expr_value_result.type_id);
                 match &ir_type.type_enum {
                     IRTypeEnum::Struct(_struct) => {
                         if let Some((i, arg)) = _struct.args.iter().enumerate().find(|(_, arg)| arg.name == name) {
-                            let arg_value = if arg.type_id != void_id {
+                            let arg_value = if !self.is_type_zero_sized(arg.type_id)? {
                                 let llvm_value = expr_value_result.llvm_value.unwrap();
                                 let arg_name = format!("{}.{}", llvm_value.get_name().to_string_lossy(), arg.name);
                                 match llvm_value {
@@ -123,7 +126,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
     }
 
-    pub fn lower_postfix_opr_invoke(&mut self, ir_context: &mut IRContext<'ctx>, left_expr_result: IRExprResult<'ctx>, right_expr: &Box<ExprNode>, context_type: &IRContextType, span: Span) -> Result<IRExprResult<'ctx>, CompilerError> {
+    pub fn lower_postfix_opr_invoke(&mut self, ir_context: &mut IRContext<'ctx>, left_expr_result: IRExprResult<'ctx>, right_expr: &Box<ExprNode>, context_type: &IRContextType, span: Span) -> Result<IRExprValueResult<'ctx>, CompilerError> {
         if let IRExprResult::Function(fun_id, opt_self_value) = left_expr_result {
             let mut args_context_types = self.ir_function(fun_id).args.iter().map(|arg| IRContextType::Type(arg.type_id)).collect::<Vec<IRContextType>>();
             let llvm_args = if let Some(self_value) = opt_self_value {
@@ -145,13 +148,13 @@ impl<'ctx> CodeLowerer<'ctx> {
             }
             let fun_call = self.builder.build_call(ir_fun.llvm_value, &llvm_args, "fun_call_tmp").unwrap();
             let ret_value = fun_call.try_as_basic_value().basic();
-            Ok(IRExprResult::Value(IRExprValueResult { type_id: ir_fun.return_type, llvm_value: ret_value }))
+            Ok(IRExprValueResult { type_id: ir_fun.return_type, llvm_value: ret_value })
         } else {
             return Err(self.error(SemanticError::ExpectedFunction, Some(span)));
         }
     }
 
-    fn lower_postfix_opr_constructor(&mut self, ir_context: &mut IRContext<'ctx>, left_expr_result: IRExprResult<'ctx>, right_expr: &Box<ExprNode>, context_type: &IRContextType, span: Span) -> Result<IRExprResult<'ctx>, CompilerError> {
+    fn lower_postfix_opr_constructor(&mut self, ir_context: &mut IRContext<'ctx>, left_expr_result: IRExprResult<'ctx>, right_expr: &Box<ExprNode>, context_type: &IRContextType, span: Span) -> Result<IRExprValueResult<'ctx>, CompilerError> {
         if let IRExprResult::Type(type_id) = left_expr_result {
             match &self.ir_type(type_id).type_enum {
                 IRTypeEnum::Struct(_struct) => {
@@ -168,7 +171,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                         }
                     }
                     llvm_value.set_name("tmp_constructor");
-                    Ok(IRExprResult::Value(IRExprValueResult { type_id, llvm_value: Some(llvm_value.as_basic_value_enum()) }))
+                    Ok(IRExprValueResult { type_id, llvm_value: Some(llvm_value.as_basic_value_enum()) })
                 },
                 _ => return Err(self.error(SemanticError::ExpectedStruct, Some(span)))
             }

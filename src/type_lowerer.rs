@@ -1,6 +1,6 @@
 use std::any::Any;
 
-use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
+use inkwell::{AddressSpace, types::{BasicMetadataTypeEnum, BasicTypeEnum}};
 
 use crate::{code_lowerer::{CodeLowerer, IRConstraint, IRConstraints, IRContext, IRContextType, IRScope, IRScopeId, IRScopePath, IRStruct, IRTemplateValue, IRTemplatesMap, IRType, IRTypeEnum, IRTypeId, IRVariable, IRVariables, PrimitiveType}, errors::{CompilerError, SemanticError}, parser::{ExprNode, Span, Struct, Templates}};
 
@@ -36,10 +36,19 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(type_id)
     }
 
-    pub fn is_type_zero_sized(&mut self, type_id: IRTypeId) -> Result<bool, CompilerError> {
-        let void_type = self.primitive_type(PrimitiveType::Void)?;
-        let never_type = self.primitive_type(PrimitiveType::Never)?;
-        Ok(type_id == void_type || type_id == never_type)
+    pub fn is_type_zero_sized(&self, type_id: IRTypeId) -> Result<bool, CompilerError> {
+        let ir_type_enum = &&&self.ir_type(type_id).type_enum;
+        if let IRTypeEnum::Primitive(prim) = ir_type_enum {
+            return Ok(*prim == PrimitiveType::Void || *prim == PrimitiveType::Never);
+        }
+        if let IRTypeEnum::Struct(ir_struct) = &self.ir_type(type_id).type_enum {
+            for arg in ir_struct.args.iter() {
+                if !self.is_type_zero_sized(arg.type_id)? { 
+                    return Ok(false);
+                }
+            }
+        }
+        return Ok(false);
     }
 
     pub fn primitive_type_from(&mut self, name: &str) -> Option<PrimitiveType> {
@@ -63,6 +72,18 @@ impl<'ctx> CodeLowerer<'ctx> {
             "i128" => Some(PrimitiveType::I128),
             _ => None
         }
+    }
+
+    pub fn pointer_type(&mut self, type_id: IRTypeId) -> Result<IRTypeId, CompilerError> {
+        let ptr_type = self.type_id(IRType { type_enum: IRTypeEnum::Pointer { ptr_type_id: type_id }, llvm_type: Some(self.llvm_context.ptr_type(AddressSpace::default()).into()), lowered_impls: None });
+        self.lower_impls(ptr_type)?;
+        Ok(ptr_type)
+    }
+
+    pub fn reference_type(&mut self, type_id: IRTypeId) -> Result<IRTypeId, CompilerError> {
+        let ptr_type = self.type_id(IRType { type_enum: IRTypeEnum::Reference { ptr_type_id: type_id }, llvm_type: Some(self.llvm_context.ptr_type(AddressSpace::default()).into()), lowered_impls: None });
+        self.lower_impls(ptr_type)?;
+        Ok(ptr_type)
     }
 
     fn find_existing_struct(&mut self, parent_scope: IRScopeId, name: &str, templates_map: &IRTemplatesMap) -> Option<IRTypeId> {

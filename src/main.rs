@@ -8,8 +8,9 @@ mod impl_lowerer;
 mod trait_lowerer;
 mod infix_lowerer;
 mod postfix_lowerer;
+mod prefix_lowerer;
 mod core_lowerer;
-mod conditional_chain;
+mod conditional_lowerer;
 
 use indexmap::IndexMap;
 use inkwell::context::Context;

@@ -145,7 +145,6 @@ impl InfixOpr {
 pub enum PrefixOpr {
     Not,
     Addr,
-    LNot,
     Deref,
     UMin
 }
@@ -489,8 +488,7 @@ impl PrefixOpr {
         let ch: char = parser.cur_char()?;
         parser.index += 1;
         let result = match ch {
-            '~' => PrefixOpr::Not,
-            '!' => PrefixOpr::LNot,
+            '!' => PrefixOpr::Not,
             '&' => PrefixOpr::Addr,
             '*' => PrefixOpr::Deref,
             '-' => PrefixOpr::UMin,
@@ -503,9 +501,8 @@ impl PrefixOpr {
 impl ToString for PrefixOpr {
     fn to_string(&self) -> String {
         match self {
-            PrefixOpr::Not   => "~".to_string(),
+            PrefixOpr::Not   => "!".to_string(),
             PrefixOpr::Addr  => "&".to_string(),
-            PrefixOpr::LNot  => "!".to_string(),
             PrefixOpr::Deref => "*".to_string(),
             PrefixOpr::UMin  => "-".to_string()
         }
@@ -514,6 +511,7 @@ impl ToString for PrefixOpr {
 
 impl PostfixOpr {
     pub fn is_from_def(parser: &mut Parser, is_type: bool, constructor: bool) -> Result<Option<(Self, ExprNode, bool)>, CompilerError> {
+        let prev_index = parser.stamp_index();
         parser.skip_whitespace()?;
         let expr_result: ExprNode;
         let mut is_cur_type: bool = false;
@@ -551,6 +549,7 @@ impl PostfixOpr {
             parser.ensure_next("}")?;
             PostfixOpr::Con
         } else {
+            parser.set_index(prev_index);
             return Ok(None);
         };
         Ok(Some((result, expr_result, is_cur_type)))
@@ -907,6 +906,9 @@ impl Variable {
         let mut span: Span = parser.get_span_start();
         let is_mut: bool = parser.is_next("mut");
         let name: String = parser.next_name(true)?;
+        if name == "self".to_string() {
+            
+        }
         let mut var_type: Option<ExprNode> = None;
         let mut init_expr: Option<ExprNode> = None;
         if parser.is_next(":") {
@@ -921,6 +923,7 @@ impl Variable {
         parser.end_span(&mut span);
         return Ok(Self { name: name, var_type: var_type, init_expr: init_expr, is_mut: is_mut, span });
     }
+
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
         let mut span: Span = parser.get_span_start();
         if !parser.is_next("let") {
@@ -1018,10 +1021,10 @@ impl ToString for Structs {
 
 impl Function {
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
-        let prev_parser_idx = parser.index;
+        let prev_parser_idx = parser.stamp_index();
         let external = parser.is_next("extern");
         if !parser.is_next("fun") {
-            if external { parser.index = prev_parser_idx; }
+            if external { parser.set_index(prev_parser_idx); }
             return Ok(None);
         }
         let mut span: Span = parser.get_span_start();
@@ -1401,6 +1404,16 @@ impl<'fctx> Parser<'fctx> {
 
     pub fn cur_file(&self) -> &Vec<char> {
         &self.file_context.files[&self.cur_file_id]
+    }
+
+    pub fn stamp_index(&self) -> (usize, usize, usize) {
+        (self.index, self.new_line_index, self.cur_line)
+    }
+
+    pub fn set_index(&mut self, index_data: (usize, usize, usize)) {
+        self.index = index_data.0;
+        self.new_line_index = index_data.1;
+        self.cur_line = index_data.2;
     }
 
     pub fn parse_file(&mut self, path: String, main_scope: &mut Scope) -> Result<(), CompilerError> {

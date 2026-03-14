@@ -15,7 +15,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(None)
     }
 
-    fn find_existing_trait(&mut self, parent_scope: IRScopeId, name: &str, templates_map: &IRTemplatesMap) -> Option<IRTypeId> {
+    fn find_existing_trait(&mut self, parent_scope: IRScopeId, name: &str, templates_map: &IRTemplatesMap) -> Option<IRTraitId> {
         for (i, ir_trait) in self.traits_table.iter().enumerate() {
             let ir_scope = self.ir_scope(ir_trait.scope);
             if ir_scope.parent_scope.unwrap() == parent_scope && ir_trait.ast_def.name == name && ir_trait.templates_map == *templates_map {

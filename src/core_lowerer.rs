@@ -1,47 +1,51 @@
-use crate::code_lowerer::PrimitiveType;
+use crate::{code_lowerer::PrimitiveType, parser::PrefixOpr};
 use inkwell::{FloatPredicate, IntPredicate, attributes::{Attribute, AttributeLoc}, module::Linkage, types::{BasicMetadataTypeEnum, BasicType}, values::{BasicValueEnum, FunctionValue, PointerValue}};
 use crate::{code_lowerer::*, errors::{CompilerError, CompilerErrorType, SemanticError}, expr_lowerer::IRExprResult, parser::{ExprNode, Function, Implementation, InfixOpr, Span, Variable}};
-
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn impl_core_if_primitive(&mut self, type_id: IRTypeId) -> Result<(), CompilerError> {
         let ir_type = self.ir_type(type_id);
-        if let IRTypeEnum::Primitive(primitive_type) = ir_type.type_enum {
+        if let IRTypeEnum::Reference { ptr_type_id } = ir_type.type_enum {
+            self.build_core_opr_funs_body(type_id, CoreOpr::Prefix(PrefixOpr::Deref))?;
+        } else if let IRTypeEnum::Primitive(primitive_type) = ir_type.type_enum {
             if primitive_type == PrimitiveType::Never {
                 return Ok(());
             }
             let core_scope = self.get_core_scope();
             let primitive_trait = self.lower_trait(core_scope, "Primitive", &Vec::new(), type_id, None)?;
             let numeral_trait = self.lower_trait(core_scope, "Numeral", &Vec::new(), type_id, None)?;
+            let integer_trait = self.lower_trait(core_scope, "Integer", &Vec::new(), type_id, None)?;
             if self.type_impls_trait(type_id, numeral_trait)? {
-                self.build_core_infix_opr_fun_body(type_id, InfixOpr::Add)?;
-                self.build_core_infix_opr_fun_body(type_id, InfixOpr::Sub)?;
-                self.build_core_infix_opr_fun_body(type_id, InfixOpr::Mul)?;
-                self.build_core_infix_opr_fun_body(type_id, InfixOpr::Div)?;
-                self.build_core_infix_opr_fun_body(type_id, InfixOpr::Mod)?;
-                self.build_core_infix_opr_fun_body(type_id, InfixOpr::Lss)?;
-                self.build_core_infix_opr_fun_body(type_id, InfixOpr::Leq)?;
-                self.build_core_infix_opr_fun_body(type_id, InfixOpr::Gtr)?;
-                self.build_core_infix_opr_fun_body(type_id, InfixOpr::Geq)?;
+                self.build_core_opr_funs_body(type_id, CoreOpr::Infix(InfixOpr::Add))?;
+                self.build_core_opr_funs_body(type_id, CoreOpr::Infix(InfixOpr::Sub))?;
+                self.build_core_opr_funs_body(type_id, CoreOpr::Infix(InfixOpr::Mul))?;
+                self.build_core_opr_funs_body(type_id, CoreOpr::Infix(InfixOpr::Div))?;
+                self.build_core_opr_funs_body(type_id, CoreOpr::Infix(InfixOpr::Mod))?;
+                self.build_core_opr_funs_body(type_id, CoreOpr::Infix(InfixOpr::Lss))?;
+                self.build_core_opr_funs_body(type_id, CoreOpr::Infix(InfixOpr::Leq))?;
+                self.build_core_opr_funs_body(type_id, CoreOpr::Infix(InfixOpr::Gtr))?;
+                self.build_core_opr_funs_body(type_id, CoreOpr::Infix(InfixOpr::Geq))?;
             }
             if self.type_impls_trait(type_id, primitive_trait)? {
-                self.build_core_infix_opr_fun_body(type_id, InfixOpr::Eq)?;
-                self.build_core_infix_opr_fun_body(type_id, InfixOpr::Neq)?;
+                self.build_core_opr_funs_body(type_id, CoreOpr::Infix(InfixOpr::Eq))?;
+                self.build_core_opr_funs_body(type_id, CoreOpr::Infix(InfixOpr::Neq))?;
+            }
+            if self.type_impls_trait(type_id, integer_trait)? || type_id == self.primitive_type(PrimitiveType::Bool)? {
+                self.build_core_opr_funs_body(type_id, CoreOpr::Prefix(PrefixOpr::Not))?;
             }
         }
         Ok(())
     }
 
-    pub fn get_core_trait_fun(&mut self, type_id: IRTypeId, opr: InfixOpr, span: Option<Span>) -> Result<IRFunctionId, CompilerError> {
-        let (trait_name, trait_fun_name) = CodeLowerer::get_infix_opr_trait_name(opr);
-        if let Some(impl_id) = self.find_impl_of_core_trait(type_id, trait_name)? && let Some(_) = self.find_impl_of_fun(type_id, trait_fun_name, span)? {
+    pub fn get_core_trait_fun(&mut self, type_id: IRTypeId, trait_name: &str, fun_name: &str, span: Option<Span>) -> Result<IRFunctionId, CompilerError> {
+        if let Some(impl_id) = self.find_impl_of_core_trait(type_id, trait_name)? && let Some(_) = self.find_impl_of_fun(type_id, fun_name, span)? {
             let ir_impl = self.ir_impl(impl_id);
-            let fun = self.lower_fun(ir_impl.scope, trait_fun_name, &Vec::new(), span)?;
+            let fun = self.lower_fun(ir_impl.scope,fun_name, &Vec::new(), span)?;
             self.ensure_trait_fun_valid(impl_id, fun, span)?;
             Ok(fun)
         } else {
             return Err(self.error(SemanticError::MissingTrait { type_str: self.format_type(type_id), trait_str: trait_name.to_string() }, span));
-        }  
+        }
     }
 
     fn get_core_scope(&mut self) -> IRScopeId {
@@ -60,51 +64,97 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(None)
     }
 
+    fn build_core_opr_funs_body(&mut self, type_id: IRTypeId, opr: CoreOpr) -> Result<(), CompilerError> {
+        let trait_name = Self::get_core_opr_trait_name(opr).0;
+        let impl_id = self.find_impl_of_core_trait(type_id, trait_name)?.unwrap();
+        for fun_def in self.ir_impl(impl_id).ast_def.scope.as_ref().unwrap().functions.iter() {
+            let trait_fun_name = fun_def.name.clone();
+            if let IRTypeEnum::Primitive(primitive_type) = self.ir_type(type_id).type_enum {
+                let fun = self.get_core_trait_fun(type_id, trait_name, &trait_fun_name, None)?;
+                let fun_value = self.ir_function(fun).llvm_value;
+                let entry_block = self.llvm_context.append_basic_block(fun_value, "entry");
+                let original_block = self.builder.get_insert_block();
+                self.builder.position_at_end(entry_block);
+                match opr {
+                    CoreOpr::Prefix(prefix_opr) => {
+                        let arg_value = fun_value.get_nth_param(0).unwrap();
+                        let res = self.build_core_prefix_opr(type_id, prefix_opr, arg_value)?;
+                        if let Some(result) = res {
+                            self.builder.build_return(Some(&result)).unwrap();
+                        } else {
+                            self.builder.build_return(None).unwrap();
+                        }
+                    },
+                    CoreOpr::Infix(infix_opr) => {
+                        let left_arg_value = fun_value.get_nth_param(0);
+                        let right_arg_value = fun_value.get_nth_param(1);
+                        let res = self.build_core_infix_opr(primitive_type, infix_opr, left_arg_value, right_arg_value);
+                        self.builder.build_return(Some(&res)).unwrap();
+                    }
+                }
+                let inline_kind = Attribute::get_named_enum_kind_id("alwaysinline");
+                let inline_attr = self.llvm_context.create_enum_attribute(inline_kind, 0);
+                fun_value.add_attribute(AttributeLoc::Function, inline_attr);
+                fun_value.set_linkage(Linkage::Internal);
 
-    fn get_infix_opr_trait_name(opr: InfixOpr) -> (&'static str, &'static str) {
-        match opr {
-            InfixOpr::Add => ("Add", "add"),
-            InfixOpr::Sub => ("Sub", "sub"),
-            InfixOpr::Mul => ("Mul", "mul"),
-            InfixOpr::Div => ("Div", "div"),
-            InfixOpr::Mod => ("Mod", "mod"),
-            InfixOpr::Eq => ("Eq", "eq"),
-            InfixOpr::Neq => ("Eq", "neq"),
-            InfixOpr::Lss => ("Ord", "lss"),
-            InfixOpr::Leq => ("Ord", "leq"),
-            InfixOpr::Gtr => ("Ord", "gtr"),
-            InfixOpr::Geq => ("Ord", "geq"),
-            _ => todo!("get_infix_opr_trait_name")
-        }
-    }
+                if let Some(block) = original_block {
+                    self.builder.position_at_end(block);
+                }
 
-    fn build_core_infix_opr_fun_body(&mut self, type_id: IRTypeId, opr: InfixOpr) -> Result<(), CompilerError> {
-        if let IRTypeEnum::Primitive(primitive_type) = self.ir_type(type_id).type_enum {
-            let fun = self.get_core_trait_fun(type_id, opr, None)?;
-            let fun_value = self.ir_function(fun).llvm_value;
-            let entry_block = self.llvm_context.append_basic_block(fun_value, "entry");
-            let original_block = self.builder.get_insert_block();
-            self.builder.position_at_end(entry_block);
-            let left_arg_value = fun_value.get_nth_param(0);
-            let right_arg_value = fun_value.get_nth_param(1);
-            let res = self.build_core_opr(primitive_type, opr, left_arg_value, right_arg_value);
-            self.builder.build_return(Some(&res)).unwrap();
-
-            let inline_kind = Attribute::get_named_enum_kind_id("alwaysinline");
-            let inline_attr = self.llvm_context.create_enum_attribute(inline_kind, 0);
-            fun_value.add_attribute(AttributeLoc::Function, inline_attr);
-            fun_value.set_linkage(Linkage::Internal);
-
-            if let Some(block) = original_block {
-                self.builder.position_at_end(block);
+                self.funs_table[fun].as_mut().unwrap().has_body = true;
             }
-
-            self.funs_table[fun].as_mut().unwrap().has_body = true;
         }
         Ok(())
     }
 
-    fn build_core_opr(&mut self, primitive_type: PrimitiveType, opr: InfixOpr, arg_1: Option<BasicValueEnum<'ctx>>, arg_2: Option<BasicValueEnum<'ctx>>) -> BasicValueEnum<'ctx> {
+    pub fn get_core_opr_trait_name(opr: CoreOpr) -> (&'static str, &'static str) {
+        match opr {
+            CoreOpr::Infix(infix_opr) => {
+                match infix_opr {
+                    InfixOpr::Add => ("Add", "add"),
+                    InfixOpr::Sub => ("Sub", "sub"),
+                    InfixOpr::Mul => ("Mul", "mul"),
+                    InfixOpr::Div => ("Div", "div"),
+                    InfixOpr::Mod => ("Mod", "mod"),
+                    InfixOpr::Eq => ("Eq", "eq"),
+                    InfixOpr::Neq => ("Eq", "eq"),
+                    InfixOpr::Lss => ("Ord", "lss"),
+                    InfixOpr::Leq => ("Ord", "leq"),
+                    InfixOpr::Gtr => ("Ord", "gtr"),
+                    InfixOpr::Geq => ("Ord", "geq"),
+                    _ => todo!("get_infix_opr_trait_name")
+                }
+            },
+            CoreOpr::Prefix(prefix_opr) => {
+                match prefix_opr {
+                    PrefixOpr::Not => ("Not", "not"),
+                    PrefixOpr::Addr => ("Addr", "addr"),
+                    PrefixOpr::Deref => ("Deref", "deref"),
+                    _ => todo!("get_core_opr_trait_name")
+                }
+            }
+        }
+    }
+
+    pub fn build_core_prefix_opr(&mut self, type_id: IRTypeId, opr: PrefixOpr, value: BasicValueEnum<'ctx>) -> Result<Option<BasicValueEnum<'ctx>>, CompilerError> {
+        match opr {
+            PrefixOpr::Not => {
+                Ok(Some(self.builder.build_not(value.into_int_value(), "tmp").unwrap().into()))
+            },
+            PrefixOpr::Deref => {
+                if let IRTypeEnum::Reference { ptr_type_id } = &self.ir_type(type_id).type_enum {
+                    if self.is_type_zero_sized(*ptr_type_id)? {
+                        Ok(None)
+                    } else {
+                        Ok(Some(self.builder.build_load(self.ir_type(*ptr_type_id).llvm_type.unwrap(), value.into_pointer_value(), "load_val").unwrap().into()))
+                    }
+                } else { panic!() }
+            }
+            _ => panic!()
+        }
+    }
+
+    pub fn build_core_infix_opr(&mut self, primitive_type: PrimitiveType, opr: InfixOpr, arg_1: Option<BasicValueEnum<'ctx>>, arg_2: Option<BasicValueEnum<'ctx>>) -> BasicValueEnum<'ctx> {
         if primitive_type == PrimitiveType::Void {
             if opr == InfixOpr::Eq {
                 return self.llvm_context.bool_type().const_int(1, false).into()

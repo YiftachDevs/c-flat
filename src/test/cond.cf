@@ -1,12 +1,53 @@
-struct Empty;
-
 fun main() -> i32 {
-    let a = 100;
-    let b = &a;
+    @main loop {
+        let external_char = getchar();
+        
+        if external_char == 'q' {
+            return 0;
+        }
+
+        let internal_result = @eee while getchar() != '\n' {
+            let c = getchar();
+            
+            if c == '*' {
+                break @eee 4;
+            }   
+            if c == '!' {
+                skip;
+            }
+            break 4;
+        } else {
+            54
+        };
+
+        if internal_result == 54 {
+            break internal_result + 5;
+        } else if internal_result == 4 {
+            break 123;
+        } else {
+            return internal_result;
+        }
+    }
+}
+
+impl char {
+    fun to_int<T: Integer>(self: Self) -> T {
+        self as T - '0' as T
+    }
+}
+
+impl<T: Integer> T {
+    fun to_char(self: Self) -> char {
+        ('0' as Self + self) as char
+    }
 }
 
 extern fun getchar() -> char;
 extern fun putchar(chr: char) -> char;
+
+impl<T> T {
+    fun get(self: Self) -> Self { self }
+}
 
 fun handler<T>(value: T) -> T {
     value
@@ -17,13 +58,7 @@ mod math {
     
     impl<T> Add:<Self> for Vec_2:<T> {
         fun add(self: Self, other: Self) -> Self {
-            Self { self.x + other.x, self.y + other.y }
-        }
-    }
-
-    impl<T> Eq for Vec_2:<T> {
-        fun eq(self: Self, other: Self) -> bool {
-            if self.x == other.x { self.y == other.y } else { false }
+            Self { self.x, self.y }
         }
     }
 
@@ -35,9 +70,8 @@ mod math {
 }
 
 trait Integer: Numeral;
-impl Integer for u128;
-impl Integer for i8;
 impl Integer for u8;
+impl Integer for i8;
 impl Integer for i16;
 impl Integer for u16;
 impl Integer for i32;
@@ -45,6 +79,7 @@ impl Integer for u32;
 impl Integer for i64;
 impl Integer for u64;
 impl Integer for i128;
+impl Integer for u128;
 
 trait Float: Numeral;
 impl Float for f16;
@@ -52,8 +87,8 @@ impl Float for f32;
 impl Float for f64;
 
 trait Numeral: Primitive;
-impl Numeral for i8;
 impl Numeral for u8;
+impl Numeral for i8;
 impl Numeral for i16;
 impl Numeral for u16;
 impl Numeral for i32;
@@ -67,8 +102,8 @@ impl Numeral for f32;
 impl Numeral for f64;
 
 trait Primitive;
-impl Primitive for i8;
 impl Primitive for u8;
+impl Primitive for i8;
 impl Primitive for i16;
 impl Primitive for u16;
 impl Primitive for i32;
@@ -89,11 +124,8 @@ trait Sub<T> { fun sub(self: Self, other: T) -> Self; }
 trait Mul<T> { fun mul(self: Self, other: T) -> Self; }
 trait Div<T> { fun div(self: Self, other: T) -> Self; }
 trait Mod<T> { fun mod(self: Self, other: T) -> Self; }
-trait Eq { fun eq(self: Self, other: Self) -> bool; }
+trait Eq { fun eq(self: Self, other: Self) -> bool; fun neq(self: Self, other: Self) -> bool; }
 trait Ord { fun lss(self: Self, other: Self) -> bool; fun leq(self: Self, other: Self) -> bool; fun gtr(self: Self, other: Self) -> bool; fun geq(self: Self, other: Self) -> bool; }
-trait Not { fun not(self: Self) -> Self; }
-trait Deref<T> { fun deref(self: Self) -> T; }
-trait Addr { fun addr(self: &Self) -> &Self; }
 
 impl<T: Numeral> Add:<T> for T { fun add(self: Self, other: Self) -> Self; }
 impl<T: Numeral> Sub:<T> for T { fun sub(self: Self, other: Self) -> Self; }
@@ -101,8 +133,4 @@ impl<T: Numeral> Mul:<T> for T { fun mul(self: Self, other: Self) -> Self; }
 impl<T: Numeral> Div:<T> for T { fun div(self: Self, other: Self) -> Self; }
 impl<T: Numeral> Mod:<T> for T { fun mod(self: Self, other: Self) -> Self; }
 impl<T: Numeral> Ord for T { fun lss(self: Self, other: Self) -> bool; fun leq(self: Self, other: Self) -> bool; fun gtr(self: Self, other: Self) -> bool; fun geq(self: Self, other: Self) -> bool; }
-impl<T: Primitive> Eq for T { fun eq(self: Self, other: Self) -> bool; }
-impl Not for bool { fun not(self: Self) -> Self; }
-impl<T: Integer> Not for T { fun not(self: Self) -> Self; }
-impl<T> Addr for T { fun addr(self: &Self) -> &Self; }
-impl<T> Deref:<T> for &T { fun deref(self: Self) -> Self; }
+impl<T: Primitive> Eq for T { fun eq(self: Self, other: Self) -> bool; fun neq(self: Self, other: Self) -> bool; }

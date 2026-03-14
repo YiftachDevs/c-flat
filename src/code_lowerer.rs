@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::format;
 use std::hash::Hash;
 use std::path::Path;
@@ -20,7 +20,7 @@ use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
 
 use crate::errors::{CompilerError, CompilerErrorType, SemanticError};
 use crate::expr_lowerer::{IRExprResult, IRExprValueResult};
-use crate::parser::{ConditionalChain, ExprNode, ExprNodeEnum, FileContext, Function, Implementation, Label, Literal, Scope, Span, Struct, Template, Templates, Trait, Variable};
+use crate::parser::{ConditionalChain, ExprNode, ExprNodeEnum, FileContext, Function, Implementation, InfixOpr, Label, Literal, PrefixOpr, Scope, Span, Struct, Template, Templates, Trait, Variable};
 
 pub type IRTypeId = usize;
 pub type IRFunctionId = usize;
@@ -41,7 +41,8 @@ pub type IRVariables<'ctx> = Vec<IRVariable<'ctx>>;
 #[derive(PartialEq)]
 pub enum IRTypeEnum<'ctx> {
     Primitive(PrimitiveType),
-    Pointer { ptr_type_id: IRTypeId, is_ref: bool },
+    Pointer { ptr_type_id: IRTypeId },
+    Reference { ptr_type_id: IRTypeId },
     Array { arr_type: IRTypeId, size: usize },
     Callback { args: IRVariables<'ctx>, return_type: IRTypeId },
     Struct(IRStruct<'ctx>)
@@ -141,6 +142,12 @@ impl ToString for PrimitiveType {
     }
 }
 
+#[derive(Clone, Copy)]
+pub enum CoreOpr {
+    Prefix(PrefixOpr),
+    Infix(InfixOpr)
+}
+
 #[derive(PartialEq)]
 pub struct IRType<'ctx> {
     pub type_enum: IRTypeEnum<'ctx>,
@@ -155,6 +162,13 @@ pub struct IRImpl<'ctx> {
     pub trait_id: Option<IRTraitId>,
     pub templates_map: IRTemplatesMap,
     pub ast_def: &'ctx Implementation
+}
+
+#[derive(Hash, PartialEq, Eq, Clone, Copy)]
+pub struct IRImplName {
+    pub parent_scope: IRScopeId,
+    pub index: usize,
+    pub target_type: IRTypeId
 }
 
 #[derive(PartialEq)]
@@ -241,6 +255,7 @@ pub struct CodeLowerer<'ctx> {
     pub funs_table: Vec<Option<IRFunction<'ctx>>>,
     pub scopes_table: Vec<IRScope<'ctx>>,
     pub impls_table: Vec<IRImpl<'ctx>>,
+    pub impls_work: HashSet<IRImplName>,
     pub traits_table: Vec<IRTrait<'ctx>>,
 }
 
@@ -248,7 +263,7 @@ impl<'ctx> CodeLowerer<'ctx> {
     pub fn new(ast_scope: &'ctx Scope, file_context: FileContext, llvm_context: &'ctx Context) -> Self {
         let module: Module = llvm_context.create_module("main_module");
         let builder: Builder<'_> = llvm_context.create_builder();
-        CodeLowerer { ast_scope, file_context, llvm_context, module, builder, types_table: Vec::new(), funs_table: Vec::new(), scopes_table: Vec::new(), impls_table: Vec::new(), traits_table: Vec::new() }
+        CodeLowerer { ast_scope, file_context, llvm_context, module, builder, types_table: Vec::new(), funs_table: Vec::new(), scopes_table: Vec::new(), impls_table: Vec::new(), impls_work: HashSet::new(), traits_table: Vec::new() }
     }
 
     pub fn reserve_function_id(&mut self) -> IRFunctionId {
@@ -418,7 +433,12 @@ impl<'ctx> CodeLowerer<'ctx> {
             },
             IRScopePath::Impl(impl_id) => {
                 let ir_impl = self.ir_impl(*impl_id);
-                self.format_type(ir_impl.type_id)
+                let type_str = self.format_type(ir_impl.type_id);
+                if let Some(trait_id) = ir_impl.trait_id {
+                    format!("{} for {}", self.format_scope_path(self.ir_trait(trait_id).scope), type_str)
+                } else {
+                    type_str
+                }
             },
             IRScopePath::Trait(trait_id) => {
                 let ir_trait = self.ir_trait(*trait_id);
@@ -458,10 +478,9 @@ impl<'ctx> CodeLowerer<'ctx> {
             IRTypeEnum::Primitive(primitive) => {
                 primitive.to_string()
             },
-            IRTypeEnum::Pointer { ptr_type_id, is_ref } => {
+            IRTypeEnum::Reference { ptr_type_id } => {
                 let ptr_type_string: String = self.format_type(*ptr_type_id);
-                let ptr_char = if *is_ref { "&" } else { "*" };
-                format!("{}{}", ptr_char, ptr_type_string)
+                format!("&{}", ptr_type_string)
             },
             IRTypeEnum::Struct(_struct) => {
                 self.format_scope_path(_struct.scope)

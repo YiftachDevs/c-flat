@@ -11,7 +11,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         let never_type = self.primitive_type(PrimitiveType::Never)?;
         let mut result: IRPhiValues = self.lower_conditional_chain_rec(ir_context, merge_block, conditional_chain, conditional_chain.span, context_type)?;
         let is_never = result.is_empty();
-        result = result.into_iter().filter(|(expr_value, _)| expr_value.type_id != void_type).collect();
+        result = result.into_iter().filter(|(expr_value, _)| expr_value.llvm_value.is_some()).collect();
         let refs: Vec<(&dyn BasicValue<'_>, BasicBlock<'_>)> = result.iter().map(|(val, block)| (val.llvm_value.as_ref().unwrap() as &dyn BasicValue<'_>, *block)).collect();
         self.builder.position_at_end(merge_block);
 
@@ -160,7 +160,7 @@ impl<'ctx> CodeLowerer<'ctx> {
     
     fn find_loop_idx(&self, fun_context: &IRFunContext<'ctx>, control_flow: &ControlFlow, label: &Option<Label>, span: Span) -> Result<usize, CompilerError> {
         if let Some((i, ir_loop)) = fun_context.loop_stack.iter().enumerate().rev().find(|(_, ir_loop)| {
-            if let Some(cur_label) = &ir_loop.label && let Some(other_label) = label && cur_label == other_label {
+            if let Some(cur_label) = &ir_loop.label && let Some(other_label) = label && cur_label.label == other_label.label {
                 true
             } else if *label == None {
                 true

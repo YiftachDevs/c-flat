@@ -23,9 +23,24 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
     }
     
+    pub fn find_impl_of_trait(&mut self, type_id: IRTypeId, trait_id: IRTraitId) -> Result<Option<IRImplId>, CompilerError> {
+        self.lower_impls(type_id)?;
+        for lowered_impl_id in self.ir_type(type_id).lowered_impls.as_ref().unwrap() {
+            if let Some(impl_trait_id) = self.ir_impl(*lowered_impl_id).trait_id && impl_trait_id == trait_id {
+                return Ok(Some(*lowered_impl_id));
+            }
+        }
+        Ok(None)
+    }
+
     pub fn find_impls(&mut self, parent_scope: IRScopeId, type_id: IRTypeId) -> Result<Vec<IRImplId>, CompilerError> {
         let mut impls_ids = Vec::new();
-        for impl_def in self.ir_scope(parent_scope).ast_def.unwrap().implementations.iter() {
+        for (i, impl_def) in self.ir_scope(parent_scope).ast_def.unwrap().implementations.iter().enumerate() {
+            let impl_name = IRImplName { parent_scope, index: i, target_type: type_id };
+            if self.impls_work.contains(&impl_name) {
+                continue;
+            }
+            self.impls_work.insert(impl_name);
             let impl_templates_keys = self.get_templates_keys_from(&impl_def.templates)?;
             if let Some(templates_map) = self.match_impl_type(parent_scope, impl_templates_keys, &impl_def.target_type, type_id)? {
                 let mut new_templates_map = self.ir_scope(parent_scope).templates_map.clone();
@@ -46,6 +61,7 @@ impl<'ctx> CodeLowerer<'ctx> {
 
                 impls_ids.push(impl_id);
             }
+            self.impls_work.remove(&impl_name);
         }
         for module in self.ir_scope(parent_scope).ast_def.unwrap().modules.iter() {
             let scope = self.get_module_scope_in_scope(parent_scope, &module.name).unwrap();
@@ -60,6 +76,9 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
         let global_scope = self.get_global_scope();
         self.types_table[type_id].lowered_impls = Some(Vec::new());
+        if type_id == self.primitive_type(PrimitiveType::Never)? {
+            return Ok(());
+        }
         self.types_table[type_id].lowered_impls = Some(self.find_impls(global_scope, type_id)?);
         self.filter_impls_constraints(type_id)?;
         self.ensure_valid_traits_implementations(type_id)?;
@@ -146,7 +165,6 @@ impl<'ctx> CodeLowerer<'ctx> {
     }
 
     pub fn match_impl_type(&mut self, parent_scope: IRScopeId, templates_keys: Vec<IRTemplateKey>, expr: &ExprNode, target_type: IRTypeId) -> Result<Option<IRTemplatesMap>, CompilerError> {
-        let void_type = self.primitive_type(PrimitiveType::Void)?;
         let mut ir_context = IRContext::ImplDefContext(parent_scope, templates_keys, IndexMap::new());
         let expr_result = self.lower_expr(&mut ir_context, expr, &IRContextType::Impl(target_type))?;
         if let IRExprResult::Type(result_type) = expr_result && result_type == target_type && let IRContext::ImplDefContext(_, _, map) = ir_context {

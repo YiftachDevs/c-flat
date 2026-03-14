@@ -4,7 +4,7 @@ use std::{any::Any, collections::HashMap};
 use indexmap::IndexMap;
 use inkwell::{types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum}, values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue}};
 
-use crate::{code_lowerer::*, conditional_chain, errors::{CompilerError, SemanticError}, function_lowerer, parser::{ExprNode, ExprNodeEnum, Function, Literal, PostfixOpr, Scope, Span, Statement, Struct, Templates, Trait}};
+use crate::{code_lowerer::*, conditional_lowerer, errors::{CompilerError, SemanticError}, function_lowerer, parser::{ExprNode, ExprNodeEnum, Function, Literal, PostfixOpr, Scope, Span, Statement, Struct, Templates, Trait}};
 
 #[derive(Copy, Clone, PartialEq)]
 pub struct IRExprValueResult<'ctx> {
@@ -117,7 +117,6 @@ impl<'ctx> CodeLowerer<'ctx> {
                     scope_result = self.lower_control_flow(ir_context, control_flow, ctx_t)?;
                     break;
                 }
-                _ => { todo!() }
             }
         }
 
@@ -193,6 +192,9 @@ impl<'ctx> CodeLowerer<'ctx> {
             ExprNodeEnum::InfixOpr(opr, left_expr, right_expr) => {
                 self.lower_infix_opr(ir_context, *opr, left_expr, right_expr, expr.span, context_type)?
             },
+            ExprNodeEnum::PrefixOpr(opr, right_expr) => {
+                self.lower_prefix_opr(ir_context, *opr, right_expr, expr.span, context_type)?
+            },
             ExprNodeEnum::ConditionalChain(conditional_chain) => {
                 IRExprResult::Value(self.lower_conditional_chain(ir_context, conditional_chain, context_type)?)
             },
@@ -211,6 +213,12 @@ impl<'ctx> CodeLowerer<'ctx> {
 
     pub fn merge_templates_keys_values(&self, templates_keys: &[IRTemplateKey], templates_values: &[IRTemplateValue], values_span: Option<Span>) -> Result<IRTemplatesMap, CompilerError> {
         if templates_keys.len() != templates_values.len() {
+            for item in templates_keys.iter() {
+                println!("key: {}", item);
+            }
+            for item in templates_values.iter() {
+                println!("item: {}", self.format_type(*item));
+            }
             return Err(self.error(SemanticError::UnmatchedTemplateCount { expected: templates_keys.len() }, values_span));
         }
         let mut result: IndexMap<String, usize> = IRTemplatesMap::new();
