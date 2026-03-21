@@ -1,8 +1,19 @@
 struct Empty;
 
 fun main() -> i32 {
-    let a = 100;
-    let b = &a;
+    let mut num = 123;
+    num = num + 4;
+    num
+}
+
+struct Box<T> {
+    value: T
+}
+
+impl<T> Deref:<T> for Box:<T> {
+    fun deref(self: &Self) -> &T {
+        self.value
+    }
 }
 
 extern fun getchar() -> char;
@@ -92,8 +103,7 @@ trait Mod<T> { fun mod(self: Self, other: T) -> Self; }
 trait Eq { fun eq(self: Self, other: Self) -> bool; }
 trait Ord { fun lss(self: Self, other: Self) -> bool; fun leq(self: Self, other: Self) -> bool; fun gtr(self: Self, other: Self) -> bool; fun geq(self: Self, other: Self) -> bool; }
 trait Not { fun not(self: Self) -> Self; }
-trait Deref<T> { fun deref(self: Self) -> T; }
-trait Addr { fun addr(self: &Self) -> &Self; }
+trait Deref<T> { fun deref(self: &Self) -> &T; }
 
 impl<T: Numeral> Add:<T> for T { fun add(self: Self, other: Self) -> Self; }
 impl<T: Numeral> Sub:<T> for T { fun sub(self: Self, other: Self) -> Self; }
@@ -104,5 +114,9 @@ impl<T: Numeral> Ord for T { fun lss(self: Self, other: Self) -> bool; fun leq(s
 impl<T: Primitive> Eq for T { fun eq(self: Self, other: Self) -> bool; }
 impl Not for bool { fun not(self: Self) -> Self; }
 impl<T: Integer> Not for T { fun not(self: Self) -> Self; }
-impl<T> Addr for T { fun addr(self: &Self) -> &Self; }
-impl<T> Deref:<T> for &T { fun deref(self: Self) -> Self; }
+
+impl<T: Eq> Eq for &T {
+    fun eq(self: Self, other: Self) -> bool {
+        *self == *other
+    }
+}

@@ -1,14 +1,14 @@
 
 use inkwell::{types::{BasicMetadataTypeEnum, BasicType}, values::{FunctionValue, PointerValue}};
-use crate::{code_lowerer::*, errors::{CompilerError, SemanticError}, parser::{Function, Span, Variable}};
+use crate::{code_lowerer::*, errors::{CompilerError, SemanticError}, expr_lowerer::IRExprPlaceResult, parser::{Function, Span, Variable}};
 
 impl<'ctx> CodeLowerer<'ctx> {
-    pub fn get_ir_var(&mut self, ir_context: &mut IRContext<'ctx>, var: &Variable) -> Result<IRVariable<'ctx>, CompilerError> {
+    pub fn get_ir_var_declaration(&mut self, ir_context: &mut IRContext<'ctx>, var: &Variable) -> Result<IRVarDeclaration, CompilerError> {
         let type_id = self.get_type(ir_context, var.var_type.as_ref().unwrap(), &IRContextType::Any)?;
-        Ok(IRVariable { name: var.name.clone(), type_id, is_mut: var.is_mut, llvm_value: None })
+        Ok(IRVarDeclaration { name: var.name.clone(), type_id, is_mut: var.is_mut })
     }
 
-    pub fn get_alloca(&self, type_id: IRTypeId, name: &str) -> PointerValue<'ctx> {
+    pub fn alloc_place(&self, arg_dec: &IRVarDeclaration) -> IRExprPlaceResult<'ctx> {
         let current_block = self.builder.get_insert_block();
 
         if let Some(entry_block) = current_block {
@@ -17,11 +17,11 @@ impl<'ctx> CodeLowerer<'ctx> {
                 None => self.builder.position_at_end(entry_block),
             }
         }
-        let alloca =  self.builder.build_alloca(self.ir_type(type_id).llvm_type.unwrap(), name).unwrap();
+        let alloca =  self.builder.build_alloca(self.ir_type(arg_dec.type_id).llvm_type, &arg_dec.name).unwrap();
         if let Some(entry_block) = current_block {
             self.builder.position_at_end(entry_block);
         }
-        alloca
+        IRExprPlaceResult { type_id: arg_dec.type_id, ptr_value: alloca, is_mut: arg_dec.is_mut }
     }
 
     pub fn find_fun_def_in_scope(&self, parent_scope: IRScopeId, name: &str, opt_call_span: Option<Span>) -> Result<Option<(IRScopeId, &'ctx Function)>, CompilerError> {
@@ -65,21 +65,13 @@ impl<'ctx> CodeLowerer<'ctx> {
 
         let return_type: IRTypeId = if let Some(return_t) = &fun_def.return_type { self.get_type(&mut ir_context, return_t, &IRContextType::Any)? } else { self.primitive_type(PrimitiveType::Void)? };
         
-        let mut args: IRVariables = Vec::new();
-        let mut args_llvm_types: Vec<BasicMetadataTypeEnum> = Vec::new();
+        let mut args: IRVarDeclarations = Vec::new();
         for arg in fun_def.args.variables.iter() {
-            let ir_var: IRVariable = self.get_ir_var(&mut ir_context, arg)?;
-            if let Some(llvm_type) = self.ir_type(ir_var.type_id).llvm_type {
-                args_llvm_types.push(llvm_type.into()); 
-            }
-            args.push(ir_var);
+            let ir_var_dec: IRVarDeclaration = self.get_ir_var_declaration(&mut ir_context, arg)?;
+            args.push(ir_var_dec);
         }
-
-        let fun_llvm_type = if let Some(llvm_return_type) = self.ir_type(return_type).llvm_type {
-            llvm_return_type.fn_type(args_llvm_types.as_slice(), false)
-        } else {
-            self.llvm_context.void_type().fn_type(args_llvm_types.as_slice(), false)
-        };
+        let args_llvm_types: Vec<BasicMetadataTypeEnum> = args.iter().map(|arg| self.ir_type(arg.type_id).llvm_type.into()).collect();
+        let fun_llvm_type = self.ir_type(return_type).llvm_type.fn_type(args_llvm_types.as_slice(), false);
 
         let has_body = if let Some(_) = &fun_def.scope { true } else { fun_def.external };
 
@@ -106,7 +98,6 @@ impl<'ctx> CodeLowerer<'ctx> {
     }
 
     fn lower_fun_scope(&mut self, fun: IRFunctionId) -> Result<(), CompilerError> {
-        let void_type = self.primitive_type(PrimitiveType::Void)?;
         let ir_fun: &IRFunction<'_> = self.ir_function(fun);
         let fun_def = ir_fun.ast_def;
         let return_type = ir_fun.return_type;
@@ -118,14 +109,12 @@ impl<'ctx> CodeLowerer<'ctx> {
 
         let mut ir_fun_scope = IRFunContext { fun: fun, vars: Vec::new(), loop_stack: Vec::new() };
 
-        for (i, arg) in ir_fun.args.iter().enumerate() {
-            let mut new_arg = arg.clone();
-            if arg.type_id != void_type  {
-                let arg_value = llvm_value.get_nth_param(i as u32).unwrap();
-                arg_value.set_name(&arg.name);
-                new_arg.llvm_value = Some(arg_value);
-            }
-            ir_fun_scope.vars.push(new_arg);
+        for (i, arg_dec) in ir_fun.args.iter().enumerate() {
+            let arg_place = self.alloc_place(arg_dec);
+            arg_place.ptr_value.set_name(&arg_dec.name);
+            let arg_llvm_value = llvm_value.get_nth_param(i as u32).unwrap();
+            self.builder.build_store(arg_place.ptr_value, arg_llvm_value).unwrap();
+            ir_fun_scope.vars.push(IRVariable { name: arg_dec.name.clone(), place: arg_place});
         }
 
         let mut ir_context = IRContext::FunContext(ir_fun_scope);
@@ -135,13 +124,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             return Err(self.error(SemanticError::TypeMismatch { expected: self.format_type(return_type), got: self.format_type(result.type_id) }, Some(fun_def.span)));
         }*/
 
-        if let Some(value) = self.r_value(&result) {
-            self.builder.build_return(Some(&value)).expect("Return build failed");
-        } else if result.type_id == void_type {
-            self.builder.build_return(None).expect("Return build failed");
-        } else {
-            self.builder.build_unreachable().unwrap();
-        }
+        self.builder.build_return(Some(&result.llvm_value)).expect("Return build failed");
 
         if let Some(block) = original_block {
             self.builder.position_at_end(block);

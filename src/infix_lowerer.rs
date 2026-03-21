@@ -9,14 +9,24 @@ impl<'ctx> CodeLowerer<'ctx> {
         if opr == InfixOpr::Com {
             return Ok(IRExprResult::CommaSeperated(left_expr.clone(), right_expr.clone()));
         }
-        let left_expr_result = self.get_value(ir_context, left_expr, &context_type, false)?;
-        if opr == InfixOpr::Com {
-            return Ok(IRExprResult::CommaSeperated(left_expr.clone(), right_expr.clone()));
-        }
         if opr == InfixOpr::As {
+            let left_expr_result = self.get_value(ir_context, left_expr, &context_type, false, true)?;
             let new_type = self.get_type(ir_context, right_expr , &IRContextType::Any)?;
             return Ok(IRExprResult::Value(IRExprValueResult { type_id: new_type, llvm_value: left_expr_result.llvm_value }));
         }
+        if opr == InfixOpr::Asn {
+            let left_expr_result = self.get_value(ir_context, left_expr, &context_type, false, false)?;
+            let right_expr_result = self.get_value(ir_context, right_expr, &IRContextType::Type(left_expr_result.type_id), true, true)?;
+            if let Some(llvm_value) = left_expr_result.llvm_value {
+                if llvm_value.is_pointer_value() {
+                    self.builder.build_store(llvm_value.into_pointer_value(), right_expr_result.llvm_value.unwrap()).unwrap();
+                    return Ok(IRExprResult::Void);
+                } else {
+                    return Err(self.error(SemanticError::ExpectedMutable, Some(left_expr.span)));
+                }
+            }
+        }
+        let left_expr_result = self.get_value(ir_context, left_expr, &context_type, false, false)?;
         let type_id = left_expr_result.type_id;
         let (trait_name, fun_name) = Self::get_core_opr_trait_name(CoreOpr::Infix(opr));
         let fun = self.get_core_trait_fun(type_id, trait_name, fun_name, Some(span))?;

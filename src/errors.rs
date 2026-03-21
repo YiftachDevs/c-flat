@@ -74,7 +74,9 @@ pub enum SemanticError {
     FunctionMissingBody { fun_str: String },
     IncompleteConditionalChain,
     OutOfTheLoop { control_flow: String },
-    UnrecognizedLabel
+    UnrecognizedLabel,
+    ExpectedMutable,
+    MovedValue
 }
 
 impl SemanticError {
@@ -100,7 +102,9 @@ impl SemanticError {
             Self::FunctionMissingBody { fun_str } => ("Missing Function Body", Some(format!("Function '{}' called but has no body", fun_str))),
             Self::IncompleteConditionalChain => ("Incomplete Conditional Chain", Some("Expected all paths to return a value".to_string())),
             Self::OutOfTheLoop { control_flow } => ("Expected Loop", Some(format!("Cannot {} outside of a loop", control_flow))),
-            Self::UnrecognizedLabel => ("Unrecognized Label", None)
+            Self::UnrecognizedLabel => ("Unrecognized Label", None),
+            Self::ExpectedMutable => ("Expected Mutable", None),
+            Self::MovedValue => ("Use of a moved value", None)
         }
     }
 }

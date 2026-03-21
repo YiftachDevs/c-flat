@@ -7,22 +7,19 @@ impl<'ctx> CodeLowerer<'ctx> {
         let fun_context = if let IRContext::FunContext(fun_context) = ir_context { fun_context } else { panic!() };
         let fun_value = self.ir_function(fun_context.fun).llvm_value;
         let merge_block = self.llvm_context.append_basic_block(fun_value, "merge");
-        let void_type = self.primitive_type(PrimitiveType::Void)?;
         let never_type = self.primitive_type(PrimitiveType::Never)?;
-        let mut result: IRPhiValues = self.lower_conditional_chain_rec(ir_context, merge_block, conditional_chain, conditional_chain.span, context_type)?;
-        let is_never = result.is_empty();
-        result = result.into_iter().filter(|(expr_value, _)| expr_value.llvm_value.is_some()).collect();
-        let refs: Vec<(&dyn BasicValue<'_>, BasicBlock<'_>)> = result.iter().map(|(val, block)| (val.llvm_value.as_ref().unwrap() as &dyn BasicValue<'_>, *block)).collect();
+        let result: IRPhiValues = self.lower_conditional_chain_rec(ir_context, merge_block, conditional_chain, conditional_chain.span, context_type)?;
+        let refs: Vec<(&dyn BasicValue<'_>, BasicBlock<'_>)> = result.iter().map(|(val, block)| (&val.llvm_value as &dyn BasicValue<'_>, *block)).collect();
         self.builder.position_at_end(merge_block);
 
         if !result.is_empty() {
             let result_type_id = result[0].0.type_id;
             let result_type = self.ir_type(result_type_id);
-            let phi = self.builder.build_phi(result_type.llvm_type.unwrap(), "result").unwrap();
+            let phi = self.builder.build_phi(result_type.llvm_type, "result").unwrap();
             phi.add_incoming(&refs);
-            Ok(IRExprValueResult { type_id: result_type_id, llvm_value: Some(phi.as_basic_value()) })
+            Ok(IRExprValueResult { type_id: result_type_id, llvm_value: phi.as_basic_value() })
         } else {
-            Ok(IRExprValueResult { type_id: if is_never { never_type } else { void_type }, llvm_value: None })
+            Ok(self.get_type_zero(never_type))
         }
     }
 
@@ -41,7 +38,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             self.builder.build_unconditional_branch(cond_block).unwrap();
             self.builder.position_at_end(cond_block);
             let cond_result = self.get_value(ir_context, conditional_chain.cond_expr.as_ref().unwrap(), &IRContextType::Type(bool_type), true)?;
-            self.builder.build_conditional_branch(cond_result.llvm_value.unwrap().into_int_value(), then_block, else_block).unwrap();
+            self.builder.build_conditional_branch(cond_result.llvm_value.into_int_value(), then_block, else_block).unwrap();
             (Some(cond_block), Some(else_block))
         } else {
             self.builder.build_unconditional_branch(then_block).unwrap();
@@ -113,7 +110,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         } else if let Some(else_block) = else_block {
             self.builder.position_at_end(else_block);
             if self.type_matches(void_type, &next_context_type) {
-                phi_result.push((IRExprValueResult { type_id: void_type, llvm_value: None }, else_block));
+                phi_result.push((self.get_type_zero(void_type), else_block));
             } else {
                 return Err(self.error(SemanticError::IncompleteConditionalChain, Some(chain_span)));
             }
@@ -133,11 +130,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 } else {
                     self.ensure_expr_result_value(&return_expr_result, true, expr.span, &fun_type_ctx)?
                 };
-                if let Some(value) = return_result.llvm_value {
-                    self.builder.build_return(Some(&value)).expect("Return build failed");
-                } else {
-                    self.builder.build_return(None).expect("Return build failed");
-                }
+                self.builder.build_return(Some(&return_result.llvm_value)).expect("Return build failed");
             },
             ControlFlow::Skip { label, span } => {
                 let loop_idx = self.find_loop_idx(ir_context.into_fun_context(), control_flow, label, *span)?;
@@ -155,7 +148,8 @@ impl<'ctx> CodeLowerer<'ctx> {
             }
             _ => panic!()
         }
-        Ok(IRExprValueResult { type_id: self.primitive_type(PrimitiveType::Never)?, llvm_value: None })
+        let never_type = self.primitive_type(PrimitiveType::Never)?;
+        Ok(self.get_type_zero(never_type))
     }
     
     fn find_loop_idx(&self, fun_context: &IRFunContext<'ctx>, control_flow: &ControlFlow, label: &Option<Label>, span: Span) -> Result<usize, CompilerError> {

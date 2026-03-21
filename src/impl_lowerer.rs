@@ -36,11 +36,6 @@ impl<'ctx> CodeLowerer<'ctx> {
     pub fn find_impls(&mut self, parent_scope: IRScopeId, type_id: IRTypeId) -> Result<Vec<IRImplId>, CompilerError> {
         let mut impls_ids = Vec::new();
         for (i, impl_def) in self.ir_scope(parent_scope).ast_def.unwrap().implementations.iter().enumerate() {
-            let impl_name = IRImplName { parent_scope, index: i, target_type: type_id };
-            if self.impls_work.contains(&impl_name) {
-                continue;
-            }
-            self.impls_work.insert(impl_name);
             let impl_templates_keys = self.get_templates_keys_from(&impl_def.templates)?;
             if let Some(templates_map) = self.match_impl_type(parent_scope, impl_templates_keys, &impl_def.target_type, type_id)? {
                 let mut new_templates_map = self.ir_scope(parent_scope).templates_map.clone();
@@ -61,7 +56,6 @@ impl<'ctx> CodeLowerer<'ctx> {
 
                 impls_ids.push(impl_id);
             }
-            self.impls_work.remove(&impl_name);
         }
         for module in self.ir_scope(parent_scope).ast_def.unwrap().modules.iter() {
             let scope = self.get_module_scope_in_scope(parent_scope, &module.name).unwrap();
@@ -82,7 +76,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         self.types_table[type_id].lowered_impls = Some(self.find_impls(global_scope, type_id)?);
         self.filter_impls_constraints(type_id)?;
         self.ensure_valid_traits_implementations(type_id)?;
-        self.impl_core_if_primitive(type_id)?;
+        self.impl_core(type_id)?;
         Ok(())
     }
 

@@ -19,7 +19,7 @@ use inkwell::types::VoidType;
 use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
 
 use crate::errors::{CompilerError, CompilerErrorType, SemanticError};
-use crate::expr_lowerer::{IRExprResult, IRExprValueResult};
+use crate::expr_lowerer::{IRExprPlaceResult, IRExprResult, IRExprValueResult};
 use crate::parser::{ConditionalChain, ExprNode, ExprNodeEnum, FileContext, Function, Implementation, InfixOpr, Label, Literal, PrefixOpr, Scope, Span, Struct, Template, Templates, Trait, Variable};
 
 pub type IRTypeId = usize;
@@ -31,17 +31,23 @@ pub type IRImplId = usize;
 #[derive(PartialEq, Clone)]
 pub struct IRVariable<'ctx> {
     pub name: String,
+    pub place: IRExprPlaceResult<'ctx>,
+    pub moved: bool
+}
+
+#[derive(PartialEq, Clone)]
+pub struct IRVarDeclaration {
+    pub name: String,
     pub type_id: IRTypeId,
-    pub is_mut: bool,
-    pub llvm_value: Option<BasicValueEnum<'ctx>>
+    pub is_mut: bool
 }
 
 pub type IRVariables<'ctx> = Vec<IRVariable<'ctx>>;
+pub type IRVarDeclarations = Vec<IRVarDeclaration>;
 
 #[derive(PartialEq)]
 pub enum IRTypeEnum<'ctx> {
     Primitive(PrimitiveType),
-    Pointer { ptr_type_id: IRTypeId },
     Reference { ptr_type_id: IRTypeId },
     Array { arr_type: IRTypeId, size: usize },
     Callback { args: IRVariables<'ctx>, return_type: IRTypeId },
@@ -53,7 +59,7 @@ pub struct IRStruct<'ctx> {
     pub parent_scope: IRScopeId,
     pub scope: IRScopeId,
     pub templates_map: IRTemplatesMap,
-    pub args: IRVariables<'ctx>,
+    pub args: IRVarDeclarations,
     pub def: &'ctx Struct
 }
 
@@ -148,10 +154,19 @@ pub enum CoreOpr {
     Infix(InfixOpr)
 }
 
+impl CoreOpr {
+    pub fn to_string(&self) -> String {
+        match self {
+            Self::Prefix(prefix) => prefix.to_string(),
+            Self::Infix(infix) => infix.to_string()
+        }
+    }
+}
+
 #[derive(PartialEq)]
 pub struct IRType<'ctx> {
     pub type_enum: IRTypeEnum<'ctx>,
-    pub llvm_type: Option<BasicTypeEnum<'ctx>>,
+    pub llvm_type: BasicTypeEnum<'ctx>,
     pub lowered_impls: Option<Vec<IRImplId>>
 }
 
@@ -186,7 +201,7 @@ pub struct IRFunction<'ctx> {
     pub parent_scope: IRScopeId,
     pub scope: IRScopeId,
     pub templates_map: IRTemplatesMap,
-    pub args: IRVariables<'ctx>,
+    pub args: IRVarDeclarations,
     pub return_type: IRTypeId,
     pub llvm_type: FunctionType<'ctx>,
     pub llvm_value: FunctionValue<'ctx>,
@@ -323,6 +338,14 @@ impl<'ctx> CodeLowerer<'ctx> {
         id
     }
 
+    pub fn get_unreachable_var_name(&mut self) -> String {
+        static mut COUNTER: usize = 0;
+        unsafe {
+            COUNTER += 1;
+            format!("#tmp{}", COUNTER)
+        }
+    }
+
     pub fn get_templates_keys_from(&mut self, ast_templates: &Templates) -> Result<Vec<IRTemplateKey>, CompilerError> {
         let mut result: Vec<IRTemplateKey> = Vec::new();
         for ast_template in ast_templates.templates.iter() {
@@ -435,9 +458,9 @@ impl<'ctx> CodeLowerer<'ctx> {
                 let ir_impl = self.ir_impl(*impl_id);
                 let type_str = self.format_type(ir_impl.type_id);
                 if let Some(trait_id) = ir_impl.trait_id {
-                    format!("{} for {}", self.format_scope_path(self.ir_trait(trait_id).scope), type_str)
+                    format!("{}", self.format_scope_path(self.ir_trait(trait_id).scope))
                 } else {
-                    type_str
+                    format!("impl {}", type_str)
                 }
             },
             IRScopePath::Trait(trait_id) => {
@@ -466,7 +489,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         if templates_map.is_empty() {
             "".to_string()
         } else {
-            let templates_values_str = templates_map.iter().map(|(_, value)| self.format_type(*value)).collect::<Vec<String>>().join(", ");
+            let templates_values_str = templates_map.iter().map(|(key, value)| format!("{} = {}", key, self.format_type(*value))).collect::<Vec<String>>().join(", ");
             format!(":<{}>", templates_values_str)
         }
     }

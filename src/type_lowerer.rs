@@ -2,7 +2,7 @@ use std::any::Any;
 
 use inkwell::{AddressSpace, types::{BasicMetadataTypeEnum, BasicTypeEnum}};
 
-use crate::{code_lowerer::{CodeLowerer, IRConstraint, IRConstraints, IRContext, IRContextType, IRScope, IRScopeId, IRScopePath, IRStruct, IRTemplateValue, IRTemplatesMap, IRType, IRTypeEnum, IRTypeId, IRVariable, IRVariables, PrimitiveType}, errors::{CompilerError, SemanticError}, parser::{ExprNode, Span, Struct, Templates}};
+use crate::{code_lowerer::{CodeLowerer, IRConstraint, IRConstraints, IRContext, IRContextType, IRScope, IRScopeId, IRScopePath, IRStruct, IRTemplateValue, IRTemplatesMap, IRType, IRTypeEnum, IRTypeId, IRVarDeclaration, IRVarDeclarations, IRVariable, IRVariables, PrimitiveType}, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprPlaceResult, IRExprResult, IRExprValueResult}, parser::{ExprNode, Span, Struct, Templates}};
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn find_struct_def_in_scope(&self, parent_scope: IRScopeId, name: &str, opt_call_span: Option<Span>) -> Result<Option<(IRScopeId, &'ctx Struct)>, CompilerError> {
@@ -17,18 +17,17 @@ impl<'ctx> CodeLowerer<'ctx> {
 
     pub fn primitive_type(&mut self, prim: PrimitiveType) -> Result<IRTypeId, CompilerError> {
         let ir_type_enum = IRTypeEnum::Primitive(prim);
-        let llvm_type: Option<BasicTypeEnum> = match prim {
-            PrimitiveType::I8 | PrimitiveType::U8 => Some(self.llvm_context.i8_type().into()),
-            PrimitiveType::I16 | PrimitiveType::U16 => Some(self.llvm_context.i16_type().into()),
-            PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::Char => Some(self.llvm_context.i32_type().into()),
-            PrimitiveType::I64 | PrimitiveType::U64 => Some(self.llvm_context.i64_type().into()),
-            PrimitiveType::I128 | PrimitiveType::U128 => Some(self.llvm_context.i128_type().into()),
-            PrimitiveType::F16 => Some(self.llvm_context.f16_type().into()),
-            PrimitiveType::F32 => Some(self.llvm_context.f32_type().into()),
-            PrimitiveType::F64 => Some(self.llvm_context.f64_type().into()),
-            PrimitiveType::Bool => Some(self.llvm_context.bool_type().into()),
-            PrimitiveType::Void => None,
-            PrimitiveType::Never => None
+        let llvm_type: BasicTypeEnum = match prim {
+            PrimitiveType::I8 | PrimitiveType::U8 => self.llvm_context.i8_type().into(),
+            PrimitiveType::I16 | PrimitiveType::U16 => self.llvm_context.i16_type().into(),
+            PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::Char => self.llvm_context.i32_type().into(),
+            PrimitiveType::I64 | PrimitiveType::U64 => self.llvm_context.i64_type().into(),
+            PrimitiveType::I128 | PrimitiveType::U128 => self.llvm_context.i128_type().into(),
+            PrimitiveType::F16 => self.llvm_context.f16_type().into(),
+            PrimitiveType::F32 => self.llvm_context.f32_type().into(),
+            PrimitiveType::F64 => self.llvm_context.f64_type().into(),
+            PrimitiveType::Bool => self.llvm_context.bool_type().into(),
+            PrimitiveType::Void | PrimitiveType::Never => self.llvm_context.struct_type(&[], false).into(),
         };
         let type_id = self.type_id(IRType { type_enum: ir_type_enum, llvm_type, lowered_impls: None });
         self.lower_impls(type_id)?;
@@ -49,6 +48,10 @@ impl<'ctx> CodeLowerer<'ctx> {
             }
         }
         return Ok(false);
+    }
+
+    pub fn get_type_zero(&mut self, type_id: IRTypeId) -> IRExprValueResult<'ctx> {
+        IRExprValueResult { type_id: type_id, llvm_value: self.ir_type(type_id).llvm_type.const_zero() }
     }
 
     pub fn primitive_type_from(&mut self, name: &str) -> Option<PrimitiveType> {
@@ -74,14 +77,14 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
     }
 
-    pub fn pointer_type(&mut self, type_id: IRTypeId) -> Result<IRTypeId, CompilerError> {
+    /*pub fn pointer_type(&mut self, type_id: IRTypeId) -> Result<IRTypeId, CompilerError> {
         let ptr_type = self.type_id(IRType { type_enum: IRTypeEnum::Pointer { ptr_type_id: type_id }, llvm_type: Some(self.llvm_context.ptr_type(AddressSpace::default()).into()), lowered_impls: None });
         self.lower_impls(ptr_type)?;
         Ok(ptr_type)
-    }
+    }*/
 
     pub fn reference_type(&mut self, type_id: IRTypeId) -> Result<IRTypeId, CompilerError> {
-        let ptr_type = self.type_id(IRType { type_enum: IRTypeEnum::Reference { ptr_type_id: type_id }, llvm_type: Some(self.llvm_context.ptr_type(AddressSpace::default()).into()), lowered_impls: None });
+        let ptr_type = self.type_id(IRType { type_enum: IRTypeEnum::Reference { ptr_type_id: type_id }, llvm_type: self.llvm_context.ptr_type(AddressSpace::default()).into(), lowered_impls: None });
         self.lower_impls(ptr_type)?;
         Ok(ptr_type)
     }
@@ -116,25 +119,24 @@ impl<'ctx> CodeLowerer<'ctx> {
         let struct_scope = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Type(struct_id), templates_map: new_templates_map, ast_def: None });
         let ir_type_enum = IRTypeEnum::Struct(IRStruct { parent_scope, scope: struct_scope, templates_map: templates_map.clone(), def: struct_def, args: Vec::new() });
         let mut ir_context = IRContext::ScopeContext(struct_scope);
-        self.types_table.push(IRType { type_enum: ir_type_enum, llvm_type: None, lowered_impls: None });
+
+        let struct_llvm_type = self.llvm_context.opaque_struct_type(struct_path_string.as_str());
+        self.types_table.push(IRType { type_enum: ir_type_enum, llvm_type: struct_llvm_type.into(), lowered_impls: None });
 
         self.ensure_templates_constraints(&mut ir_context, &templates_map, &struct_def.templates, call_span)?;
 
-        let mut members: IRVariables = Vec::new();
-        let mut members_llvm_types: Vec<BasicTypeEnum> = Vec::new();
-        for member in struct_def.vars.variables.iter() {
-            let ir_var: IRVariable = self.get_ir_var(&mut ir_context, member)?;
-            if let Some(llvm_type) = self.ir_type(ir_var.type_id).llvm_type {
-                members_llvm_types.push(llvm_type); 
-            }
-            members.push(ir_var);
+        let mut args: IRVarDeclarations = Vec::new();
+        for arg in struct_def.vars.variables.iter() {
+            let ir_var_dec: IRVarDeclaration = self.get_ir_var_declaration(&mut ir_context, arg)?;
+            args.push(ir_var_dec);
         }
-        let struct_llvm_type = self.llvm_context.opaque_struct_type(struct_path_string.as_str());
-        struct_llvm_type.set_body(members_llvm_types.as_slice(), false);
+        let args_llvm_types: Vec<BasicTypeEnum> = args.iter().map(|arg| self.ir_type(arg.type_id).llvm_type).collect();
+        
+        struct_llvm_type.set_body(args_llvm_types.as_slice(), false);
         if let IRTypeEnum::Struct(_struct) = &mut self.types_table[struct_id].type_enum {
-            _struct.args = members;
+            _struct.args = args;
         }
-        self.types_table[struct_id].llvm_type = Some(struct_llvm_type.into());
+        self.types_table[struct_id].llvm_type = struct_llvm_type.into();
         
         Ok(struct_id)
     }
@@ -155,6 +157,32 @@ impl<'ctx> CodeLowerer<'ctx> {
             IRContextType::Any => true,
             IRContextType::Type(ctx_type_id) => type_id == *ctx_type_id,
             IRContextType::Impl(_) => true
+        }
+    }
+
+    pub fn count_type_reference_rec(&mut self, type_id: IRTypeId) -> usize {
+        if let IRTypeEnum::Reference { ptr_type_id } = self.ir_type(type_id).type_enum {
+            self.count_type_reference_rec(ptr_type_id) + 1
+        } else {
+            0
+        }
+    }
+
+    pub fn auto_reference(&mut self, value: IRExprResult<'ctx>, expected_type: IRTypeId, span: Span) -> Result<IRExprPlaceResult<'ctx>, CompilerError> {
+        let mut ptr_value = value;
+        let given_ref_count = self.count_type_reference_rec(value.type_id);
+        let expected_ref_count = self.count_type_reference_rec(expected_type);
+        for _ in given_ref_count..expected_ref_count {
+            let ptr_alloc = self.get_alloca(ptr_value.type_id, "tmp_alloc");
+            if let Some(llvm_value) = &ptr_value.llvm_value {
+                self.builder.build_store(ptr_alloc, *llvm_value).unwrap();
+            }
+            ptr_value = IRExprValueResult { type_id: self.reference_type(ptr_value.type_id)?, llvm_value: Some(ptr_alloc.into()) };
+        }
+        if ptr_value.type_id == expected_type {
+            Ok(ptr_value)
+        } else {
+            Err(self.error(SemanticError::TypeMismatch { expected: self.format_type(expected_type), got: self.format_type(value.type_id) }, Some(span)))
         }
     }
 }
