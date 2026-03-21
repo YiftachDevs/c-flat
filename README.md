@@ -10,6 +10,7 @@ The launguage is heavily inspired by rust, including features like:
 * Union-like enums
 * Type inference
 * Automatic dereferencing
+* All expressions return a value
 * Zero sized types
 
 ## How to install the compiler
