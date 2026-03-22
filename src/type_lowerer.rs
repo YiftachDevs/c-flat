@@ -83,8 +83,8 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(ptr_type)
     }*/
 
-    pub fn reference_type(&mut self, type_id: IRTypeId) -> Result<IRTypeId, CompilerError> {
-        let ptr_type = self.type_id(IRType { type_enum: IRTypeEnum::Reference { ptr_type_id: type_id }, llvm_type: self.llvm_context.ptr_type(AddressSpace::default()).into(), lowered_impls: None });
+    pub fn reference_type(&mut self, type_id: IRTypeId, is_mut: bool) -> Result<IRTypeId, CompilerError> {
+        let ptr_type = self.type_id(IRType { type_enum: IRTypeEnum::Reference { ptr_type_id: type_id, is_mut }, llvm_type: self.llvm_context.ptr_type(AddressSpace::default()).into(), lowered_impls: None });
         self.lower_impls(ptr_type)?;
         Ok(ptr_type)
     }

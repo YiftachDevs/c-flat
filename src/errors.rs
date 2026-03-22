@@ -76,6 +76,7 @@ pub enum SemanticError {
     OutOfTheLoop { control_flow: String },
     UnrecognizedLabel,
     ExpectedMutable,
+    ExpectedPlace,
     MovedValue
 }
 
@@ -104,6 +105,7 @@ impl SemanticError {
             Self::OutOfTheLoop { control_flow } => ("Expected Loop", Some(format!("Cannot {} outside of a loop", control_flow))),
             Self::UnrecognizedLabel => ("Unrecognized Label", None),
             Self::ExpectedMutable => ("Expected Mutable", None),
+            Self::ExpectedPlace => ("Expected a L-Value", None),
             Self::MovedValue => ("Use of a moved value", None)
         }
     }

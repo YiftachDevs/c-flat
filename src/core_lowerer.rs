@@ -30,7 +30,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             if self.type_impls_trait(type_id, integer_trait)? || type_id == self.primitive_type(PrimitiveType::Bool)? {
                 self.build_core_opr_funs_body(type_id, CoreOpr::Prefix(PrefixOpr::Not))?;
             }
-        } else if let IRTypeEnum::Reference { ptr_type_id } = ir_type.type_enum {
+        } else if let IRTypeEnum::Reference { ptr_type_id, is_mut } = ir_type.type_enum {
             let equal_trait = self.lower_trait(core_scope, "Eq", &Vec::new(), ptr_type_id, None)?;
             if self.type_impls_trait(ptr_type_id, equal_trait)? {
                 self.build_core_opr_funs_body(type_id, CoreOpr::Infix(InfixOpr::Eq))?;

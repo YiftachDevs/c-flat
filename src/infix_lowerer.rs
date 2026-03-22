@@ -10,30 +10,31 @@ impl<'ctx> CodeLowerer<'ctx> {
             return Ok(IRExprResult::CommaSeperated(left_expr.clone(), right_expr.clone()));
         }
         if opr == InfixOpr::As {
-            let left_expr_result = self.get_value(ir_context, left_expr, &context_type, false, true)?;
+            let left_expr_result = self.get_value(ir_context, left_expr, &context_type, false)?;
             let new_type = self.get_type(ir_context, right_expr , &IRContextType::Any)?;
             return Ok(IRExprResult::Value(IRExprValueResult { type_id: new_type, llvm_value: left_expr_result.llvm_value }));
         }
         if opr == InfixOpr::Asn {
-            let left_expr_result = self.get_value(ir_context, left_expr, &context_type, false, false)?;
-            let right_expr_result = self.get_value(ir_context, right_expr, &IRContextType::Type(left_expr_result.type_id), true, true)?;
-            if let Some(llvm_value) = left_expr_result.llvm_value {
-                if llvm_value.is_pointer_value() {
-                    self.builder.build_store(llvm_value.into_pointer_value(), right_expr_result.llvm_value.unwrap()).unwrap();
-                    return Ok(IRExprResult::Void);
-                } else {
+            let left_expr_result = self.lower_expr(ir_context, left_expr, &context_type)?;
+            if let IRExprResult::Place(place) = &left_expr_result {
+                if !ir_context.into_fun_context().vars[place.owner].is_mut {
                     return Err(self.error(SemanticError::ExpectedMutable, Some(left_expr.span)));
                 }
+                let right_expr_result = self.get_value(ir_context, right_expr, &IRContextType::Type(place.type_id), true)?;
+                self.builder.build_store(place.ptr_value, right_expr_result.llvm_value).unwrap();
+                return Ok(IRExprResult::Void);
+            } else {
+                return Err(self.error(SemanticError::ExpectedPlace, Some(left_expr.span)));
             }
         }
-        let left_expr_result = self.get_value(ir_context, left_expr, &context_type, false, false)?;
+        let left_expr_result = self.get_value(ir_context, left_expr, &context_type, false)?;
         let type_id = left_expr_result.type_id;
         let (trait_name, fun_name) = Self::get_core_opr_trait_name(CoreOpr::Infix(opr));
         let fun = self.get_core_trait_fun(type_id, trait_name, fun_name, Some(span))?;
-        let mut result = self.lower_postfix_opr_invoke(ir_context, IRExprResult::Function(fun, Some(left_expr_result)), right_expr, context_type, span)?;
+        let mut result = self.lower_postfix_opr_invoke(ir_context, IRExprResult::Function(fun, Some(Box::new(IRExprResult::Value(left_expr_result)))), right_expr, context_type, span)?;
         if opr == InfixOpr::Neq {
             let bool_type = self.primitive_type(PrimitiveType::Bool)?;
-            result.llvm_value = Some(self.build_core_prefix_opr(bool_type, PrefixOpr::Not, result.llvm_value.unwrap())?.unwrap());
+            result.llvm_value = self.build_core_prefix_opr(bool_type, PrefixOpr::Not, result.llvm_value)?.unwrap();
         }
         Ok(IRExprResult::Value(result))
     }

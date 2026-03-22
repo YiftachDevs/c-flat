@@ -27,12 +27,14 @@ pub type IRFunctionId = usize;
 pub type IRScopeId = usize;
 pub type IRTraitId = usize;
 pub type IRImplId = usize;
+pub type IRVarId = usize;
 
 #[derive(PartialEq, Clone)]
 pub struct IRVariable<'ctx> {
     pub name: String,
     pub place: IRExprPlaceResult<'ctx>,
-    pub moved: bool
+    pub moved: bool,
+    pub is_mut: bool
 }
 
 #[derive(PartialEq, Clone)]
@@ -48,7 +50,7 @@ pub type IRVarDeclarations = Vec<IRVarDeclaration>;
 #[derive(PartialEq)]
 pub enum IRTypeEnum<'ctx> {
     Primitive(PrimitiveType),
-    Reference { ptr_type_id: IRTypeId },
+    Reference { ptr_type_id: IRTypeId, is_mut: bool },
     Array { arr_type: IRTypeId, size: usize },
     Callback { args: IRVariables<'ctx>, return_type: IRTypeId },
     Struct(IRStruct<'ctx>)
@@ -501,9 +503,9 @@ impl<'ctx> CodeLowerer<'ctx> {
             IRTypeEnum::Primitive(primitive) => {
                 primitive.to_string()
             },
-            IRTypeEnum::Reference { ptr_type_id } => {
+            IRTypeEnum::Reference { ptr_type_id, is_mut } => {
                 let ptr_type_string: String = self.format_type(*ptr_type_id);
-                format!("&{}", ptr_type_string)
+                format!("{}{}", if *is_mut { "&mut " } else { "&" }, ptr_type_string)
             },
             IRTypeEnum::Struct(_struct) => {
                 self.format_scope_path(_struct.scope)

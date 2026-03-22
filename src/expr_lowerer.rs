@@ -16,16 +16,22 @@ pub struct IRExprValueResult<'ctx> {
 pub struct IRExprPlaceResult<'ctx> {
     pub type_id: IRTypeId,
     pub ptr_value: PointerValue<'ctx>,
-    pub is_mut: bool,
-    pub var: String
+    pub owner: IRVarId
 }
 
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
+pub struct IRExprRefResult<'ctx> {
+    pub expr_result: Box<IRExprResult<'ctx>>,
+    pub is_mut_ref: bool
+}
+
+#[derive(Clone, PartialEq)]
 pub enum IRExprResult<'ctx> {
     Empty,
     Void,
     Place(IRExprPlaceResult<'ctx>),
     Value(IRExprValueResult<'ctx>),
+    Ref(IRExprRefResult<'ctx>),
     CommaSeperated(Box<ExprNode>, Box<ExprNode>),
     Type(IRTypeId),
     Trait(IRTraitId),
@@ -43,8 +49,9 @@ impl<'ctx> IRExprResult<'ctx> {
         match self {
             IRExprResult::Empty => "Empty",
             IRExprResult::Void => "Void",
-            IRExprResult::Var(_) => "Var",
+            IRExprResult::Place(_) => "Place",
             IRExprResult::Value(_) => "Value",
+            IRExprResult::Ref(_) => "Ref",
             IRExprResult::CommaSeperated(_, _) => "CommaSeperated",
             IRExprResult::Type(_) => "Type",
             IRExprResult::Trait(_) => "Trait",
@@ -89,20 +96,16 @@ impl<'ctx> CodeLowerer<'ctx> {
             let ctx_t = if is_final_statement { context_type } else { &IRContextType::Any }; 
             match statement {
                 Statement::VarDeclaration(var) => {
-                    let ir_var = if let Some(init_expr) = var.init_expr.as_ref() {
+                    if let Some(init_expr) = var.init_expr.as_ref() {
                         let ctx_type = if let Some(var_type) = var.var_type.as_ref() { IRContextType::Type(self.get_type(ir_context, var_type, &IRContextType::Any)?) } else { IRContextType::Any };
                         let expr_result = self.get_value(ir_context, init_expr, &ctx_type, true)?;
                         let var_dec = IRVarDeclaration { name: var.name.clone(), type_id: expr_result.type_id, is_mut: var.is_mut };
-                        let place = self.alloc_place(&var_dec);
-                        self.builder.build_store(place.ptr_value, expr_result.llvm_value).unwrap();
-                        IRVariable { name: var.name.clone(), place, moved: false }
+                        self.alloc_var(ir_context.into_fun_context(), &var_dec, Some(expr_result.llvm_value));
                     } else {
                         let var_type = self.get_type(ir_context, var.var_type.as_ref().unwrap(), &IRContextType::Any)?;
                         let var_dec = IRVarDeclaration { name: var.name.clone(), type_id: var_type, is_mut: var.is_mut };
-                        let place = self.alloc_place(&var_dec).into();
-                        IRVariable { name: var.name.clone(), place, moved: false }
-                    };
-                    ir_context.into_fun_context().vars.push(ir_var);
+                        self.alloc_var(ir_context.into_fun_context(), &var_dec, None);
+                    }
                 },
                 Statement::Expression { expr, is_final_value } => {
                     if *is_final_value {
@@ -239,7 +242,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 if var.moved {
                     return Err(self.error(SemanticError::MovedValue, Some(span)));
                 }
-                return Ok(IRExprResult::Var(var.name.clone()));
+                return Ok(IRExprResult::Place(var.place.clone()));
             }
             let search_scope = self.ir_function(fun_context.fun).parent_scope;
             if let Some(fun_result) = self.lower_fun_name(search_scope, name, span)? {
@@ -283,7 +286,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(None)
     }
 
-    pub fn lower_impl_fun_name(&mut self, impl_id: IRImplId, fun_name: &str, opt_self_value: Option<IRExprValueResult<'ctx>>, span: Span) -> Result<IRExprResult<'ctx>, CompilerError> {
+    pub fn lower_impl_fun_name(&mut self, impl_id: IRImplId, fun_name: &str, opt_self_value: Option<Box<IRExprResult<'ctx>>>, span: Span) -> Result<IRExprResult<'ctx>, CompilerError> {
         let ir_impl = self.ir_impl(impl_id);
         let fun_def = ir_impl.ast_def.scope.as_ref().unwrap().functions.iter().find(|fun| fun.name == fun_name).unwrap();
         if !fun_def.templates.templates.is_empty() {
@@ -389,10 +392,6 @@ impl<'ctx> CodeLowerer<'ctx> {
             return Err(self.error(SemanticError::UnmatchedArgCount { expected: args_len }, Some(cur_expr.span)));
         }
         Ok(args)
-    }
-
-    pub fn load_var(&mut self, ir_var: &'ctx mut IRVariable<'ctx>) -> Result<IRExprValueResult<'ctx>, CompilerError> {
-        ir_var.moved = true;
     }
 
     pub fn lower_args_values(&mut self, ir_context: &mut IRContext<'ctx>, args_expr: &Box<ExprNode>, context_types: &[IRContextType]) -> Result<Vec<IRExprValueResult<'ctx>>, CompilerError> {

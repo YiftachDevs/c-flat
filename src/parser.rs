@@ -144,7 +144,7 @@ impl InfixOpr {
 #[derive(Eq, PartialEq, Clone, Copy)]
 pub enum PrefixOpr {
     Not,
-    Addr,
+    Addr { is_mut: bool },
     Deref,
     UMin
 }
@@ -489,7 +489,7 @@ impl PrefixOpr {
         parser.index += 1;
         let result = match ch {
             '!' => PrefixOpr::Not,
-            '&' => PrefixOpr::Addr,
+            '&' => if parser.is_next("mut") { PrefixOpr::Addr { is_mut: true } } else { PrefixOpr::Addr { is_mut: false } },
             '*' => PrefixOpr::Deref,
             '-' => PrefixOpr::UMin,
             _ => { parser.index -= 1; return Ok(None); }
@@ -502,7 +502,7 @@ impl ToString for PrefixOpr {
     fn to_string(&self) -> String {
         match self {
             PrefixOpr::Not   => "!".to_string(),
-            PrefixOpr::Addr  => "&".to_string(),
+            PrefixOpr::Addr { is_mut }  => if *is_mut { "&mut "} else { "&" }.to_string() ,
             PrefixOpr::Deref => "*".to_string(),
             PrefixOpr::UMin  => "-".to_string()
         }

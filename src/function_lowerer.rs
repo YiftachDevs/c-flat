@@ -1,5 +1,5 @@
 
-use inkwell::{types::{BasicMetadataTypeEnum, BasicType}, values::{FunctionValue, PointerValue}};
+use inkwell::{types::{BasicMetadataTypeEnum, BasicType}, values::{BasicValueEnum, FunctionValue, PointerValue}};
 use crate::{code_lowerer::*, errors::{CompilerError, SemanticError}, expr_lowerer::IRExprPlaceResult, parser::{Function, Span, Variable}};
 
 impl<'ctx> CodeLowerer<'ctx> {
@@ -8,7 +8,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(IRVarDeclaration { name: var.name.clone(), type_id, is_mut: var.is_mut })
     }
 
-    pub fn alloc_place(&self, arg_dec: &IRVarDeclaration) -> IRExprPlaceResult<'ctx> {
+    pub fn alloc_var(&self, ir_fun_context: &mut IRFunContext<'ctx>, var_dec: &IRVarDeclaration, opt_init_value: Option<BasicValueEnum<'ctx>>) -> IRVarId {
         let current_block = self.builder.get_insert_block();
 
         if let Some(entry_block) = current_block {
@@ -17,11 +17,16 @@ impl<'ctx> CodeLowerer<'ctx> {
                 None => self.builder.position_at_end(entry_block),
             }
         }
-        let alloca =  self.builder.build_alloca(self.ir_type(arg_dec.type_id).llvm_type, &arg_dec.name).unwrap();
+        let alloca =  self.builder.build_alloca(self.ir_type(var_dec.type_id).llvm_type, &var_dec.name).unwrap();
         if let Some(entry_block) = current_block {
             self.builder.position_at_end(entry_block);
         }
-        IRExprPlaceResult { type_id: arg_dec.type_id, ptr_value: alloca, is_mut: arg_dec.is_mut }
+        if let Some(init_value) = opt_init_value {
+            self.builder.build_store(alloca, init_value).unwrap();
+        }
+        let result = ir_fun_context.vars.len();
+        ir_fun_context.vars.push(IRVariable { name: var_dec.name.clone(), moved: false, is_mut: var_dec.is_mut, place: IRExprPlaceResult { type_id: var_dec.type_id, ptr_value: alloca, owner: result }});
+        result
     }
 
     pub fn find_fun_def_in_scope(&self, parent_scope: IRScopeId, name: &str, opt_call_span: Option<Span>) -> Result<Option<(IRScopeId, &'ctx Function)>, CompilerError> {
@@ -107,22 +112,15 @@ impl<'ctx> CodeLowerer<'ctx> {
         let original_block = self.builder.get_insert_block();
         self.builder.position_at_end(entry_block);
 
-        let mut ir_fun_scope = IRFunContext { fun: fun, vars: Vec::new(), loop_stack: Vec::new() };
+        let mut ir_fun_context = IRFunContext { fun: fun, vars: Vec::new(), loop_stack: Vec::new() };
 
         for (i, arg_dec) in ir_fun.args.iter().enumerate() {
-            let arg_place = self.alloc_place(arg_dec);
-            arg_place.ptr_value.set_name(&arg_dec.name);
             let arg_llvm_value = llvm_value.get_nth_param(i as u32).unwrap();
-            self.builder.build_store(arg_place.ptr_value, arg_llvm_value).unwrap();
-            ir_fun_scope.vars.push(IRVariable { name: arg_dec.name.clone(), place: arg_place});
+            self.alloc_var(&mut ir_fun_context, arg_dec, Some(arg_llvm_value));
         }
 
-        let mut ir_context = IRContext::FunContext(ir_fun_scope);
+        let mut ir_context = IRContext::FunContext(ir_fun_context);
         let result = self.lower_scope(&mut ir_context, fun_def.scope.as_ref().unwrap(), &IRContextType::Type(return_type))?;
-        /*let never_type = self.primitive_type(PrimitiveType::Never)?;
-        if result.type_id != never_type && result.type_id != return_type {
-            return Err(self.error(SemanticError::TypeMismatch { expected: self.format_type(return_type), got: self.format_type(result.type_id) }, Some(fun_def.span)));
-        }*/
 
         self.builder.build_return(Some(&result.llvm_value)).expect("Return build failed");
 
@@ -130,5 +128,9 @@ impl<'ctx> CodeLowerer<'ctx> {
             self.builder.position_at_end(block);
         }
         Ok(())
+    }
+
+    pub fn get_var_idx(&mut self, ir_context: &mut IRContext<'ctx>, name: &str) -> usize {
+        ir_context.into_fun_context().vars.iter().enumerate().find(|(i, var)| var.name == name).unwrap().0
     }
 }
