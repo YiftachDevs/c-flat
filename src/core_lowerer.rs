@@ -35,6 +35,8 @@ impl<'ctx> CodeLowerer<'ctx> {
             if self.type_impls_trait(ptr_type_id, equal_trait)? {
                 self.build_core_opr_funs_body(type_id, CoreOpr::Infix(InfixOpr::Eq))?;
             }
+        } else if let IRTypeEnum::Array { arr_type, size } = ir_type.type_enum {
+            self.build_core_opr_funs_body(type_id, CoreOpr::Prefix(PrefixOpr::Deref))?;
         }
         Ok(())
     }
@@ -50,13 +52,12 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
     }
 
-    fn get_core_scope(&mut self) -> IRScopeId {
+    pub fn get_core_scope(&mut self) -> IRScopeId {
         let global_scope = self.get_global_scope();
         global_scope
     }
 
     fn find_impl_of_core_trait(&mut self, type_id: IRTypeId, trait_name: &str) -> Result<Option<IRImplId>, CompilerError> {
-        self.lower_impls(type_id)?;
         let core_scope = self.get_core_scope();
         for lowered_impl_id in self.ir_type(type_id).lowered_impls.as_ref().unwrap() {
             if let Some(trait_id) = self.ir_impl(*lowered_impl_id).trait_id && self.ir_trait(trait_id).ast_def.name == trait_name && self.ir_trait(trait_id).parent_scope == core_scope {
@@ -139,6 +140,15 @@ impl<'ctx> CodeLowerer<'ctx> {
         match opr {
             PrefixOpr::Not => {
                 Ok(Some(self.builder.build_not(value.into_int_value(), "tmp").unwrap().into()))
+            },
+            PrefixOpr::Deref => {
+                if let IRTypeEnum::Array { arr_type, size } = self.ir_type(type_id).type_enum {
+                    let unsized_ref_type = self.unsized_ref_type(arr_type, false)?;
+                    let value = self.unsized_ref_value(unsized_ref_type, value.into_pointer_value(), size)?;
+                    Ok(Some(value))
+                } else {
+                    panic!()
+                }
             },
             _ => panic!()
         }

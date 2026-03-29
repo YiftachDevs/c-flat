@@ -1,11 +1,10 @@
 
 use indexmap::IndexMap;
 use inkwell::{attributes::{Attribute, AttributeLoc}, module::Linkage, types::{BasicMetadataTypeEnum, BasicType}, values::{BasicValueEnum, FunctionValue, PointerValue}};
-use crate::{code_lowerer::*, errors::{CompilerError, CompilerErrorType, SemanticError}, expr_lowerer::IRExprResult, parser::{ExprNode, Function, Implementation, InfixOpr, Span, Variable}};
+use crate::{code_lowerer::*, errors::{CompilerError, CompilerErrorType, SemanticError}, expr_lowerer::IRExprResult, parser::{ExprNode, Function, Implementation, InfixOpr, Span, Templates, Variable}};
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn find_impl_of_fun(&mut self, type_id: IRTypeId, fun_name: &str, call_span: Option<Span>) -> Result<Option<IRImplId>, CompilerError> {
-        self.lower_impls(type_id)?;
         let mut found_impls_ids = Vec::new();
         for lowered_impl_id in self.ir_type(type_id).lowered_impls.as_ref().unwrap() {
             let ir_impl = self.ir_impl(*lowered_impl_id);
@@ -24,7 +23,6 @@ impl<'ctx> CodeLowerer<'ctx> {
     }
     
     pub fn find_impl_of_trait(&mut self, type_id: IRTypeId, trait_id: IRTraitId) -> Result<Option<IRImplId>, CompilerError> {
-        self.lower_impls(type_id)?;
         for lowered_impl_id in self.ir_type(type_id).lowered_impls.as_ref().unwrap() {
             if let Some(impl_trait_id) = self.ir_impl(*lowered_impl_id).trait_id && impl_trait_id == trait_id {
                 return Ok(Some(*lowered_impl_id));
@@ -36,23 +34,22 @@ impl<'ctx> CodeLowerer<'ctx> {
     pub fn find_impls(&mut self, parent_scope: IRScopeId, type_id: IRTypeId) -> Result<Vec<IRImplId>, CompilerError> {
         let mut impls_ids = Vec::new();
         for (i, impl_def) in self.ir_scope(parent_scope).ast_def.unwrap().implementations.iter().enumerate() {
-            let impl_templates_keys = self.get_templates_keys_from(&impl_def.templates)?;
-            if let Some(templates_map) = self.match_impl_type(parent_scope, impl_templates_keys, &impl_def.target_type, type_id)? {
+            if let Some(templates_map) = self.match_impl_type(parent_scope, &impl_def.templates, &impl_def.target_type, type_id)? {
                 let mut new_templates_map = self.ir_scope(parent_scope).templates_map.clone();
-                new_templates_map.insert("Self".to_string(), type_id);
+                new_templates_map.insert("Self".to_string(), IRTemplateValue::Type(type_id));
                 new_templates_map.extend(templates_map.clone());
 
-                let impl_id = self.impls_table.len();
+                let impl_id = self.reserve_impl_id();
                 let scope_id = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Impl(impl_id), templates_map: new_templates_map, ast_def: impl_def.scope.as_ref() });
                 let mut ir_context = IRContext::ScopeContext(scope_id);
 
-                let opt_trait_id = if let Some(trait_expr) = &impl_def.opt_trait {
-                    let trait_id = self.get_trait(&mut ir_context, trait_expr, &IRContextType::Type(type_id))?;
+                let opt_trait_id: Option<usize> = if let Some(trait_expr) = &impl_def.opt_trait {
+                    let trait_id = self.get_trait(&mut ir_context, trait_expr, &IRContextType::Trait(type_id))?;
                     Some(trait_id)
                 } else { None };
 
                 let ir_impl = IRImpl { scope: scope_id, type_id, trait_id: opt_trait_id, templates_map: templates_map, ast_def: impl_def };
-                self.impls_table.push(ir_impl);
+                self.impls_table[impl_id] = Some(ir_impl);
 
                 impls_ids.push(impl_id);
             }
@@ -139,7 +136,7 @@ impl<'ctx> CodeLowerer<'ctx> {
 
     pub fn ensure_trait_fun_valid(&mut self, impl_id: IRImplId, fun_id: IRFunctionId, call_span: Option<Span>) -> Result<(), CompilerError> {
         if let Some(trait_id) = self.ir_impl(impl_id).trait_id {
-            let templates_values = self.ir_function(fun_id).templates_map.iter().map(|(_, value)| *value).collect::<Vec<IRTypeId>>();
+            let templates_values = self.ir_function(fun_id).templates_map.iter().map(|(_, value)| value.clone()).collect::<Vec<IRTemplateValue>>();
             let trait_fun_result = self.lower_fun(self.ir_trait(trait_id).scope, &self.ir_function(fun_id).ast_def.name, &templates_values, call_span);
             let err = self.error(SemanticError::IncorrectImpl { type_str: self.format_type(self.ir_impl(impl_id).type_id), trait_str: self.format_scope_path(self.ir_trait(trait_id).scope), fun_name: self.ir_function(fun_id).ast_def.name.clone() }, Some(self.ir_function(fun_id).ast_def.span));
             if let Err(_) = trait_fun_result {
@@ -158,9 +155,15 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(())
     }
 
-    pub fn match_impl_type(&mut self, parent_scope: IRScopeId, templates_keys: Vec<IRTemplateKey>, expr: &ExprNode, target_type: IRTypeId) -> Result<Option<IRTemplatesMap>, CompilerError> {
-        let mut ir_context = IRContext::ImplDefContext(parent_scope, templates_keys, IndexMap::new());
-        let expr_result = self.lower_expr(&mut ir_context, expr, &IRContextType::Impl(target_type))?;
+    pub fn match_impl_type(&mut self, parent_scope: IRScopeId, templates: &Templates, expr: &ExprNode, target_type: IRTypeId) -> Result<Option<IRTemplatesMap<'ctx>>, CompilerError> {
+        let mut index_map = IndexMap::new();
+        let keys = self.get_templates_keys_from(templates)?;
+        let ir_templates = self.get_ir_templates(templates)?;
+        for i in 0..templates.templates.len() {
+            index_map.insert(keys[i].clone(), ir_templates[i].clone());
+        }
+        let mut ir_context = IRContext::ImplDefContext(parent_scope, index_map, IndexMap::new());
+        let expr_result = self.lower_expr(&mut ir_context, expr, &IRContextType::Impl(IRTemplateValue::Type(target_type)))?;
         if let IRExprResult::Type(result_type) = expr_result && result_type == target_type && let IRContext::ImplDefContext(_, _, map) = ir_context {
             return Ok(Some(map));
         }

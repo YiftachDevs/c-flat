@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::format;
 use std::hash::Hash;
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 
 use indexmap::IndexMap;
@@ -51,8 +52,10 @@ pub type IRVarDeclarations = Vec<IRVarDeclaration>;
 pub enum IRTypeEnum<'ctx> {
     Primitive(PrimitiveType),
     Reference { ptr_type_id: IRTypeId, is_mut: bool },
-    Array { arr_type: IRTypeId, size: usize },
+    Array { arr_type: IRTypeId, size: u64 },
     Callback { args: IRVariables<'ctx>, return_type: IRTypeId },
+    Slice { slice_type: IRTypeId },
+    UnsizedRef { unsized_type: IRTypeId, is_mut: bool },
     Struct(IRStruct<'ctx>)
 }
 
@@ -60,26 +63,39 @@ pub enum IRTypeEnum<'ctx> {
 pub struct IRStruct<'ctx> {
     pub parent_scope: IRScopeId,
     pub scope: IRScopeId,
-    pub templates_map: IRTemplatesMap,
+    pub templates_map: IRTemplatesMap<'ctx>,
     pub args: IRVarDeclarations,
     pub def: &'ctx Struct
 }
 
-pub type IRTemplateValue = IRTypeId;
+
+#[derive(PartialEq, Clone)]
+pub enum IRTemplateValue<'ctx> {
+    Type(IRTypeId),
+    Const(IRExprValueResult<'ctx>)
+}
 pub type IRTemplateKey = String;
 
-#[derive(PartialEq, Eq, Hash, Clone)]
-pub enum IRContextType {
-    Any,
-    Type(IRTypeId),
-    Impl(IRTypeId)
+#[derive(PartialEq, Clone)]
+pub enum IRTemplate {
+    Const(IRTypeId),
+    Type
+}
+
+#[derive(PartialEq, Clone)]
+pub enum IRContextType<'ctx> {
+    Value(Option<IRTypeId>),
+    Type,
+    Trait(IRTypeId),
+    Impl(IRTemplateValue<'ctx>),
+    Template(IRTemplate)
 }
 
 pub struct IRConstraint {
     pub traits: Vec<IRTraitId>
 }
 
-pub type IRTemplatesMap = IndexMap<IRTemplateKey, IRTemplateValue>;
+pub type IRTemplatesMap<'ctx> = IndexMap<IRTemplateKey, IRTemplateValue<'ctx>>;
 pub type IRConstraints = IndexMap<IRTemplateKey, IRConstraint>;
 
 #[derive(Eq, PartialEq, Clone, Hash, Copy)]
@@ -177,15 +193,8 @@ pub struct IRImpl<'ctx> {
     pub scope: IRScopeId,
     pub type_id: IRTypeId,
     pub trait_id: Option<IRTraitId>,
-    pub templates_map: IRTemplatesMap,
+    pub templates_map: IRTemplatesMap<'ctx>,
     pub ast_def: &'ctx Implementation
-}
-
-#[derive(Hash, PartialEq, Eq, Clone, Copy)]
-pub struct IRImplName {
-    pub parent_scope: IRScopeId,
-    pub index: usize,
-    pub target_type: IRTypeId
 }
 
 #[derive(PartialEq)]
@@ -194,7 +203,7 @@ pub struct IRTrait<'ctx> {
     pub parent_scope: IRScopeId,
     pub self_type: IRTypeId,
     pub sub_traits: Vec<IRTraitId>,
-    pub templates_map: IRTemplatesMap,
+    pub templates_map: IRTemplatesMap<'ctx>,
     pub ast_def: &'ctx Trait
 }
 
@@ -202,7 +211,7 @@ pub struct IRTrait<'ctx> {
 pub struct IRFunction<'ctx> {
     pub parent_scope: IRScopeId,
     pub scope: IRScopeId,
-    pub templates_map: IRTemplatesMap,
+    pub templates_map: IRTemplatesMap<'ctx>,
     pub args: IRVarDeclarations,
     pub return_type: IRTypeId,
     pub llvm_type: FunctionType<'ctx>,
@@ -224,7 +233,7 @@ pub enum IRScopePath {
 pub struct IRScope<'ctx> {
     pub parent_scope: Option<IRScopeId>,
     pub path: IRScopePath,
-    pub templates_map: IRTemplatesMap,
+    pub templates_map: IRTemplatesMap<'ctx>,
     pub ast_def: Option<&'ctx Scope>
 }
 
@@ -235,7 +244,7 @@ pub struct IRLoop<'ctx> {
     pub merge_block: BasicBlock<'ctx>,
     pub label: Option<Label>,
     pub span: Span,
-    pub ctx_type: IRContextType,
+    pub ctx_type: IRContextType<'ctx>,
     pub phi_values: IRPhiValues<'ctx>
 }
 
@@ -250,7 +259,7 @@ pub struct IRFunContext<'ctx> {
 pub enum IRContext<'ctx> {
     FunContext(IRFunContext<'ctx>),
     ScopeContext(IRScopeId),
-    ImplDefContext(IRScopeId, Vec<IRTemplateKey>, IRTemplatesMap)
+    ImplDefContext(IRScopeId, IndexMap<IRTemplateKey, IRTemplate>, IRTemplatesMap<'ctx>)
 }
 
 impl<'ctx> IRContext<'ctx> {
@@ -271,8 +280,7 @@ pub struct CodeLowerer<'ctx> {
     pub types_table: Vec<IRType<'ctx>>,
     pub funs_table: Vec<Option<IRFunction<'ctx>>>,
     pub scopes_table: Vec<IRScope<'ctx>>,
-    pub impls_table: Vec<IRImpl<'ctx>>,
-    pub impls_work: HashSet<IRImplName>,
+    pub impls_table: Vec<Option<IRImpl<'ctx>>>,
     pub traits_table: Vec<IRTrait<'ctx>>,
 }
 
@@ -280,7 +288,7 @@ impl<'ctx> CodeLowerer<'ctx> {
     pub fn new(ast_scope: &'ctx Scope, file_context: FileContext, llvm_context: &'ctx Context) -> Self {
         let module: Module = llvm_context.create_module("main_module");
         let builder: Builder<'_> = llvm_context.create_builder();
-        CodeLowerer { ast_scope, file_context, llvm_context, module, builder, types_table: Vec::new(), funs_table: Vec::new(), scopes_table: Vec::new(), impls_table: Vec::new(), impls_work: HashSet::new(), traits_table: Vec::new() }
+        CodeLowerer { ast_scope, file_context, llvm_context, module, builder, types_table: Vec::new(), funs_table: Vec::new(), scopes_table: Vec::new(), impls_table: Vec::new(), traits_table: Vec::new() }
     }
 
     pub fn reserve_function_id(&mut self) -> IRFunctionId {
@@ -289,10 +297,16 @@ impl<'ctx> CodeLowerer<'ctx> {
         id
     }
 
+    pub fn reserve_impl_id(&mut self) -> IRImplId {
+        let id = self.impls_table.len();
+        self.impls_table.push(None);
+        id
+    }
+
     pub fn ir_type(&self, type_id: IRTypeId) -> &IRType<'ctx> { &self.types_table[type_id] }
     pub fn ir_function(&self, fun_id: IRFunctionId) -> &IRFunction<'ctx> { self.funs_table[fun_id].as_ref().unwrap() }
     pub fn ir_scope(&self, scope_id: IRScopeId) -> &IRScope<'ctx> { &self.scopes_table[scope_id] }
-    pub fn ir_impl(&self, impl_id: IRImplId) -> &IRImpl<'ctx> { &self.impls_table[impl_id] }
+    pub fn ir_impl(&self, impl_id: IRImplId) -> &IRImpl<'ctx> { &self.impls_table[impl_id].as_ref().unwrap() }
     pub fn ir_trait(&self, trait_id: IRTraitId) -> &IRTrait<'ctx> { &self.traits_table[trait_id] }
 
     pub fn scope_id(&mut self, ir_scope: IRScope<'ctx>) -> IRScopeId {
@@ -332,62 +346,42 @@ impl<'ctx> CodeLowerer<'ctx> {
     }
 
     pub fn impl_id(&mut self, ir_impl: IRImpl<'ctx>) -> IRImplId {
-        if let Some((i, _)) = self.impls_table.iter().enumerate().find(|(_, cur_ir)| **cur_ir == ir_impl) {
+        if let Some((i, _)) = self.impls_table.iter().enumerate().find(|(_, opt_cur_ir)| if let Some(cur_ir) = opt_cur_ir { cur_ir == &ir_impl } else { false }) {
             return i;
         }
         let id = self.impls_table.len();
-        self.impls_table.push(ir_impl);
+        self.impls_table.push(Some(ir_impl));
         id
-    }
-
-    pub fn get_unreachable_var_name(&mut self) -> String {
-        static mut COUNTER: usize = 0;
-        unsafe {
-            COUNTER += 1;
-            format!("#tmp{}", COUNTER)
-        }
     }
 
     pub fn get_templates_keys_from(&mut self, ast_templates: &Templates) -> Result<Vec<IRTemplateKey>, CompilerError> {
         let mut result: Vec<IRTemplateKey> = Vec::new();
         for ast_template in ast_templates.templates.iter() {
             let template = match ast_template {
-                Template::VarType(name, _) => name.clone()
+                Template::VarType(name, _) => name.clone(),
+                Template::Const(const_value) => const_value.name.clone()
             };
             result.push(template);
         }
         Ok(result)
     }
 
-    fn get_templates_constraints(&mut self, ir_context: &mut IRContext<'ctx>, templates_map: &IRTemplatesMap, ast_templates: &Templates) -> Result<IRConstraints, CompilerError> {
-        let mut result: IRConstraints = IndexMap::new();
+    pub fn ensure_templates_constraints(&mut self, ir_context: &mut IRContext<'ctx>, templates_map: &IRTemplatesMap<'ctx>, ast_templates: &Templates, call_span: Option<Span>) -> Result<(), CompilerError> {
         for ast_template in ast_templates.templates.iter() {
             match ast_template {
                 Template::VarType(key, opt_constraint) => {
+                    let type_id = match templates_map[key] { IRTemplateValue::Type(type_id) => type_id, _ => panic!() };
                     if let Some(constraint) = opt_constraint {
-                        let expr_result = self.lower_expr(ir_context, constraint, &IRContextType::Type(templates_map[key]))?;
-                        match expr_result {
-                            IRExprResult::Trait(trait_id) => {
-                                result.insert(key.clone(), IRConstraint { traits: vec![trait_id] });
-                            },
-                            _ => return Err(self.error(SemanticError::ExpectedTrait, Some(constraint.span)))
+                        let trait_id = self.get_trait(ir_context, constraint, &IRContextType::Trait(type_id))?;
+                        if !self.type_impls_trait(type_id, trait_id)? {
+                            return Err(self.error(SemanticError::InvalidTemplateValue { key: key.clone(), type_str: self.format_type(type_id), templates_str: ast_templates.to_string() }, call_span));
                         }
                     }
-                }
-            };
-        }
-        Ok(result)
-    }
-
-    pub fn ensure_templates_constraints(&mut self, ir_context: &mut IRContext<'ctx>, templates_map: &IRTemplatesMap, ast_templates: &Templates, call_span: Option<Span>) -> Result<(), CompilerError> {
-        let constraints = self.get_templates_constraints(ir_context, templates_map, ast_templates)?;
-        for (key, value) in templates_map.iter() { 
-            self.lower_impls(*value)?;
-            if let Some(constraint) = constraints.get(key) {
-                for trait_id in &constraint.traits {
-                    if !self.type_impls_trait(*value, *trait_id)? {
-                        return Err(self.error(SemanticError::InvalidTemplateValue { key: key.clone(), type_str: self.format_type(*value), templates_str: ast_templates.to_string() }, call_span));
-                    }
+                },
+                Template::Const(const_value) => {
+                    let expected_type = self.get_type(ir_context, &const_value.var_type, &IRContextType::Type)?;
+                    let value = match templates_map[&const_value.name] { IRTemplateValue::Const(const_value) => const_value, _ => panic!() };
+                    self.ensure_type_matches(value.type_id, &IRContextType::Value(Some(expected_type)), Some(const_value.span), false)?;
                 }
             }
         }
@@ -459,11 +453,12 @@ impl<'ctx> CodeLowerer<'ctx> {
             IRScopePath::Impl(impl_id) => {
                 let ir_impl = self.ir_impl(*impl_id);
                 let type_str = self.format_type(ir_impl.type_id);
-                if let Some(trait_id) = ir_impl.trait_id {
+                type_str
+                /*if let Some(trait_id) = ir_impl.trait_id {
                     format!("{}", self.format_scope_path(self.ir_trait(trait_id).scope))
                 } else {
                     format!("impl {}", type_str)
-                }
+                }*/
             },
             IRScopePath::Trait(trait_id) => {
                 let ir_trait = self.ir_trait(*trait_id);
@@ -491,7 +486,10 @@ impl<'ctx> CodeLowerer<'ctx> {
         if templates_map.is_empty() {
             "".to_string()
         } else {
-            let templates_values_str = templates_map.iter().map(|(key, value)| format!("{} = {}", key, self.format_type(*value))).collect::<Vec<String>>().join(", ");
+            let templates_values_str = templates_map.iter().map(|(key, value)|format!("{} = {}", key, match value {
+                IRTemplateValue::Type(type_id) => self.format_type(*type_id),
+                IRTemplateValue::Const(const_value) => const_value.llvm_value.to_string()
+            })).collect::<Vec<String>>().join(", ");
             format!(":<{}>", templates_values_str)
         }
     }
@@ -510,6 +508,16 @@ impl<'ctx> CodeLowerer<'ctx> {
             IRTypeEnum::Struct(_struct) => {
                 self.format_scope_path(_struct.scope)
             },
+            IRTypeEnum::UnsizedRef { unsized_type, is_mut } => {
+                let ptr_type_string: String = self.format_type(*unsized_type);
+                if *is_mut { format!("&mut {}", ptr_type_string) } else { format!("&{}", ptr_type_string) }         
+            }
+            IRTypeEnum::Array { arr_type, size } => {
+                format!("[{}; {}]", self.format_type(*arr_type), size)
+            },
+            IRTypeEnum::Slice { slice_type } => {
+                format!("[{}]", self.format_type(*slice_type))
+            }
             _ => todo!("format_type")
         }
     }

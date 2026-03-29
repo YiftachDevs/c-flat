@@ -3,7 +3,7 @@ use inkwell::{basic_block::BasicBlock, values::{BasicValue, BasicValueEnum}};
 use crate::{code_lowerer::{CodeLowerer, IRContext, IRContextType, IRFunContext, IRLoop, IRPhiValues, PrimitiveType}, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprResult, IRExprValueResult}, parser::{Conditional, ConditionalChain, ControlFlow, Label, Span}};
 
 impl<'ctx> CodeLowerer<'ctx> {
-    pub fn lower_conditional_chain(&mut self, ir_context: &mut IRContext<'ctx>, conditional_chain: &ConditionalChain, context_type: &IRContextType) -> Result<IRExprValueResult<'ctx>, CompilerError> {
+    pub fn lower_conditional_chain(&mut self, ir_context: &mut IRContext<'ctx>, conditional_chain: &ConditionalChain, context_type: &IRContextType<'ctx>) -> Result<IRExprValueResult<'ctx>, CompilerError> {
         let fun_context = if let IRContext::FunContext(fun_context) = ir_context { fun_context } else { panic!() };
         let fun_value = self.ir_function(fun_context.fun).llvm_value;
         let merge_block = self.llvm_context.append_basic_block(fun_value, "merge");
@@ -23,7 +23,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
     }
 
-    pub fn lower_conditional_chain_rec(&mut self, ir_context: &mut IRContext<'ctx>, merge_block: BasicBlock<'ctx>, conditional_chain: &ConditionalChain, chain_span: Span, context_type: &IRContextType) -> Result<IRPhiValues<'ctx>, CompilerError> {
+    pub fn lower_conditional_chain_rec(&mut self, ir_context: &mut IRContext<'ctx>, merge_block: BasicBlock<'ctx>, conditional_chain: &ConditionalChain, chain_span: Span, context_type: &IRContextType<'ctx>) -> Result<IRPhiValues<'ctx>, CompilerError> {
         let fun_value = self.ir_function(ir_context.into_fun_context().fun).llvm_value;
 
         let bool_type = self.primitive_type(PrimitiveType::Bool)?;
@@ -37,7 +37,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             let else_block = self.llvm_context.append_basic_block(fun_value, "else");
             self.builder.build_unconditional_branch(cond_block).unwrap();
             self.builder.position_at_end(cond_block);
-            let cond_result = self.get_value(ir_context, conditional_chain.cond_expr.as_ref().unwrap(), &IRContextType::Type(bool_type), true)?;
+            let cond_result = self.get_value(ir_context, conditional_chain.cond_expr.as_ref().unwrap(), &IRContextType::Value(Some(bool_type)), true)?;
             self.builder.build_conditional_branch(cond_result.llvm_value.into_int_value(), then_block, else_block).unwrap();
             (Some(cond_block), Some(else_block))
         } else {
@@ -66,7 +66,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 }
             },
             Conditional::Loop => {
-                let then_result: IRExprValueResult<'_> = self.lower_scope(ir_context, &conditional_chain.then_scope, &IRContextType::Any)?;
+                let then_result: IRExprValueResult<'_> = self.lower_scope(ir_context, &conditional_chain.then_scope, &IRContextType::Value(None))?;
                 let cur_block = self.builder.get_insert_block().unwrap();
                 if then_result.type_id != never_type {
                     self.builder.build_unconditional_branch(then_block).unwrap();
@@ -77,7 +77,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 ir_loop.phi_values
             },
             Conditional::While => {
-                let then_result: IRExprValueResult<'_> = self.lower_scope(ir_context, &conditional_chain.then_scope, &IRContextType::Any)?;
+                let then_result: IRExprValueResult<'_> = self.lower_scope(ir_context, &conditional_chain.then_scope, &IRContextType::Value(None))?;
                 let cur_block = self.builder.get_insert_block().unwrap();
                 if then_result.type_id != never_type {
                     self.builder.build_unconditional_branch(cond_block.unwrap()).unwrap();
@@ -101,15 +101,15 @@ impl<'ctx> CodeLowerer<'ctx> {
         };
 
         let next_context_type = if let Some((expr_value, _)) = phi_result.get(0) {
-            IRContextType::Type(expr_value.type_id)
-        } else { IRContextType::Any };
+            IRContextType::Value(Some(expr_value.type_id))
+        } else { IRContextType::Value(None) };
 
         if let Some(else_chain) = &conditional_chain.else_node {
             self.builder.position_at_end(else_block.unwrap());
             phi_result.extend(self.lower_conditional_chain_rec(ir_context, merge_block, else_chain, chain_span, &next_context_type)?);
         } else if let Some(else_block) = else_block {
             self.builder.position_at_end(else_block);
-            if self.type_matches(void_type, &next_context_type) {
+            if let Ok(_) = self.ensure_type_matches(void_type, &next_context_type, None, false) {
                 phi_result.push((self.get_type_zero(void_type), else_block));
             } else {
                 return Err(self.error(SemanticError::IncompleteConditionalChain, Some(chain_span)));
@@ -123,7 +123,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         match control_flow {
             ControlFlow::Return(expr) => {
                 let fun_type = self.ir_function(ir_context.into_fun_context().fun).return_type;
-                let fun_type_ctx = IRContextType::Type(fun_type);
+                let fun_type_ctx = IRContextType::Value(Some(fun_type));
                 let return_expr_result = self.lower_expr(ir_context, expr, &fun_type_ctx)?;
                 let return_result = if let IRExprResult::Empty = return_expr_result {
                     self.ensure_expr_result_value(&IRExprResult::Void, true, expr.span, &fun_type_ctx)?
@@ -142,7 +142,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 let ctx_type = &ir_context.into_fun_context().loop_stack[loop_idx].ctx_type.clone();
                 let break_expr_result = self.lower_expr(ir_context, expr, &ctx_type)?;
                 let break_value = self.ensure_expr_result_value(if break_expr_result == IRExprResult::Empty { &IRExprResult::Void } else { &break_expr_result }, true, expr.span, &ctx_type)?;
-                ir_context.into_fun_context().loop_stack[loop_idx].ctx_type = IRContextType::Type(break_value.type_id);
+                ir_context.into_fun_context().loop_stack[loop_idx].ctx_type = IRContextType::Value(Some(break_value.type_id));
                 ir_context.into_fun_context().loop_stack[loop_idx].phi_values.push((break_value, self.builder.get_insert_block().unwrap()));
                 self.builder.build_unconditional_branch(ir_context.into_fun_context().loop_stack[loop_idx].merge_block).unwrap();
             }

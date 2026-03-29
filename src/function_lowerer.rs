@@ -4,7 +4,7 @@ use crate::{code_lowerer::*, errors::{CompilerError, SemanticError}, expr_lowere
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn get_ir_var_declaration(&mut self, ir_context: &mut IRContext<'ctx>, var: &Variable) -> Result<IRVarDeclaration, CompilerError> {
-        let type_id = self.get_type(ir_context, var.var_type.as_ref().unwrap(), &IRContextType::Any)?;
+        let type_id = self.get_type(ir_context, var.var_type.as_ref().unwrap(), &IRContextType::Type)?;
         Ok(IRVarDeclaration { name: var.name.clone(), type_id, is_mut: var.is_mut })
     }
 
@@ -25,7 +25,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             self.builder.build_store(alloca, init_value).unwrap();
         }
         let result = ir_fun_context.vars.len();
-        ir_fun_context.vars.push(IRVariable { name: var_dec.name.clone(), moved: false, is_mut: var_dec.is_mut, place: IRExprPlaceResult { type_id: var_dec.type_id, ptr_value: alloca, owner: result }});
+        ir_fun_context.vars.push(IRVariable { name: var_dec.name.clone(), moved: false, is_mut: var_dec.is_mut, place: IRExprPlaceResult { type_id: var_dec.type_id, ptr_value: alloca, owner: Some(result), is_mut: var_dec.is_mut }});
         result
     }
 
@@ -48,7 +48,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         None
     }
 
-    pub fn lower_fun(&mut self, parent_scope: IRScopeId, name: &str, templates_values: &[IRTemplateValue], call_span: Option<Span>) -> Result<IRFunctionId, CompilerError> {
+    pub fn lower_fun(&mut self, parent_scope: IRScopeId, name: &str, templates_values: &[IRTemplateValue<'ctx>], call_span: Option<Span>) -> Result<IRFunctionId, CompilerError> {
         let (parent_scope, fun_def) = self.find_fun_def_in_scope(parent_scope, name, call_span)?.unwrap();
 
         let templates_keys = self.get_templates_keys_from(&fun_def.templates)?;
@@ -68,7 +68,7 @@ impl<'ctx> CodeLowerer<'ctx> {
 
         self.ensure_templates_constraints(&mut ir_context, &templates_map, &fun_def.templates, call_span)?;
 
-        let return_type: IRTypeId = if let Some(return_t) = &fun_def.return_type { self.get_type(&mut ir_context, return_t, &IRContextType::Any)? } else { self.primitive_type(PrimitiveType::Void)? };
+        let return_type: IRTypeId = if let Some(return_t) = &fun_def.return_type { self.get_type(&mut ir_context, return_t, &IRContextType::Type)? } else { self.primitive_type(PrimitiveType::Void)? };
         
         let mut args: IRVarDeclarations = Vec::new();
         for arg in fun_def.args.variables.iter() {
@@ -120,7 +120,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
 
         let mut ir_context = IRContext::FunContext(ir_fun_context);
-        let result = self.lower_scope(&mut ir_context, fun_def.scope.as_ref().unwrap(), &IRContextType::Type(return_type))?;
+        let result = self.lower_scope(&mut ir_context, fun_def.scope.as_ref().unwrap(), &IRContextType::Value(Some(return_type)))?;
 
         self.builder.build_return(Some(&result.llvm_value)).expect("Return build failed");
 

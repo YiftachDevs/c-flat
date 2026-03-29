@@ -77,7 +77,10 @@ pub enum SemanticError {
     UnrecognizedLabel,
     ExpectedMutable,
     ExpectedPlace,
-    MovedValue
+    UndeducibleType,
+    MovedValue,
+    NonPrimConstant,
+    ExpectdConstant
 }
 
 impl SemanticError {
@@ -106,7 +109,10 @@ impl SemanticError {
             Self::UnrecognizedLabel => ("Unrecognized Label", None),
             Self::ExpectedMutable => ("Expected Mutable", None),
             Self::ExpectedPlace => ("Expected a L-Value", None),
-            Self::MovedValue => ("Use of a moved value", None)
+            Self::MovedValue => ("Use of a moved value", None),
+            Self::UndeducibleType => ("Undeducible Type", None),
+            Self::NonPrimConstant => ("Non-primitive Constant", None),
+            Self::ExpectdConstant => ("Expected Constant", None)
         }
     }
 }

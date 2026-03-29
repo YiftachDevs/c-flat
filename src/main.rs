@@ -11,6 +11,7 @@ mod postfix_lowerer;
 mod prefix_lowerer;
 mod core_lowerer;
 mod conditional_lowerer;
+mod array_lowerer;
 
 use indexmap::IndexMap;
 use inkwell::context::Context;

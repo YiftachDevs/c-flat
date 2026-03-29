@@ -25,11 +25,11 @@ impl<'ctx> CodeLowerer<'ctx> {
         None
     }
 
-    pub fn lower_trait(&mut self, parent_scope: IRScopeId, name: &str, templates_values: &[IRTemplateValue], self_type: IRTypeId, call_span: Option<Span>) -> Result<IRTraitId, CompilerError> {
+    pub fn lower_trait(&mut self, parent_scope: IRScopeId, name: &str, templates_values: &[IRTemplateValue<'ctx>], self_type: IRTypeId, call_span: Option<Span>) -> Result<IRTraitId, CompilerError> {
         let trait_def = self.find_trait_def_in_scope(parent_scope, name, call_span)?.unwrap().1;
         let templates_keys = self.get_templates_keys_from(&trait_def.templates)?;
         let mut templates_map = self.merge_templates_keys_values(&templates_keys, templates_values, call_span)?;
-        templates_map.insert("Self".to_string(), self_type );
+        templates_map.insert("Self".to_string(), IRTemplateValue::Type(self_type) );
 
         if let Some(id) = self.find_existing_trait(parent_scope, name, &templates_map) {
             return Ok(id);
@@ -45,7 +45,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         self.ensure_templates_constraints(&mut ir_context, &templates_map, &trait_def.templates, call_span)?;
 
         if let Some(sub_traits_expr) = &trait_def.sub_traits {
-            self.traits_table[trait_id].sub_traits = self.lower_args_traits(&mut ir_context, sub_traits_expr, &vec![IRContextType::Type(self_type)])?;
+            self.traits_table[trait_id].sub_traits = self.lower_args_traits(&mut ir_context, sub_traits_expr, &vec![IRContextType::Trait(self_type)])?;
         }
 
         Ok(trait_id)

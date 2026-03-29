@@ -29,12 +29,15 @@ impl ToString for Templates {
 
 #[derive(PartialEq, Clone)]
 pub enum Template {
-    // Literal(String, ExprNode),
+    Const(Const),
     VarType(String, Option<ExprNode>)
 }
 
 impl Template {
     pub fn from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
+        if let Some(const_value) = Const::is_from_def(parser)? {
+            return Ok(Self::Const(const_value));
+        }
         let key = parser.next_name(false)?;
         let mut contraints = None;
         if parser.is_next(":") {
@@ -47,7 +50,9 @@ impl Template {
 impl ToString for Template {
     fn to_string(&self) -> String {
         match self {
-            //Template::Literal(name, var_type) => format!("const {}: {}", name, var_type.to_string()),
+            Template::Const(const_value) => {
+                const_value.to_string()
+            }
             Template::VarType(name, opt_contraints) => {
                 if let Some(constraints) = opt_contraints {
                     format!("{}: {}", name, constraints.to_string())
@@ -81,6 +86,14 @@ pub struct Variable {
 }
 
 #[derive(PartialEq, Clone)]
+pub struct Const {
+    pub name: String,
+    pub var_type: ExprNode,
+    pub init_expr: Option<ExprNode>,
+    pub span: Span
+}
+
+#[derive(PartialEq, Clone)]
 pub struct Function {
     pub name: String,
     pub templates: Templates,
@@ -95,6 +108,7 @@ pub struct Function {
 pub enum Statement {
     Expression{ expr: ExprNode, is_final_value: bool},
     VarDeclaration(Variable),
+    Const(Const),
     ConditionalChain(ConditionalChain),
     ControlFlow(ControlFlow)
 }
@@ -153,7 +167,8 @@ pub enum PrefixOpr {
 pub enum PostfixOpr {
     Inv,
     Idx,
-    Mem,
+    Mem, // vec.x
+    Sep, // Vec:len(&vec)
     Con, // eg: Vec_2 { 4, 3 }
     Tmp // (template eg <>)
 }
@@ -276,12 +291,12 @@ pub enum ExprNodeEnum {
     InfixOpr(InfixOpr, Box<ExprNode>, Box<ExprNode>),
     PrefixOpr(PrefixOpr, Box<ExprNode>),
     PostfixOpr(PostfixOpr, Box<ExprNode>, Box<ExprNode>),
-    Name(String, bool),
+    Name(String),
     Literal(Literal),
     VarDeclaration(Box<Variable>),
     Scope(Box<Scope>),
     ConditionalChain(Box<ConditionalChain>),
-    Array(Vec<ExprNode>, bool) // is_duplicate [1, 2, 3] or [4; 5]
+    Array(Box<ExprNode>, Option<Box<ExprNode>>) // [1, 2, 3] or [4; 5]
 }
 
 #[derive(PartialEq, Clone)]
@@ -511,8 +526,6 @@ impl ToString for PrefixOpr {
 
 impl PostfixOpr {
     pub fn is_from_def(parser: &mut Parser, is_type: bool, constructor: bool) -> Result<Option<(Self, ExprNode, bool)>, CompilerError> {
-        let prev_index = parser.stamp_index();
-        parser.skip_whitespace()?;
         let expr_result: ExprNode;
         let mut is_cur_type: bool = false;
 
@@ -524,32 +537,37 @@ impl PostfixOpr {
             expr_result = ExprNode::from_def(parser, true)?;
             parser.ensure_next(")")?;
             PostfixOpr::Inv
-        } else if parser.is_next(":<") {
+        } else if parser.is_next("<") {
             expr_result = ExprNode::from_def(parser, false)?;
             parser.ensure_next(">")?;
             is_cur_type = true;
             PostfixOpr::Tmp  
         } else if parser.is_next(".") {
             let mut span: Span = parser.get_span_start();
+            let name: String = parser.next_name(true)?;
+            parser.end_span(&mut span);
+            expr_result = ExprNode { value: ExprNodeEnum::Name(name), span }; 
+            PostfixOpr::Mem
+        } else if parser.is_next(":") {
+            let mut span: Span = parser.get_span_start();
             if parser.is_name_start(true)? {
                 let name: String = parser.next_name(true)?;
                 parser.end_span(&mut span);
-                expr_result = ExprNode { value: ExprNodeEnum::Name(name, true), span };
+                expr_result = ExprNode { value: ExprNodeEnum::Name(name), span };
             } else if parser.is_name_start(false)? {
                 let name: String = parser.next_name(false)?;
                 parser.end_span(&mut span);
-                expr_result = ExprNode { value: ExprNodeEnum::Name(name, false), span };  
+                expr_result = ExprNode { value: ExprNodeEnum::Name(name), span };  
                 is_cur_type = true;
             } else {
                 return Err(parser.error(CompilerErrorType::SyntaxError(SyntaxError::ExpectedName)));
             }
-            PostfixOpr::Mem
+            PostfixOpr::Sep
         } else if is_type && constructor && parser.is_next("{") {
             expr_result = ExprNode::from_def(parser, true)?;
             parser.ensure_next("}")?;
             PostfixOpr::Con
         } else {
-            parser.set_index(prev_index);
             return Ok(None);
         };
         Ok(Some((result, expr_result, is_cur_type)))
@@ -830,26 +848,19 @@ impl ExprNode {
             parser.ensure_next(")")?;
             result_enum = inner_expr.value;
         } else if parser.is_next("[") {
-            let first_expr: ExprNode = ExprNode::from_def(parser, true)?;
-            result_enum = if parser.is_next(";") {
-                let count_expr: ExprNode = ExprNode::from_def(parser, true)?;
-                parser.ensure_next("]")?;
-                ExprNodeEnum::Array(Vec::from([first_expr, count_expr]), true)
-            } else {
-                let mut vec: Vec<ExprNode> = Vec::from([first_expr]);
-                while !parser.is_next("]") {
-                    parser.ensure_next(",")?;
-                    vec.push(ExprNode::from_def(parser, true)?);
-                }
-                ExprNodeEnum::Array(vec, false)
-            };
+            let arr_expr: ExprNode = ExprNode::from_def(parser, true)?;
+            let size = if parser.is_next(";") {
+                Some(Box::new(ExprNode::from_def(parser, true)?))
+            } else { None };
+            parser.ensure_next("]")?;
+            result_enum = ExprNodeEnum::Array(Box::new(arr_expr), size);
         } else if parser.is_name_start(false)? {
             let name: String = parser.next_name(false)?;
-            result_enum = ExprNodeEnum::Name(name, false);
+            result_enum = ExprNodeEnum::Name(name);
             is_type = true;
         } else if parser.is_name_start(true)? {
             let name: String = parser.next_name(true)?;
-            result_enum = ExprNodeEnum::Name(name, true);
+            result_enum = ExprNodeEnum::Name(name);
         } else {
             return Err(parser.error(CompilerErrorType::SyntaxError(SyntaxError::ExpectedPrimaryExpression)));
         }
@@ -878,7 +889,7 @@ impl ToString for ExprNode {
             ExprNodeEnum::Literal(const_value) => {
                 const_value.to_string()
             },
-            ExprNodeEnum::Name(name, _) => {
+            ExprNodeEnum::Name(name) => {
                 name.clone()
             },
             ExprNodeEnum::PostfixOpr(postfix_opr, left, right) => {
@@ -887,15 +898,19 @@ impl ToString for ExprNode {
                     PostfixOpr::Inv => format!("{}({})", left.to_string(), right.to_string()),
                     PostfixOpr::Tmp => format!("{}<{}>", left.to_string(), right.to_string()),
                     PostfixOpr::Con => format!("{} {{ {} }}", left.to_string(), right.to_string()),
-                    PostfixOpr::Mem => format!("{}.{}", left.to_string(), right.to_string())
+                    PostfixOpr::Mem => format!("{}.{}", left.to_string(), right.to_string()),
+                    PostfixOpr::Sep => format!("{}:{}", left.to_string(), right.to_string())
                 }
             },
             ExprNodeEnum::VarDeclaration(var_box) => format!("let {}", var_box.to_string()),
             ExprNodeEnum::Scope(scope) => scope.to_string(),
             ExprNodeEnum::ConditionalChain(cond_chain) => cond_chain.to_string(),
-            ExprNodeEnum::Array(values, is_dup) => {
-                let sep: &str = if *is_dup { "; " } else { ", " };
-                format!("[{}]", values.iter().map(|v: &ExprNode| v.to_string()).collect::<Vec<String>>().join(sep))
+            ExprNodeEnum::Array(values, opt_size_literal) => {
+                if let Some(size_literal) = opt_size_literal {
+                    format!("[{}; {}]", values.to_string(), size_literal.to_string())
+                } else {
+                    format!("[{}]", values.to_string())
+                }
             }
         }
     }
@@ -947,6 +962,32 @@ impl ToString for Variable {
             result += format!(" = {}", init_expr.to_string()).as_str();
         }
         result
+    }
+}
+
+
+impl Const {
+    pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
+        let mut span: Span = parser.get_span_start();
+        if !parser.is_next("const") {
+            return Ok(None);
+        }
+        let name: String = parser.next_name(false)?;
+        parser.ensure_next(":")?;
+        let var_type = ExprNode::primary_from_def(parser, false)?.0;
+        let init_expr = if parser.is_next("=") { Some(ExprNode::from_def(parser, true)?) } else { None };
+        parser.end_span(&mut span);
+        return Ok(Some(Self { name: name, var_type: var_type, init_expr: init_expr, span }));
+    }
+}
+
+impl ToString for Const {
+    fn to_string(&self) -> String {
+        if let Some(init_expr) = &self.init_expr {
+            format!("const {}: {} = {}", self.name, self.var_type.to_string(), init_expr.to_string())
+        } else {
+            format!("const {}: {}", self.name, self.var_type.to_string())
+        }
     }
 }
 
@@ -1161,6 +1202,9 @@ impl Statement {
         if let Some(new_var) = Variable::is_from_def(parser)? {
             parser.ensure_next(";")?;
             return Ok(Statement::VarDeclaration(new_var));
+        } else if let Some(const_value) = Const::is_from_def(parser)? {
+            parser.ensure_next(";")?;
+            return Ok(Statement::Const(const_value));              
         } else if let Some(cond_chain) = ConditionalChain::is_from_def(parser)? {
             return Ok(Statement::ConditionalChain(cond_chain));
         } else if let Some(control_flow) = ControlFlow::is_from_def(parser)? {
@@ -1264,6 +1308,9 @@ impl ToString for Statement {
             }
             Statement::ControlFlow(control_flow) => {
                 control_flow.to_string() + ";"
+            }
+            Statement::Const(const_value) => {
+                const_value.to_string() + ";"
             }
         }
     }
@@ -1471,6 +1518,17 @@ impl<'fctx> Parser<'fctx> {
         Ok(ch >= '0' && ch <= '9')
     }
 
+    pub fn next_usize(&mut self) -> Result<usize, CompilerError> {
+        self.skip_whitespace()?;
+        let mut value = 0;
+        while self.is_num_start()? {
+            value *= 10;
+            value += self.cur_char()? as usize - '0' as usize;
+            self.index += 1;
+        }
+        Ok(value)
+    }
+    
     pub fn next_until<F>(&mut self, end_condition: F) -> Result<String, CompilerError> where F: Fn(char) -> bool {
         self.skip_whitespace()?;
         let start_index: usize = self.index;
