@@ -80,7 +80,8 @@ pub enum SemanticError {
     UndeducibleType,
     MovedValue,
     NonPrimConstant,
-    ExpectdConstant
+    ExpectdConstant,
+    LoadingUnsized,
 }
 
 impl SemanticError {
@@ -112,7 +113,8 @@ impl SemanticError {
             Self::MovedValue => ("Use of a moved value", None),
             Self::UndeducibleType => ("Undeducible Type", None),
             Self::NonPrimConstant => ("Non-primitive Constant", None),
-            Self::ExpectdConstant => ("Expected Constant", None)
+            Self::ExpectdConstant => ("Expected Constant", None),
+            Self::LoadingUnsized => ("Cannot load Unsized Value", None)
         }
     }
 }
@@ -136,7 +138,10 @@ impl fmt::Display for CompilerError {
         if let Some(desc) = err_description {
             write!(f, "\n{} {}", "Description:".white().dimmed(), desc)?;
         }
-        if let Some(s) = self.span {
+        if let Some(mut s) = self.span {
+            if s.col_end < s.col_start {
+                s.col_end = self.line_str.len();
+            }
             let pos_str: String = format!("Ln {} Col {}:", s.line_start + 1, s.col_start + 1);
             let before_str = &self.line_str[..s.col_start];
             let span_str = &self.line_str[s.col_start..s.col_end];

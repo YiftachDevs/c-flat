@@ -25,7 +25,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             self.builder.build_store(alloca, init_value).unwrap();
         }
         let result = ir_fun_context.vars.len();
-        ir_fun_context.vars.push(IRVariable { name: var_dec.name.clone(), moved: false, is_mut: var_dec.is_mut, place: IRExprPlaceResult { type_id: var_dec.type_id, ptr_value: alloca, owner: Some(result), is_mut: var_dec.is_mut }});
+        ir_fun_context.vars.push(IRVariable { name: var_dec.name.clone(), moved: false, is_mut: var_dec.is_mut, place: IRExprPlaceResult { type_id: var_dec.type_id, ptr_value: alloca.into(), owner: Some(result), is_mut: var_dec.is_mut }});
         result
     }
 

@@ -21,15 +21,6 @@ impl<'ctx> CodeLowerer<'ctx> {
             0 => Ok(None)
         }
     }
-    
-    pub fn find_impl_of_trait(&mut self, type_id: IRTypeId, trait_id: IRTraitId) -> Result<Option<IRImplId>, CompilerError> {
-        for lowered_impl_id in self.ir_type(type_id).lowered_impls.as_ref().unwrap() {
-            if let Some(impl_trait_id) = self.ir_impl(*lowered_impl_id).trait_id && impl_trait_id == trait_id {
-                return Ok(Some(*lowered_impl_id));
-            }
-        }
-        Ok(None)
-    }
 
     pub fn find_impls(&mut self, parent_scope: IRScopeId, type_id: IRTypeId) -> Result<Vec<IRImplId>, CompilerError> {
         let mut impls_ids = Vec::new();
@@ -75,6 +66,13 @@ impl<'ctx> CodeLowerer<'ctx> {
         self.ensure_valid_traits_implementations(type_id)?;
         self.impl_core(type_id)?;
         Ok(())
+    }
+
+    pub fn lower_impl_fun(&mut self, impl_id: IRImplId, fun_name: &str, templates_values: &[IRTemplateValue<'ctx>], span: Option<Span>) -> Result<IRFunctionId, CompilerError> {
+        let ir_impl = self.ir_impl(impl_id);
+        let fun = self.lower_fun(ir_impl.scope, fun_name, templates_values, span)?;
+        self.ensure_trait_fun_valid(impl_id, fun, span)?;
+        Ok(fun)
     }
 
     fn filter_impls_constraints(&mut self, type_id: IRTypeId) -> Result<(), CompilerError> {

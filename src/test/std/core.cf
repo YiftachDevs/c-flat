@@ -1,0 +1,95 @@
+trait Integer: Numeral;
+impl Integer for u128;
+impl Integer for i8;
+impl Integer for u8;
+impl Integer for i16;
+impl Integer for u16;
+impl Integer for i32;
+impl Integer for u32;
+impl Integer for i64;
+impl Integer for u64;
+impl Integer for i128;
+
+trait Float: Numeral;
+impl Float for f16;
+impl Float for f32;
+impl Float for f64;
+
+trait Numeral: Primitive;
+impl Numeral for i8;
+impl Numeral for u8;
+impl Numeral for i16;
+impl Numeral for u16;
+impl Numeral for i32;
+impl Numeral for u32;
+impl Numeral for i64;
+impl Numeral for u64;
+impl Numeral for i128;
+impl Numeral for u128;
+impl Numeral for f16;
+impl Numeral for f32;
+impl Numeral for f64;
+
+trait Primitive;
+impl Primitive for i8;
+impl Primitive for u8;
+impl Primitive for i16;
+impl Primitive for u16;
+impl Primitive for i32;
+impl Primitive for u32;
+impl Primitive for i64;
+impl Primitive for u64;
+impl Primitive for i128;
+impl Primitive for u128;
+impl Primitive for f16;
+impl Primitive for f32;
+impl Primitive for f64;
+impl Primitive for bool;
+impl Primitive for char;
+impl Primitive for ();
+
+trait Add<T> { fun add(self: Self, other: T) -> Self; }
+trait Sub<T> { fun sub(self: Self, other: T) -> Self; }
+trait Mul<T> { fun mul(self: Self, other: T) -> Self; }
+trait Div<T> { fun div(self: Self, other: T) -> Self; }
+trait Mod<T> { fun mod(self: Self, other: T) -> Self; }
+trait Eq { fun eq(self: Self, other: Self) -> bool; }
+trait Ord { fun lss(self: Self, other: Self) -> bool; fun leq(self: Self, other: Self) -> bool; fun gtr(self: Self, other: Self) -> bool; fun geq(self: Self, other: Self) -> bool; }
+trait Not { fun not(self: Self) -> Self; }
+trait Deref<T> { fun deref(self: &Self) -> &T; }
+trait Drop { fun drop(self: &Self); }
+trait AsRef<T> { fun as_ref(self: &Self) -> &T; }
+
+impl<T: Numeral> Add<T> for T { fun add(self: Self, other: Self) -> Self; }
+impl<T: Numeral> Sub<T> for T { fun sub(self: Self, other: Self) -> Self; }
+impl<T: Numeral> Mul<T> for T { fun mul(self: Self, other: Self) -> Self; }
+impl<T: Numeral> Div<T> for T { fun div(self: Self, other: Self) -> Self; }
+impl<T: Numeral> Mod<T> for T { fun mod(self: Self, other: Self) -> Self; }
+impl<T: Numeral> Ord for T { fun lss(self: Self, other: Self) -> bool; fun leq(self: Self, other: Self) -> bool; fun gtr(self: Self, other: Self) -> bool; fun geq(self: Self, other: Self) -> bool; }
+impl<T: Primitive> Eq for T { fun eq(self: Self, other: Self) -> bool; }
+impl Not for bool { fun not(self: Self) -> Self; }
+impl<T: Integer> Not for T { fun not(self: Self) -> Self; }
+
+impl<T: Eq> Eq for &T {
+    fun eq(self: Self, other: Self) -> bool {
+        *self == *other
+    }
+}
+
+impl<T: Eq> Eq for &mut T {
+    fun eq(self: Self, other: Self) -> bool {
+        *self == *other
+    }
+}
+
+impl<T> AsRef<T> for [T] {
+    fun as_ref(self: &Self) -> &T;
+}
+
+impl<T> [T] {
+    fun len(self: &Self) -> u64;
+}
+
+impl<T> T {
+    fun mem_size() -> u64;
+}

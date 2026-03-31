@@ -1,0 +1,9 @@
+import std/core.cf;
+
+extern fun getchar() -> char;
+extern fun putchar(chr: char) -> char;
+extern fun puts(c_str: &u8);
+
+fun print(str: &[u8]) {
+    puts(str.as_ref());
+}

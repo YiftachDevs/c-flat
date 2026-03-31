@@ -119,12 +119,13 @@ impl<'ctx> CodeLowerer<'ctx> {
                     if let Some((i, arg)) = _struct.args.iter().enumerate().find(|(_, arg)| arg.name == name) {
                         let llvm_ptr_value = place.ptr_value;
                         let arg_name = format!("{}.{}", llvm_ptr_value.get_name().to_string_lossy(), arg.name);
-                        let arg_ptr_value = self.builder.build_struct_gep(ir_type.llvm_type, llvm_ptr_value, i as u32, arg_name.as_str()).unwrap().into();
+                        let arg_ptr_value = self.builder.build_struct_gep(ir_type.llvm_type, llvm_ptr_value.into_pointer_value(), i as u32, arg_name.as_str()).unwrap().into();
                         return Ok(IRExprResult::Place(IRExprPlaceResult { type_id: arg.type_id, ptr_value: arg_ptr_value, is_mut: place.is_mut, owner: place.owner }));
                     }
                 }
-                if let Ok(place) = self.deref(ir_context, IRExprResult::Place(place), span) {
-                    return self.lower_postfix_opr_member(ir_context, IRExprResult::Place(place), right_expr, context_type, span);
+                if self.is_derefable(place.type_id)? {
+                    let deref_result = self.deref(ir_context, IRExprResult::Place(place), span)?;
+                    return self.lower_postfix_opr_member(ir_context, deref_result, right_expr, context_type, span);
                 }
                 return Err(self.error(SemanticError::UnrecognizedName, Some(right_expr.span)));
             }
@@ -140,8 +141,9 @@ impl<'ctx> CodeLowerer<'ctx> {
                         return Ok(IRExprResult::Value(IRExprValueResult { type_id: arg.type_id, llvm_value: self.builder.build_extract_value(llvm_value, i as u32, arg_name.as_str()).unwrap() }));
                     }
                 }
-                if let Ok(place) = self.deref(ir_context, IRExprResult::Value(expr_value_result), span) {
-                    return self.lower_postfix_opr_member(ir_context, IRExprResult::Place(place), right_expr, context_type, span);
+                if self.is_derefable(expr_value_result.type_id)? {
+                    let deref_result = self.deref(ir_context, IRExprResult::Value(expr_value_result), span)?;
+                    return self.lower_postfix_opr_member(ir_context, deref_result, right_expr, context_type, span);
                 }
                 return Err(self.error(SemanticError::UnrecognizedName, Some(right_expr.span)));
             }
@@ -156,7 +158,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             let llvm_args = if let Some(self_value) = opt_self_value {
                 let mut res = if let IRContextType::Value(Some(ctx_self)) = args_context_types.remove(0) {
                     let auto_ref_result = self.auto_reference(ir_context, *self_value, ctx_self, span)?;
-                    vec![self.load_if_place(auto_ref_result)]
+                    vec![self.load_if_place(auto_ref_result, span)?]
                 } else { panic!() };
                 res.extend(self.lower_args_values(ir_context, right_expr, &args_context_types, false)?);
                 res

@@ -1,0 +1,34 @@
+import std/core.cf;
+
+extern fun malloc(size: u64) -> &();
+extern fun free(ptr: &());
+extern fun memcpy(dest_ptr: &(), src_ptr: &(), size: u64);
+
+struct Box<T> {
+    value_ref: &T
+}
+
+impl<T> Box<T> {
+    fun new(value: T) -> Self {
+        let mem_size = T:mem_size();
+        let value_ref = malloc(mem_size) as &T;
+        memcpy(value_ref as &(), &value as &(), mem_size);
+        Self { value_ref }
+    }
+
+    fun as_ref(self: &Self) -> &T {
+        &**self
+    }
+}
+
+impl<T> Deref<T> for Box<T> {
+    fun deref(self: &Self) -> &T {
+        self.value_ref as &T
+    }
+}
+
+impl<T> Drop for Box<T> {
+    fun drop(self: &Self) {
+        free(self.value_ref as &());
+    }
+}

@@ -35,19 +35,33 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(type_id)
     }
 
-    pub fn is_type_zero_sized(&self, type_id: IRTypeId) -> Result<bool, CompilerError> {
+    pub fn is_type_zero_sized(&self, type_id: IRTypeId) -> bool {
         let ir_type_enum = &self.ir_type(type_id).type_enum;
         if let IRTypeEnum::Primitive(prim) = ir_type_enum {
-            return Ok(*prim == PrimitiveType::Void || *prim == PrimitiveType::Never);
+            return *prim == PrimitiveType::Void || *prim == PrimitiveType::Never;
         }
         if let IRTypeEnum::Struct(ir_struct) = &self.ir_type(type_id).type_enum {
             for arg in ir_struct.args.iter() {
-                if !self.is_type_zero_sized(arg.type_id)? { 
-                    return Ok(false);
+                if !self.is_type_zero_sized(arg.type_id) { 
+                    return false;
                 }
             }
         }
-        return Ok(false);
+        return false;
+    }
+
+    pub fn get_type_mem_size(&self, type_id: IRTypeId) -> u64 {
+        if self.is_type_zero_sized(type_id) {
+            return  0;
+        }
+        match &self.ir_type(type_id).type_enum {
+            IRTypeEnum::Primitive(prim) => prim.get_mem_size(),
+            IRTypeEnum::Array { arr_type, size } => self.get_type_mem_size(*arr_type) as u64 * size,
+            IRTypeEnum::Reference { ptr_type_id, is_mut } => 8,
+            IRTypeEnum::Struct(ir_struct) => ir_struct.args.iter().map(|arg| self.get_type_mem_size(arg.type_id)).sum(),
+            IRTypeEnum::UnsizedRef { unsized_type, is_mut } => 16,
+            _ => panic!()
+        }
     }
 
     pub fn is_type_unsized(&self, type_id: IRTypeId) -> Result<bool, CompilerError> {
@@ -199,12 +213,16 @@ impl<'ctx> CodeLowerer<'ctx> {
     }
 
     pub fn auto_reference(&mut self, ir_context: &mut IRContext<'ctx>, expr_result: IRExprResult<'ctx>, expected_type: IRTypeId, span: Span) -> Result<IRExprResult<'ctx>, CompilerError> {
-        let type_id = match &expr_result { IRExprResult::Value(value) => value.type_id, IRExprResult::Place(place) => place.type_id, _ => panic!() };
+        let type_id = expr_result.get_type_id();
         if type_id == expected_type {
             return Ok(expr_result);
         }
         if let IRTypeEnum::Reference { ptr_type_id, is_mut } = self.ir_type(expected_type).type_enum {
             let auto_ref_result = self.auto_reference(ir_context, expr_result, ptr_type_id, span)?;
+            let referenced_value = self.address(ir_context, auto_ref_result, is_mut, span)?;
+            return Ok(IRExprResult::Value(referenced_value));
+        } else if let IRTypeEnum::UnsizedRef { unsized_type, is_mut } = self.ir_type(expected_type).type_enum {
+            let auto_ref_result = self.auto_reference(ir_context, expr_result, unsized_type, span)?;
             let referenced_value = self.address(ir_context, auto_ref_result, is_mut, span)?;
             return Ok(IRExprResult::Value(referenced_value));
         } else {

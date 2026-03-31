@@ -140,6 +140,17 @@ impl PrimitiveType {
             _ => false
         }
     }
+
+    pub fn get_mem_size(&self) -> u64 {
+        match self {
+            Self::Void | Self::Never => 0,
+            Self::I8 | Self::U8 | Self::Bool => 1,
+            Self::I16 | Self::U16 | Self::F16 => 2,
+            Self::I32 | Self::U32 | Self::F32 | Self::Char => 4,
+            Self::I64 | Self::U64 | Self::F64 => 8,
+            Self::I128 | Self::U128 => 16,
+        }
+    }
 }
 
 impl ToString for PrimitiveType {

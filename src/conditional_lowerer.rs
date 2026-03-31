@@ -126,9 +126,9 @@ impl<'ctx> CodeLowerer<'ctx> {
                 let fun_type_ctx = IRContextType::Value(Some(fun_type));
                 let return_expr_result = self.lower_expr(ir_context, expr, &fun_type_ctx)?;
                 let return_result = if let IRExprResult::Empty = return_expr_result {
-                    self.ensure_expr_result_value(&IRExprResult::Void, true, expr.span, &fun_type_ctx)?
+                    self.ensure_expr_result_value(ir_context, &IRExprResult::Void, true, expr.span, &fun_type_ctx)?
                 } else {
-                    self.ensure_expr_result_value(&return_expr_result, true, expr.span, &fun_type_ctx)?
+                    self.ensure_expr_result_value(ir_context, &return_expr_result, true, expr.span, &fun_type_ctx)?
                 };
                 self.builder.build_return(Some(&return_result.llvm_value)).expect("Return build failed");
             },
@@ -141,7 +141,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 let loop_idx = self.find_loop_idx(ir_context.into_fun_context(), control_flow, label, *span)?;
                 let ctx_type = &ir_context.into_fun_context().loop_stack[loop_idx].ctx_type.clone();
                 let break_expr_result = self.lower_expr(ir_context, expr, &ctx_type)?;
-                let break_value = self.ensure_expr_result_value(if break_expr_result == IRExprResult::Empty { &IRExprResult::Void } else { &break_expr_result }, true, expr.span, &ctx_type)?;
+                let break_value = self.ensure_expr_result_value(ir_context, if break_expr_result == IRExprResult::Empty { &IRExprResult::Void } else { &break_expr_result }, true, expr.span, &ctx_type)?;
                 ir_context.into_fun_context().loop_stack[loop_idx].ctx_type = IRContextType::Value(Some(break_value.type_id));
                 ir_context.into_fun_context().loop_stack[loop_idx].phi_values.push((break_value, self.builder.get_insert_block().unwrap()));
                 self.builder.build_unconditional_branch(ir_context.into_fun_context().loop_stack[loop_idx].merge_block).unwrap();

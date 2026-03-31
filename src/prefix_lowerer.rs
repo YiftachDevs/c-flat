@@ -1,6 +1,6 @@
 use inkwell::values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum};
 
-use crate::{code_lowerer::{CodeLowerer, CoreOpr, IRContext, IRContextType, IRTemplateValue, IRTypeEnum, IRTypeId, IRVarDeclaration, IRVariable, PrimitiveType}, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprPlaceResult, IRExprRefResult, IRExprResult, IRExprValueResult}, parser::{ExprNode, ExprNodeEnum, PostfixOpr, PrefixOpr, Span}};
+use crate::{code_lowerer::{CodeLowerer, CoreOpr, IRContext, IRContextType, IRTemplateValue, IRTypeEnum, IRTypeId, IRVarDeclaration, IRVariable, PrimitiveType}, core_lowerer::CoreTraitFun, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprPlaceResult, IRExprRefResult, IRExprResult, IRExprValueResult}, parser::{ExprNode, ExprNodeEnum, PostfixOpr, PrefixOpr, Span}};
 
 
 
@@ -23,6 +23,8 @@ impl<'ctx> CodeLowerer<'ctx> {
         } else if let IRContextType::Impl(template_value) = context_type && let IRTemplateValue::Type(type_id) = template_value {
             if let IRTypeEnum::Reference { ptr_type_id, is_mut } = self.ir_type(*type_id).type_enum && is_mut == is_ref_mut {
                 &IRContextType::Impl(IRTemplateValue::Type(ptr_type_id))
+            } else if let IRTypeEnum::UnsizedRef { unsized_type, is_mut } = self.ir_type(*type_id).type_enum && is_mut == is_ref_mut {
+                &IRContextType::Impl(IRTemplateValue::Type(unsized_type))
             } else {
                 return Ok(IRExprResult::NoImplMatch);
             }
@@ -67,7 +69,11 @@ impl<'ctx> CodeLowerer<'ctx> {
                         // return Err(self.error(SemanticError::MovedValue, Some(span)));
                     }
                 }
-                let value_result = IRExprValueResult { type_id: self.reference_type(place.type_id, is_mut_ref)?, llvm_value: place.ptr_value.into() };
+                let value_result = if self.is_type_unsized(place.type_id)? {
+                    IRExprValueResult { type_id: self.unsized_ref_type(place.type_id, is_mut_ref)?, llvm_value: place.ptr_value.into() }
+                } else {
+                    IRExprValueResult { type_id: self.reference_type(place.type_id, is_mut_ref)?, llvm_value: place.ptr_value.into() }
+                };
                 Ok(value_result)
             },
             _ => panic!()
@@ -77,47 +83,54 @@ impl<'ctx> CodeLowerer<'ctx> {
     pub fn lower_prefix_opr_deref(&mut self, ir_context: &mut IRContext<'ctx>, right_expr: &Box<ExprNode>, span: Span, context_type: &IRContextType) -> Result<IRExprResult<'ctx>, CompilerError> {
         let new_context_type = if let IRContextType::Value(Some(type_id)) = context_type { IRContextType::Value(Some(self.reference_type(*type_id, false)?)) } else { IRContextType::Value(None) };
         let expr_result = self.lower_expr(ir_context, right_expr, &new_context_type)?;
-        Ok(IRExprResult::Place(self.deref(ir_context, expr_result, span)?))
+        let deref_result = self.deref(ir_context, expr_result, span)?;
+        if let IRExprResult::Value(value) = deref_result {
+            Ok(self.deref(ir_context, deref_result, span)?)
+        } else {
+            Ok(deref_result)
+        }
     }
 
-    /*
-    if opr == PrefixOpr::Deref && let IRTypeEnum::Reference { ptr_type_id } = &self.ir_type(expr_value_result.type_id).type_enum {
-                return Ok(IRExprResult::Value(self.deref(ir_context, expr_value_result)?.unwrap()));
-            }
-            let (trait_name, fun_name) = Self::get_core_opr_trait_name(CoreOpr::Prefix(opr));
-            let fun = self.get_core_trait_fun(expr_value_result.type_id, trait_name, fun_name, Some(span))?;
-            let result = self.lower_postfix_opr_invoke(ir_context, IRExprResult::Function(fun, Some(expr_value_result)), &Box::new(ExprNode { value: ExprNodeEnum::Empty, span }), context_type, span)?;
-           
-     */
-/*Ok(Some(if !self.is_type_zero_sized(*ptr_type_id)? {
-                let value = self.builder.build_load(self.ir_type(*ptr_type_id).llvm_type.unwrap(), value.llvm_value.unwrap().into_pointer_value(), "load_val").unwrap();
-                IRExprValueResult { type_id: *ptr_type_id, llvm_value: Some(value) }
-            } else {
-                IRExprValueResult { type_id: *ptr_type_id, llvm_value: None }
-            })) */
-    pub fn deref(&mut self, ir_context: &mut IRContext<'ctx>, expr_result: IRExprResult<'ctx>, span: Span) -> Result<IRExprPlaceResult<'ctx>, CompilerError> {
+    pub fn is_derefable(&mut self, type_id: IRTypeId) -> Result<bool, CompilerError> {
+        if let IRTypeEnum::Reference { ptr_type_id, is_mut } = self.ir_type(type_id).type_enum {
+            return Ok(true);
+        }
+        if let IRTypeEnum::UnsizedRef { unsized_type, is_mut } = self.ir_type(type_id).type_enum {
+            return Ok(true);
+        }
+        if let Some(_) = self.find_impl_of_core_trait(type_id, &CoreTraitFun::Deref)? {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    pub fn deref(&mut self, ir_context: &mut IRContext<'ctx>, expr_result: IRExprResult<'ctx>, span: Span) -> Result<IRExprResult<'ctx>, CompilerError> {
         match expr_result {
             IRExprResult::Value(value) => {
                 if let IRTypeEnum::Reference { ptr_type_id, is_mut } = &self.ir_type(value.type_id).type_enum {
-                    let place = IRExprPlaceResult { type_id: *ptr_type_id, ptr_value: value.llvm_value.into_pointer_value(), owner: None, is_mut: *is_mut };
-                    Ok(place)
+                    let place = IRExprPlaceResult { type_id: *ptr_type_id, ptr_value: value.llvm_value, owner: None, is_mut: *is_mut };
+                    Ok(IRExprResult::Place(place))
+                } else if let IRTypeEnum::UnsizedRef { unsized_type, is_mut } = &self.ir_type(value.type_id).type_enum {
+                    let place = IRExprPlaceResult { type_id: *unsized_type, ptr_value: value.llvm_value, owner: None, is_mut: *is_mut };
+                    Ok(IRExprResult::Place(place))
                 } else {
-                    let (trait_name, fun_name) = Self::get_core_opr_trait_name(CoreOpr::Prefix(PrefixOpr::Deref));
-                    let fun = self.get_core_trait_fun(value.type_id, trait_name, fun_name, Some(span))?;
-                    let result = self.lower_postfix_opr_invoke(ir_context, IRExprResult::Function(fun, Some(Box::new(IRExprResult::Value(value)))), &Box::new(ExprNode { value: ExprNodeEnum::Empty, span }), span)?;
-                    self.deref(ir_context, IRExprResult::Value(result), span)
+                    let result = self.call_core_trait(ir_context, IRExprResult::Value(value), None, &CoreTraitFun::Deref, span)?;
+                    Ok(IRExprResult::Value(result))
                 }
             },
             IRExprResult::Place(place) => {
                 if let IRTypeEnum::Reference { ptr_type_id, is_mut } = &self.ir_type(place.type_id).type_enum {
-                    let value = self.load_place(place);
-                    let place = IRExprPlaceResult { type_id: *ptr_type_id, ptr_value: value.llvm_value.into_pointer_value(), owner: None, is_mut: *is_mut };
-                    Ok(place)
+                    let value = self.load_place(place, span)?;
+                    let place = IRExprPlaceResult { type_id: *ptr_type_id, ptr_value: value.llvm_value, owner: None, is_mut: *is_mut };
+                    Ok(IRExprResult::Place(place))
+                } else if let IRTypeEnum::UnsizedRef { unsized_type, is_mut } = &self.ir_type(place.type_id).type_enum {
+                    let value = self.load_place(place, span)?;
+                    let place = IRExprPlaceResult { type_id: *unsized_type, ptr_value: value.llvm_value, owner: None, is_mut: *is_mut };
+                    Ok(IRExprResult::Place(place))
                 } else {
-                    let (trait_name, fun_name) = Self::get_core_opr_trait_name(CoreOpr::Prefix(PrefixOpr::Deref));
-                    let fun = self.get_core_trait_fun(place.type_id, trait_name, fun_name, Some(span))?;
-                    let result = self.lower_postfix_opr_invoke(ir_context, IRExprResult::Function(fun, Some(Box::new(IRExprResult::Place(place)))), &Box::new(ExprNode { value: ExprNodeEnum::Empty, span }), span)?;
-                    self.deref(ir_context, IRExprResult::Value(result), span)
+                    let result = self.call_core_trait(ir_context, IRExprResult::Place(place), None, &CoreTraitFun::Deref, span)?;
+                    Ok(IRExprResult::Value(result))
                 }
             },
             _ => panic!()

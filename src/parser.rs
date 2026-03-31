@@ -230,7 +230,7 @@ pub struct Label {
 
 impl Label {
     fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
-        let mut span = parser.get_span_start();
+        let mut span = parser.get_span_start()?;
         if !parser.is_next("@") {
             return Ok(None);
         }
@@ -343,7 +343,7 @@ pub struct Trait {
 
 impl ConditionalChain {
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
-        let mut span = parser.get_span_start();
+        let mut span = parser.get_span_start()?;
         let label = Label::is_from_def(parser)?;
         let kind: Conditional = if parser.is_next("if") {
             Conditional::If
@@ -376,7 +376,7 @@ impl ConditionalChain {
 
 impl ControlFlow {
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
-        let mut span = parser.get_span_start();
+        let mut span = parser.get_span_start()?;
         let result: ControlFlow = if parser.is_next("skip") {
             parser.end_span(&mut span);
             let label = Label::is_from_def(parser)?;
@@ -543,13 +543,13 @@ impl PostfixOpr {
             is_cur_type = true;
             PostfixOpr::Tmp  
         } else if parser.is_next(".") {
-            let mut span: Span = parser.get_span_start();
+            let mut span: Span = parser.get_span_start()?;
             let name: String = parser.next_name(true)?;
             parser.end_span(&mut span);
             expr_result = ExprNode { value: ExprNodeEnum::Name(name), span }; 
             PostfixOpr::Mem
         } else if parser.is_next(":") {
-            let mut span: Span = parser.get_span_start();
+            let mut span: Span = parser.get_span_start()?;
             if parser.is_name_start(true)? {
                 let name: String = parser.next_name(true)?;
                 parser.end_span(&mut span);
@@ -770,7 +770,7 @@ impl ExprNode {
         if root.value == ExprNodeEnum::Empty {
             return Ok(*root);
         }
-        let mut infix_span = parser.get_span_start();
+        let mut infix_span = parser.get_span_start()?;
         if let Some(infix_opr) = InfixOpr::is_from_def(parser, is_value_expr)? {
             parser.end_span(&mut infix_span);
             let next_node: ExprNode = ExprNode::primary_from_def(parser, true)?.0;
@@ -778,7 +778,7 @@ impl ExprNode {
         }
         loop {
             parser.skip_whitespace()?;
-            infix_span = parser.get_span_start();
+            infix_span = parser.get_span_start()?;
             let infix_opr = match InfixOpr::is_from_def(parser,is_value_expr)? { Some(opr) => opr, None => break };
             parser.end_span(&mut infix_span);
             let prec = infix_opr.precedence();
@@ -821,7 +821,7 @@ impl ExprNode {
 
     pub fn primary_from_def(parser: &mut Parser, constructor: bool) -> Result<(Self, bool), CompilerError> {
         parser.skip_whitespace()?;
-        let mut result_span: Span = parser.get_span_start();
+        let mut result_span: Span = parser.get_span_start()?;
         let mut result_enum: ExprNodeEnum;
         let mut is_type: bool = false;
         let ch: char = parser.cur_char()?;
@@ -918,7 +918,7 @@ impl ToString for ExprNode {
 
 impl Variable {
     pub fn arg_from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
-        let mut span: Span = parser.get_span_start();
+        let mut span: Span = parser.get_span_start()?;
         let is_mut: bool = parser.is_next("mut");
         let name: String = parser.next_name(true)?;
         if name == "self".to_string() {
@@ -940,7 +940,7 @@ impl Variable {
     }
 
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
-        let mut span: Span = parser.get_span_start();
+        let mut span: Span = parser.get_span_start()?;
         if !parser.is_next("let") {
             return Ok(None);
         }
@@ -968,7 +968,7 @@ impl ToString for Variable {
 
 impl Const {
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
-        let mut span: Span = parser.get_span_start();
+        let mut span: Span = parser.get_span_start()?;
         if !parser.is_next("const") {
             return Ok(None);
         }
@@ -1068,7 +1068,7 @@ impl Function {
             if external { parser.set_index(prev_parser_idx); }
             return Ok(None);
         }
-        let mut span: Span = parser.get_span_start();
+        let mut span: Span = parser.get_span_start()?;
         let name: String = parser.next_name(true)?;
         parser.end_span(&mut span);
         let templates: Templates = Templates::is_from_def(parser)?;
@@ -1242,7 +1242,7 @@ impl Scope {
     }
 
     pub fn from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
-        let mut span: Span = parser.get_span_start();
+        let mut span: Span = parser.get_span_start()?;
         parser.ensure_next("{")?;
         parser.end_span(&mut span);
         let mut result: Scope = Scope::new();
@@ -1254,6 +1254,9 @@ impl Scope {
     }
 
     pub fn parse_next(&mut self, parser: &mut Parser) -> Result<(), CompilerError> {
+        if parser.is_finished() {
+            return Ok(());
+        }
         if let Some(obj) = Module::is_from_def(parser)? {
             self.modules.push(obj);
         } else if let Some(strct) = Struct::is_from_def(parser)? {
@@ -1432,12 +1435,13 @@ impl<'fctx> Parser<'fctx> {
         let chars: &Vec<char> = &self.cur_file();
         let line_end_idx: usize = chars[self.new_line_index..].iter().position(|&c| c == '\n').map(|pos| self.new_line_index + pos).unwrap_or(chars.len());
         let line_str: String = chars[self.new_line_index..line_end_idx].iter().collect();
-        CompilerError { err_type, file: self.file_context.get_path(self.cur_file_id), span: Some(self.get_span_start()), line_str }
+        let span_start = match self.get_span_start() { Ok(v) => v, Err(e) => return e };
+        CompilerError { err_type, file: self.file_context.get_path(self.cur_file_id), span: Some(span_start), line_str }
     }
 
-    pub fn get_span_start(&mut self) -> Span {
-        self.skip_whitespace();
-        Span { file_id: self.cur_file_id, line_start: self.cur_line, col_start: self.get_col() - 1, line_end: self.cur_line, col_end: self.get_col(), line_index: self.new_line_index }
+    pub fn get_span_start(&mut self) -> Result<Span, CompilerError> {
+        self.skip_whitespace()?;
+        Ok(Span { file_id: self.cur_file_id, line_start: self.cur_line, col_start: self.get_col() - 1, line_end: self.cur_line, col_end: self.get_col(), line_index: self.new_line_index })
     }
 
     pub fn end_span(&self, span: &mut Span) {
@@ -1505,7 +1509,8 @@ impl<'fctx> Parser<'fctx> {
         if let Some(ch) = file_text.get(self.index).copied() {
             return Ok(ch);
         }
-        return Err(self.error(CompilerErrorType::SyntaxError(SyntaxError::ScriptEndedTooEarly)));
+        let err = CompilerError { err_type: CompilerErrorType::SyntaxError(SyntaxError::ScriptEndedTooEarly), file: self.file_context.get_path(self.cur_file_id), span: None , line_str: "".to_string() };
+        Err(err)
     }
 
     pub fn is_name_start(&mut self, is_lower_case: bool) -> Result<bool, CompilerError> {
@@ -1516,17 +1521,6 @@ impl<'fctx> Parser<'fctx> {
     pub fn is_num_start(&mut self) -> Result<bool, CompilerError> {
         let ch = self.cur_char()?;
         Ok(ch >= '0' && ch <= '9')
-    }
-
-    pub fn next_usize(&mut self) -> Result<usize, CompilerError> {
-        self.skip_whitespace()?;
-        let mut value = 0;
-        while self.is_num_start()? {
-            value *= 10;
-            value += self.cur_char()? as usize - '0' as usize;
-            self.index += 1;
-        }
-        Ok(value)
     }
     
     pub fn next_until<F>(&mut self, end_condition: F) -> Result<String, CompilerError> where F: Fn(char) -> bool {
@@ -1580,6 +1574,7 @@ impl<'fctx> Parser<'fctx> {
     }
 
     pub fn is_finished(&mut self) -> bool {
+        self.skip_whitespace();
         self.index >= self.cur_file().len()
     }
 
@@ -1609,7 +1604,9 @@ impl<'fctx> Parser<'fctx> {
         if self.is_finished() {
             return false;
         }
-        self.skip_whitespace();
+        if let Err(_) = self.skip_whitespace() {
+            return false;
+        }
         let s_chars: Vec<char> = s.chars().collect();
         let end: usize = self.index + s_chars.len();
         if end > self.cur_file().len() {

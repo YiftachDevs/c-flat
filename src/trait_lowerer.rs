@@ -2,7 +2,7 @@ use std::any::Any;
 
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 
-use crate::{code_lowerer::{CodeLowerer, IRContext, IRContextType, IRScope, IRScopeId, IRScopePath, IRTemplateValue, IRTemplatesMap, IRTrait, IRTraitId, IRType, IRTypeEnum, IRTypeId, IRVariable, IRVariables, PrimitiveType}, errors::{CompilerError, SemanticError}, parser::{Span, Struct, Trait}};
+use crate::{code_lowerer::{CodeLowerer, IRContext, IRContextType, IRFunctionId, IRImplId, IRScope, IRScopeId, IRScopePath, IRTemplateValue, IRTemplatesMap, IRTrait, IRTraitId, IRType, IRTypeEnum, IRTypeId, IRVariable, IRVariables, PrimitiveType}, errors::{CompilerError, SemanticError}, parser::{Span, Struct, Trait}};
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn find_trait_def_in_scope(&self, parent_scope: IRScopeId, name: &str, opt_call_span: Option<Span>) -> Result<Option<(IRScopeId, &'ctx Trait)>, CompilerError> {
