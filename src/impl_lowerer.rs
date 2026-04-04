@@ -35,7 +35,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 let mut ir_context = IRContext::ScopeContext(scope_id);
 
                 let opt_trait_id: Option<usize> = if let Some(trait_expr) = &impl_def.opt_trait {
-                    let trait_id = self.get_trait(&mut ir_context, trait_expr, &IRContextType::Trait(type_id))?;
+                    let trait_id = self.get_trait(&mut ir_context, trait_expr, &IRExprContext::Trait(type_id))?;
                     Some(trait_id)
                 } else { None };
 
@@ -161,7 +161,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             index_map.insert(keys[i].clone(), ir_templates[i].clone());
         }
         let mut ir_context = IRContext::ImplDefContext(parent_scope, index_map, IndexMap::new());
-        let expr_result = self.lower_expr(&mut ir_context, expr, &IRContextType::Impl(IRTemplateValue::Type(target_type)))?;
+        let expr_result = self.lower_expr(&mut ir_context, expr, &IRExprContext::Impl(IRTemplateValue::Type(target_type)))?;
         if let IRExprResult::Type(result_type) = expr_result && result_type == target_type && let IRContext::ImplDefContext(_, _, map) = ir_context {
             return Ok(Some(map));
         }

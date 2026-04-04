@@ -2,9 +2,9 @@ import std/core.cf;
 import std/io.cf;
 import std/heap.cf;
 
-fun main() -> u64 {
-    let name = "John";
-    let box = Box<&[u8]>:new(name);
-    let num = box.len() + 2.2; 
-    num
+fun main() -> i32 {
+    print("who?");
+    let name = read();
+    print("hi:");
+    print(name);
 }

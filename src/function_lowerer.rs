@@ -4,14 +4,18 @@ use crate::{code_lowerer::*, errors::{CompilerError, SemanticError}, expr_lowere
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn get_ir_var_declaration(&mut self, ir_context: &mut IRContext<'ctx>, var: &Variable) -> Result<IRVarDeclaration, CompilerError> {
-        let type_id = self.get_type(ir_context, var.var_type.as_ref().unwrap(), &IRContextType::Type)?;
+        let type_id = self.get_type(ir_context, var.var_type.as_ref().unwrap(), &IRExprContext::Type)?;
         Ok(IRVarDeclaration { name: var.name.clone(), type_id, is_mut: var.is_mut })
     }
 
-    pub fn alloc_var(&self, ir_fun_context: &mut IRFunContext<'ctx>, var_dec: &IRVarDeclaration, opt_init_value: Option<BasicValueEnum<'ctx>>) -> IRVarId {
+    pub fn alloc_var(&self, ir_fun_context: &mut IRFunContext<'ctx>, var_dec: &IRVarDeclaration, opt_init_value: Option<BasicValueEnum<'ctx>>, span: Option<Span>) -> Result<IRVarId, CompilerError> {
+        if ir_fun_context.vars.iter().any(|v| v.name == var_dec.name) {
+            // return Err(self.error(sdsd, opt_span));
+        }
+
         let current_block = self.builder.get_insert_block();
 
-        if let Some(entry_block) = current_block {
+        if let Some(entry_block) = self.ir_function(ir_fun_context.fun).llvm_value.get_first_basic_block() {
             match entry_block.get_first_instruction() {
                 Some(first_instr) => self.builder.position_before(&first_instr),
                 None => self.builder.position_at_end(entry_block),
@@ -26,7 +30,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
         let result = ir_fun_context.vars.len();
         ir_fun_context.vars.push(IRVariable { name: var_dec.name.clone(), moved: false, is_mut: var_dec.is_mut, place: IRExprPlaceResult { type_id: var_dec.type_id, ptr_value: alloca.into(), owner: Some(result), is_mut: var_dec.is_mut }});
-        result
+        Ok(result)
     }
 
     pub fn find_fun_def_in_scope(&self, parent_scope: IRScopeId, name: &str, opt_call_span: Option<Span>) -> Result<Option<(IRScopeId, &'ctx Function)>, CompilerError> {
@@ -68,7 +72,7 @@ impl<'ctx> CodeLowerer<'ctx> {
 
         self.ensure_templates_constraints(&mut ir_context, &templates_map, &fun_def.templates, call_span)?;
 
-        let return_type: IRTypeId = if let Some(return_t) = &fun_def.return_type { self.get_type(&mut ir_context, return_t, &IRContextType::Type)? } else { self.primitive_type(PrimitiveType::Void)? };
+        let return_type: IRTypeId = if let Some(return_t) = &fun_def.return_type { self.get_type(&mut ir_context, return_t, &IRExprContext::Type)? } else { self.primitive_type(PrimitiveType::Void)? };
         
         let mut args: IRVarDeclarations = Vec::new();
         for arg in fun_def.args.variables.iter() {
@@ -116,21 +120,19 @@ impl<'ctx> CodeLowerer<'ctx> {
 
         for (i, arg_dec) in ir_fun.args.iter().enumerate() {
             let arg_llvm_value = llvm_value.get_nth_param(i as u32).unwrap();
-            self.alloc_var(&mut ir_fun_context, arg_dec, Some(arg_llvm_value));
+            self.alloc_var(&mut ir_fun_context, arg_dec, Some(arg_llvm_value), Some(ir_fun.ast_def.args.variables[i].span));
         }
 
         let mut ir_context = IRContext::FunContext(ir_fun_context);
-        let result = self.lower_scope(&mut ir_context, fun_def.scope.as_ref().unwrap(), &IRContextType::Value(Some(return_type)))?;
+        let result = self.lower_scope(&mut ir_context, fun_def.scope.as_ref().unwrap(), &IRExprContext::Value(Some(return_type)))?;
 
-        self.builder.build_return(Some(&result.llvm_value)).expect("Return build failed");
-
+        if result.type_id != self.primitive_type(PrimitiveType::Never)? {
+            self.builder.build_return(Some(&result.llvm_value)).expect("Return build failed");
+        }
+        
         if let Some(block) = original_block {
             self.builder.position_at_end(block);
         }
         Ok(())
-    }
-
-    pub fn get_var_idx(&mut self, ir_context: &mut IRContext<'ctx>, name: &str) -> usize {
-        ir_context.into_fun_context().vars.iter().enumerate().find(|(i, var)| var.name == name).unwrap().0
     }
 }

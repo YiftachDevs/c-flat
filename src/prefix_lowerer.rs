@@ -1,35 +1,56 @@
 use inkwell::values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum};
 
-use crate::{code_lowerer::{CodeLowerer, CoreOpr, IRContext, IRContextType, IRTemplateValue, IRTypeEnum, IRTypeId, IRVarDeclaration, IRVariable, PrimitiveType}, core_lowerer::CoreTraitFun, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprPlaceResult, IRExprRefResult, IRExprResult, IRExprValueResult}, parser::{ExprNode, ExprNodeEnum, PostfixOpr, PrefixOpr, Span}};
+use crate::{code_lowerer::{CodeLowerer, CoreOpr, IRContext, IRExprContext, IRTemplateValue, IRTypeEnum, IRTypeId, IRVarDeclaration, IRVariable, PrimitiveType}, core_lowerer::CoreTraitFun, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprPlaceResult, IRExprResult, IRExprValueResult}, parser::{ExprNode, ExprNodeEnum, PostfixOpr, PrefixOpr, Span}};
 
 
 
 impl<'ctx> CodeLowerer<'ctx> {
-    pub fn lower_prefix_opr(&mut self, ir_context: &mut IRContext<'ctx>, opr: PrefixOpr, right_expr: &Box<ExprNode>, span: Span, context_type: &IRContextType<'ctx>) -> Result<IRExprResult<'ctx>, CompilerError> {
+    pub fn lower_prefix_opr(&mut self, ir_context: &mut IRContext<'ctx>, opr: PrefixOpr, right_expr: &Box<ExprNode>, span: Span, context_type: &IRExprContext<'ctx>) -> Result<IRExprResult<'ctx>, CompilerError> {
         match opr {
             PrefixOpr::Addr { is_mut } => {
                 self.lower_prefix_opr_addr(ir_context, is_mut, right_expr, span, context_type)
             },
             PrefixOpr::Deref => {
                 self.lower_prefix_opr_deref(ir_context, right_expr, span, context_type)
+            },
+            PrefixOpr::Not | PrefixOpr::UMin => {
+                let expr_result = self.get_value(ir_context, right_expr, &IRExprContext::Value(None), false)?;
+                Ok(IRExprResult::Value(self.call_core_trait(ir_context, IRExprResult::Value(expr_result), None, &Self::trait_from_opr(CoreOpr::Prefix(opr)), span)?))
             }
-            _ => panic!()
         }
     }
 
-    pub fn lower_prefix_opr_addr(&mut self, ir_context: &mut IRContext<'ctx>, is_ref_mut: bool, right_expr: &Box<ExprNode>, span: Span, context_type: &IRContextType<'ctx>) -> Result<IRExprResult<'ctx>, CompilerError> {
-        let new_context_type = if let IRContextType::Value(Some(type_id)) = context_type && let IRTypeEnum::Reference { ptr_type_id, is_mut } = self.ir_type(*type_id).type_enum && (!is_mut || is_ref_mut) {
-            &IRContextType::Value(Some(ptr_type_id))
-        } else if let IRContextType::Impl(template_value) = context_type && let IRTemplateValue::Type(type_id) = template_value {
+    pub fn lower_prefix_opr_addr(&mut self, ir_context: &mut IRContext<'ctx>, is_ref_mut: bool, right_expr: &Box<ExprNode>, span: Span, context_type: &IRExprContext<'ctx>) -> Result<IRExprResult<'ctx>, CompilerError> {
+        let new_context_type = if let IRExprContext::Value(Some(type_id)) = context_type && let IRTypeEnum::Reference { ptr_type_id, is_mut } = self.ir_type(*type_id).type_enum && (!is_mut || is_ref_mut) {
+            &IRExprContext::Value(Some(ptr_type_id))
+        } else if let IRExprContext::Value(Some(type_id)) = context_type && let IRTypeEnum::UnsizedRef { unsized_type, is_mut } = self.ir_type(*type_id).type_enum && (!is_mut || is_ref_mut) {
+            &IRExprContext::Value(Some(unsized_type))
+        } else if let IRExprContext::Impl(template_value) = context_type && let IRTemplateValue::Type(type_id) = template_value {
             if let IRTypeEnum::Reference { ptr_type_id, is_mut } = self.ir_type(*type_id).type_enum && is_mut == is_ref_mut {
-                &IRContextType::Impl(IRTemplateValue::Type(ptr_type_id))
+                &IRExprContext::Impl(IRTemplateValue::Type(ptr_type_id))
             } else if let IRTypeEnum::UnsizedRef { unsized_type, is_mut } = self.ir_type(*type_id).type_enum && is_mut == is_ref_mut {
-                &IRContextType::Impl(IRTemplateValue::Type(unsized_type))
+                &IRExprContext::Impl(IRTemplateValue::Type(unsized_type))
             } else {
                 return Ok(IRExprResult::NoImplMatch);
             }
         } else { context_type };
-        let expr_result = self.lower_expr(ir_context, right_expr, new_context_type)?;
+        let mut expr_result = self.lower_expr(ir_context, right_expr, new_context_type)?;
+        if expr_result.is_place_or_value() && let IRExprContext::Value(Some(ptr_type_id)) = new_context_type {
+            loop {
+                let cur_type = expr_result.get_type_id();
+                if let Ok(type_id) = self.ensure_type_matches(cur_type, Some(*ptr_type_id), Some(span), true) {
+                    match &mut expr_result {
+                        IRExprResult::Value(value) => value.type_id = type_id,
+                        IRExprResult::Place(place) => place.type_id = type_id,
+                        _ => panic!()
+                    }
+                } else if self.is_derefable(cur_type)? {
+                    expr_result = self.deref(ir_context, expr_result, span)?;
+                    continue;
+                }
+                break;
+            }
+        }
         match expr_result {
             IRExprResult::Type(type_id) => {
                 let ptr_type = if self.is_type_unsized(type_id)? {
@@ -50,7 +71,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 let ir_fun_context = ir_context.into_fun_context();
                 let temp_name = format!("tmp{}", ir_fun_context.vars.len());
                 let var_dec = IRVarDeclaration { name: temp_name, type_id: value.type_id, is_mut: is_mut_ref };
-                let var_id = self.alloc_var(ir_fun_context, &var_dec, Some(value.llvm_value));
+                let var_id = self.alloc_var(ir_fun_context, &var_dec, Some(value.llvm_value), None)?;
                 let var = &mut ir_fun_context.vars[var_id];
                 var.moved = true;
                 let value_result = IRExprValueResult { type_id: self.reference_type(var.place.type_id, is_mut_ref)?, llvm_value: var.place.ptr_value.into() };
@@ -58,11 +79,11 @@ impl<'ctx> CodeLowerer<'ctx> {
             },
             IRExprResult::Place(place) => {
                 let ir_fun_context = ir_context.into_fun_context();
+                if !place.is_mut && is_mut_ref {
+                    return Err(self.error(SemanticError::ExpectedMutable, Some(span)));
+                }
                 if let Some(owner) = place.owner {
                     let var = &mut ir_fun_context.vars[owner];
-                    if !var.is_mut && is_mut_ref {
-                        return Err(self.error(SemanticError::ExpectedMutable, Some(span)));
-                    }
                     if !var.moved {
                         var.moved = true;
                     } else {
@@ -80,8 +101,8 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
     }
 
-    pub fn lower_prefix_opr_deref(&mut self, ir_context: &mut IRContext<'ctx>, right_expr: &Box<ExprNode>, span: Span, context_type: &IRContextType) -> Result<IRExprResult<'ctx>, CompilerError> {
-        let new_context_type = if let IRContextType::Value(Some(type_id)) = context_type { IRContextType::Value(Some(self.reference_type(*type_id, false)?)) } else { IRContextType::Value(None) };
+    pub fn lower_prefix_opr_deref(&mut self, ir_context: &mut IRContext<'ctx>, right_expr: &Box<ExprNode>, span: Span, context_type: &IRExprContext) -> Result<IRExprResult<'ctx>, CompilerError> {
+        let new_context_type = if let IRExprContext::Value(Some(type_id)) = context_type { IRExprContext::Value(Some(self.reference_type(*type_id, false)?)) } else { IRExprContext::Value(None) };
         let expr_result = self.lower_expr(ir_context, right_expr, &new_context_type)?;
         let deref_result = self.deref(ir_context, expr_result, span)?;
         if let IRExprResult::Value(value) = deref_result {
@@ -115,7 +136,9 @@ impl<'ctx> CodeLowerer<'ctx> {
                     let place = IRExprPlaceResult { type_id: *unsized_type, ptr_value: value.llvm_value, owner: None, is_mut: *is_mut };
                     Ok(IRExprResult::Place(place))
                 } else {
-                    let result = self.call_core_trait(ir_context, IRExprResult::Value(value), None, &CoreTraitFun::Deref, span)?;
+                    let result = if let Ok(result) = self.call_core_trait(ir_context, IRExprResult::Value(value), None, &CoreTraitFun::DerefMut, span) {
+                        result
+                    } else { self.call_core_trait(ir_context, IRExprResult::Value(value), None, &CoreTraitFun::Deref, span)? };
                     Ok(IRExprResult::Value(result))
                 }
             },
@@ -129,7 +152,9 @@ impl<'ctx> CodeLowerer<'ctx> {
                     let place = IRExprPlaceResult { type_id: *unsized_type, ptr_value: value.llvm_value, owner: None, is_mut: *is_mut };
                     Ok(IRExprResult::Place(place))
                 } else {
-                    let result = self.call_core_trait(ir_context, IRExprResult::Place(place), None, &CoreTraitFun::Deref, span)?;
+                    let result = if let Ok(result) = self.call_core_trait(ir_context, IRExprResult::Place(place.clone()), None, &CoreTraitFun::DerefMut, span) {
+                        result
+                    } else { self.call_core_trait(ir_context, IRExprResult::Place(place), None, &CoreTraitFun::Deref, span)? };
                     Ok(IRExprResult::Value(result))
                 }
             },

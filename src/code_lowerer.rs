@@ -83,20 +83,16 @@ pub enum IRTemplate {
 }
 
 #[derive(PartialEq, Clone)]
-pub enum IRContextType<'ctx> {
+pub enum IRExprContext<'ctx> {
     Value(Option<IRTypeId>),
     Type,
+    Function,
     Trait(IRTypeId),
     Impl(IRTemplateValue<'ctx>),
     Template(IRTemplate)
 }
 
-pub struct IRConstraint {
-    pub traits: Vec<IRTraitId>
-}
-
 pub type IRTemplatesMap<'ctx> = IndexMap<IRTemplateKey, IRTemplateValue<'ctx>>;
-pub type IRConstraints = IndexMap<IRTemplateKey, IRConstraint>;
 
 #[derive(Eq, PartialEq, Clone, Hash, Copy)]
 pub enum PrimitiveType {
@@ -255,7 +251,7 @@ pub struct IRLoop<'ctx> {
     pub merge_block: BasicBlock<'ctx>,
     pub label: Option<Label>,
     pub span: Span,
-    pub ctx_type: IRContextType<'ctx>,
+    pub ctx_type: IRExprContext<'ctx>,
     pub phi_values: IRPhiValues<'ctx>
 }
 
@@ -383,16 +379,16 @@ impl<'ctx> CodeLowerer<'ctx> {
                 Template::VarType(key, opt_constraint) => {
                     let type_id = match templates_map[key] { IRTemplateValue::Type(type_id) => type_id, _ => panic!() };
                     if let Some(constraint) = opt_constraint {
-                        let trait_id = self.get_trait(ir_context, constraint, &IRContextType::Trait(type_id))?;
+                        let trait_id = self.get_trait(ir_context, constraint, &IRExprContext::Trait(type_id))?;
                         if !self.type_impls_trait(type_id, trait_id)? {
                             return Err(self.error(SemanticError::InvalidTemplateValue { key: key.clone(), type_str: self.format_type(type_id), templates_str: ast_templates.to_string() }, call_span));
                         }
                     }
                 },
                 Template::Const(const_value) => {
-                    let expected_type = self.get_type(ir_context, &const_value.var_type, &IRContextType::Type)?;
+                    let expected_type = self.get_type(ir_context, &const_value.var_type, &IRExprContext::Type)?;
                     let value = match templates_map[&const_value.name] { IRTemplateValue::Const(const_value) => const_value, _ => panic!() };
-                    self.ensure_type_matches(value.type_id, &IRContextType::Value(Some(expected_type)), Some(const_value.span), false)?;
+                    self.ensure_type_matches(value.type_id, Some(expected_type), Some(const_value.span), false)?;
                 }
             }
         }
@@ -489,7 +485,7 @@ impl<'ctx> CodeLowerer<'ctx> {
 
     pub fn format_child_scope_path(&self, parent_scope: IRScopeId, name: &str, templates_map: &IRTemplatesMap) -> String {
         let mut parent_str = self.format_scope_path(parent_scope);
-        if !parent_str.is_empty() { parent_str.push('.');}
+        if !parent_str.is_empty() { parent_str.push(':');}
         format!("{}{}{}", parent_str, name, self.format_templates_values(templates_map))
     }
 
@@ -501,7 +497,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 IRTemplateValue::Type(type_id) => self.format_type(*type_id),
                 IRTemplateValue::Const(const_value) => const_value.llvm_value.to_string()
             })).collect::<Vec<String>>().join(", ");
-            format!(":<{}>", templates_values_str)
+            format!("<{}>", templates_values_str)
         }
     }
 

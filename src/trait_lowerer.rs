@@ -2,7 +2,7 @@ use std::any::Any;
 
 use inkwell::types::{BasicMetadataTypeEnum, BasicTypeEnum};
 
-use crate::{code_lowerer::{CodeLowerer, IRContext, IRContextType, IRFunctionId, IRImplId, IRScope, IRScopeId, IRScopePath, IRTemplateValue, IRTemplatesMap, IRTrait, IRTraitId, IRType, IRTypeEnum, IRTypeId, IRVariable, IRVariables, PrimitiveType}, errors::{CompilerError, SemanticError}, parser::{Span, Struct, Trait}};
+use crate::{code_lowerer::{CodeLowerer, IRContext, IRExprContext, IRFunctionId, IRImplId, IRScope, IRScopeId, IRScopePath, IRTemplateValue, IRTemplatesMap, IRTrait, IRTraitId, IRType, IRTypeEnum, IRTypeId, IRVariable, IRVariables, PrimitiveType}, errors::{CompilerError, SemanticError}, parser::{Span, Struct, Trait}};
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn find_trait_def_in_scope(&self, parent_scope: IRScopeId, name: &str, opt_call_span: Option<Span>) -> Result<Option<(IRScopeId, &'ctx Trait)>, CompilerError> {
@@ -45,7 +45,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         self.ensure_templates_constraints(&mut ir_context, &templates_map, &trait_def.templates, call_span)?;
 
         if let Some(sub_traits_expr) = &trait_def.sub_traits {
-            self.traits_table[trait_id].sub_traits = self.lower_args_traits(&mut ir_context, sub_traits_expr, &vec![IRContextType::Trait(self_type)])?;
+            self.traits_table[trait_id].sub_traits = self.lower_args_traits(&mut ir_context, sub_traits_expr, &vec![IRExprContext::Trait(self_type)])?;
         }
 
         Ok(trait_id)

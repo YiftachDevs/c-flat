@@ -2,7 +2,6 @@ import std/core.cf;
 
 extern fun malloc(size: u64) -> &();
 extern fun free(ptr: &());
-extern fun memcpy(dest_ptr: &(), src_ptr: &(), size: u64);
 
 struct Box<T> {
     value_ref: &T
@@ -13,22 +12,94 @@ impl<T> Box<T> {
         let mem_size = T:mem_size();
         let value_ref = malloc(mem_size) as &T;
         memcpy(value_ref as &(), &value as &(), mem_size);
-        Self { value_ref }
+        Self{ value_ref }
     }
 
-    fun as_ref(self: &Self) -> &T {
+    fun as_ref(&self) -> &T {
         &**self
     }
 }
 
 impl<T> Deref<T> for Box<T> {
-    fun deref(self: &Self) -> &T {
-        self.value_ref as &T
-    }
+    fun deref(&self) -> &T { self.value_ref as &T }
+    fun deref_mut(&mut self) -> &mut T { self.value_ref as &mut T }
 }
 
 impl<T> Drop for Box<T> {
-    fun drop(self: &Self) {
+    fun drop(&self) {
         free(self.value_ref as &());
+    }
+}
+
+struct Vec<T> {
+    ptr: &T,
+    len: u64,
+    capacity: u64
+}
+
+impl<T> Vec<T> {
+    fun new() -> Self {
+        let type_mem_size = T:mem_size();
+        Self{ malloc(4 * type_mem_size) as &T, 0, 4 }
+    }
+
+    fun from(slice: &[T]) -> Self {
+        let mut vec = Self:new();
+        let mut idx: u64 = 0;
+        while idx < slice.len() {
+            vec.push(slice[idx]);
+            idx += 1;
+        }
+        vec
+    }
+
+    fun push(&mut self, value: T) {
+        let type_mem_size = T:mem_size();
+        if self.len == self.capacity {
+            self.capacity *= 2;
+            let ptr = malloc(self.capacity * type_mem_size);
+            memcpy(ptr, self.ptr as &(), self.len * type_mem_size);
+            free(self.ptr as &());
+            self.ptr = ptr as &T;
+        }
+        memcpy((self.ptr as u64 + self.len * type_mem_size) as &(), &value as &(), type_mem_size);
+        self.len += 1;
+    }
+
+    fun pop(&self) {
+        if self.len > 0 {
+            let v = self[self.len];
+            self.len -= 1;
+        }
+    }
+}
+
+impl<T> Deref<[T]> for Vec<T> {
+    fun deref(&self) -> &[T] { [T]:from_raw_parts(self.ptr, self.len) }
+    fun deref_mut(&mut self) -> &mut [T] { [T]:from_raw_parts(self.ptr, self.len) }
+}
+
+struct String {
+    chars: Vec<u8>
+}
+
+impl String {
+    fun new() -> Self {
+        Self{ Vec<u8>:new() }
+    }
+
+    fun from(slice: &[u8]) -> Self {
+        Self{ Vec<u8>:from(slice) }
+    }
+}
+
+impl Deref<Vec<u8>> for String {
+    fun deref(&self) -> &Vec<u8> { &self.chars }
+    fun deref_mut(&mut self) -> &mut Vec<u8> { &mut self.chars }
+}
+
+impl [u8] {
+    fun to_string(&self) -> String {
+        String:from(self)
     }
 }

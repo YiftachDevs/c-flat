@@ -2,7 +2,7 @@ use std::any::Any;
 
 use inkwell::{AddressSpace, types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum}, values::{BasicValue, BasicValueEnum, PointerValue}};
 
-use crate::{code_lowerer::{CodeLowerer, IRConstraint, IRConstraints, IRContext, IRContextType, IRScope, IRScopeId, IRScopePath, IRStruct, IRTemplateValue, IRTemplatesMap, IRType, IRTypeEnum, IRTypeId, IRVarDeclaration, IRVarDeclarations, IRVariable, IRVariables, PrimitiveType}, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprPlaceResult, IRExprResult, IRExprValueResult}, parser::{ExprNode, Span, Struct, Templates}};
+use crate::{code_lowerer::{CodeLowerer, IRContext, IRExprContext, IRScope, IRScopeId, IRScopePath, IRStruct, IRTemplateValue, IRTemplatesMap, IRType, IRTypeEnum, IRTypeId, IRVarDeclaration, IRVarDeclarations, IRVariable, IRVariables, PrimitiveType}, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprPlaceResult, IRExprResult, IRExprValueResult}, parser::{ExprNode, Span, Struct, Templates}};
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn find_struct_def_in_scope(&self, parent_scope: IRScopeId, name: &str, opt_call_span: Option<Span>) -> Result<Option<(IRScopeId, &'ctx Struct)>, CompilerError> {
@@ -109,7 +109,7 @@ impl<'ctx> CodeLowerer<'ctx> {
     }
 
     pub fn slice_type(&mut self, slice_type: IRTypeId) -> Result<IRTypeId, CompilerError> {
-        let llvm_type = self.llvm_context.struct_type(&[], false).into();
+        let llvm_type = self.ir_type(slice_type).llvm_type.array_type(0).into();
         let type_id = self.type_id(IRType { type_enum: IRTypeEnum::Slice { slice_type }, llvm_type, lowered_impls: None });
         self.lower_impls(type_id)?;
         Ok(type_id)
@@ -188,27 +188,18 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(struct_id)
     }
 
-    pub fn ensure_type_matches(&mut self, type_id: IRTypeId, context_type: &IRContextType, span: Option<Span>, coerse: bool) -> Result<IRTypeId, CompilerError> {
+    pub fn ensure_type_matches(&mut self, type_id: IRTypeId, expected_type: Option<IRTypeId>, span: Option<Span>, coerse: bool) -> Result<IRTypeId, CompilerError> {
+        let expected_type = match expected_type { Some(v) => v, None => return Ok(type_id) };
         let never_type = self.primitive_type(PrimitiveType::Never)?;
-        match context_type {
-            IRContextType::Value(ctx_type_id) => {
-                if let Some(ctx_type_id) = ctx_type_id {
-                    if type_id == *ctx_type_id || coerse && type_id == never_type {
-                        Ok(*ctx_type_id)
-                    } else if coerse && let IRTypeEnum::Reference { ptr_type_id, is_mut } = self.ir_type(*ctx_type_id).type_enum && let IRTypeEnum::Reference { ptr_type_id, is_mut } = self.ir_type(type_id).type_enum && is_mut {
-                        Ok(*ctx_type_id)
-                    }
-                    else {
-                        Err(self.error(SemanticError::TypeMismatch { expected: self.format_type(*ctx_type_id), got: self.format_type(type_id) }, span))
-                    }
-                } else {
-                    Ok(type_id)
-                }
-            },
-            IRContextType::Impl(_) => Ok(type_id),
-            IRContextType::Trait(_) => Ok(type_id),
-            IRContextType::Type => Ok(type_id),
-            IRContextType::Template(_) => Ok(type_id)
+        if type_id == expected_type || type_id == never_type {
+            Ok(type_id)
+        } else if coerse && let IRTypeEnum::Reference { ptr_type_id, is_mut } = self.ir_type(expected_type).type_enum && let IRTypeEnum::Reference { ptr_type_id, is_mut } = self.ir_type(type_id).type_enum && is_mut {
+            Ok(expected_type)
+        } else if coerse && let IRTypeEnum::UnsizedRef { unsized_type, is_mut } = self.ir_type(expected_type).type_enum && let IRTypeEnum::UnsizedRef { unsized_type, is_mut } = self.ir_type(type_id).type_enum && is_mut {
+            Ok(expected_type)
+        }
+        else {
+            Err(self.error(SemanticError::TypeMismatch { expected: self.format_type(expected_type), got: self.format_type(type_id) }, span))
         }
     }
 

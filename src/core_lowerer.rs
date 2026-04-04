@@ -1,7 +1,7 @@
 use std::ops::Add;
 
 use crate::{code_lowerer::PrimitiveType, expr_lowerer::IRExprValueResult, parser::{ExprNodeEnum, PrefixOpr}};
-use inkwell::{FloatPredicate, IntPredicate, attributes::{Attribute, AttributeLoc}, module::Linkage, types::{BasicMetadataTypeEnum, BasicType}, values::{BasicValueEnum, FunctionValue, PointerValue}};
+use inkwell::{FloatPredicate, IntPredicate, attributes::{Attribute, AttributeLoc}, module::Linkage, types::{BasicMetadataTypeEnum, BasicType}, values::{BasicValue, BasicValueEnum, FunctionValue, PointerValue}};
 use crate::{code_lowerer::*, errors::{CompilerError, CompilerErrorType, SemanticError}, expr_lowerer::IRExprResult, parser::{ExprNode, Function, Implementation, InfixOpr, Span, Variable}};
 
 #[derive(PartialEq, Eq)]
@@ -11,15 +11,24 @@ pub enum CoreTraitFun {
     Mul,
     Div,
     Mod,
+    Neg,
     Eq,
     Lss,
     Gtr,
     Not,
+    Or,
+    And,
+    Xor,
     Deref,
+    DerefMut,
     Drop,
+    NeedsDrop,
     AsRef,
     Len,
-    MemSize
+    MemSize,
+    Index,
+    IndexMut,
+    FromRawParts
 }
 
 impl CoreTraitFun {
@@ -30,13 +39,20 @@ impl CoreTraitFun {
             Self::Mul => "Mul",
             Self::Div => "Div",
             Self::Mod => "Mod",
+            Self::Neg => "Neg",
             Self::Eq => "Eq",
             Self::Lss => "Ord",
             Self::Gtr => "Ord",
-            Self::Not => "Not",
+            Self::Not => "Bitwise",
+            Self::Or => "Bitwise",
+            Self::And => "Bitwise",
+            Self::Xor => "Bitwise",
             Self::Deref => "Deref",
+            Self::DerefMut => "Deref",
             Self::Drop => "Drop",
             Self::AsRef => "AsRef",
+            Self::Index => "Index",
+            Self::IndexMut => "Index",
             _ => panic!()
         }
     }
@@ -48,15 +64,24 @@ impl CoreTraitFun {
             Self::Mul => "mul",
             Self::Div => "div",
             Self::Mod => "mod",
+            Self::Neg => "neg",
             Self::Eq => "eq",
             Self::Lss => "lss",
             Self::Gtr => "gtr",
             Self::Not => "not",
+            Self::And => "and",
+            Self::Xor => "xor",
+            Self::Or => "or",
+            Self::NeedsDrop => "needs_drop",
             Self::Deref => "deref",
+            Self::DerefMut => "deref_mut",
             Self::Drop => "drop",
             Self::AsRef => "as_ref",
             Self::Len => "len",
-            Self::MemSize => "mem_size"
+            Self::MemSize => "mem_size",
+            Self::Index => "index",
+            Self::IndexMut => "index_mut",
+            Self::FromRawParts => "from_raw_parts",
         }
     }
 }
@@ -77,6 +102,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 self.build_core_trait_funs(type_id, &CoreTraitFun::Sub)?;
                 self.build_core_trait_funs(type_id, &CoreTraitFun::Mul)?;
                 self.build_core_trait_funs(type_id, &CoreTraitFun::Div)?;
+                self.build_core_trait_funs(type_id, &CoreTraitFun::Neg)?;
                 self.build_core_trait_funs(type_id, &CoreTraitFun::Mod)?;
                 self.build_core_trait_funs(type_id, &CoreTraitFun::Lss)?;
                 self.build_core_trait_funs(type_id, &CoreTraitFun::Gtr)?;
@@ -86,14 +112,28 @@ impl<'ctx> CodeLowerer<'ctx> {
             }
             if self.type_impls_trait(type_id, integer_trait)? || type_id == self.primitive_type(PrimitiveType::Bool)? {
                 self.build_core_trait_funs(type_id, &CoreTraitFun::Not)?;
+                self.build_core_trait_funs(type_id, &CoreTraitFun::Or)?;
+                self.build_core_trait_funs(type_id, &CoreTraitFun::And)?;
+                self.build_core_trait_funs(type_id, &CoreTraitFun::Xor)?;
             }
         } else if let IRTypeEnum::Slice { slice_type } = ir_type.type_enum {
             self.build_core_trait_funs(type_id, &CoreTraitFun::AsRef)?;
             self.build_core_trait_funs(type_id, &CoreTraitFun::Len)?;
-        }
+            self.build_core_trait_funs(type_id, &CoreTraitFun::Index)?;
+            self.build_core_trait_funs(type_id, &CoreTraitFun::IndexMut)?;
+            self.build_core_trait_funs(type_id, &CoreTraitFun::FromRawParts)?;
+        } else if let IRTypeEnum::Array { arr_type, size } = ir_type.type_enum {
+            self.build_core_trait_funs(type_id, &CoreTraitFun::Index)?;
+            self.build_core_trait_funs(type_id, &CoreTraitFun::IndexMut)?;
+            self.build_core_trait_funs(type_id, &CoreTraitFun::Deref)?;
+            self.build_core_trait_funs(type_id, &CoreTraitFun::DerefMut)?;
+        } /*else if let IRTypeEnum::Reference { ptr_type_id, is_mut } = ir_type.type_enum {
+            self.build_core_trait_funs(type_id, &CoreTraitFun::Eq)?;
+        }*/
         if !self.is_type_unsized(type_id)? {
             self.build_core_trait_funs(type_id, &CoreTraitFun::MemSize)?;
         }
+        self.build_core_trait_funs(type_id, &CoreTraitFun::NeedsDrop)?;
         Ok(())
     }
 
@@ -134,7 +174,9 @@ impl<'ctx> CodeLowerer<'ctx> {
             let entry_block = self.llvm_context.append_basic_block(fun_value, "entry");
             let original_block = self.builder.get_insert_block();
             self.builder.position_at_end(entry_block);
-            let result = self.build_core_trait_fun_body(type_id, fun_value, core_trait);
+            let first_value = fun_value.get_nth_param(0);
+            let other_value = fun_value.get_nth_param(1);
+            let result = self.build_core_trait_fun_body(type_id, first_value, other_value, core_trait)?;
             self.builder.build_return(Some(&result)).unwrap();
             if let Some(block) = original_block {
                 self.builder.position_at_end(block);
@@ -148,80 +190,129 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(())
     }
 
-    pub fn build_core_trait_fun_body(&mut self, self_type: IRTypeId, fun_value: FunctionValue<'ctx>, core_trait: &CoreTraitFun) -> BasicValueEnum<'ctx> {
+    pub fn build_core_trait_fun_body(&mut self, self_type: IRTypeId, first_value: Option<BasicValueEnum<'ctx>>, other_value: Option<BasicValueEnum<'ctx>>, core_trait: &CoreTraitFun) -> Result<BasicValueEnum<'ctx>, CompilerError> {
         if core_trait == &CoreTraitFun::MemSize {
             let size = self.get_type_mem_size(self_type);
-            return self.llvm_context.i64_type().const_int(size as u64, false).into();
+            return Ok(self.llvm_context.i64_type().const_int(size as u64, false).into());
         }
-        let self_value = fun_value.get_nth_param(0).unwrap();
-        let other_value = fun_value.get_nth_param(1);
+        if core_trait == &CoreTraitFun::NeedsDrop {
+            return Ok(if let Some(_) = self.find_impl_of_core_trait(self_type, &CoreTraitFun::Drop)? {
+                self.llvm_context.bool_type().const_all_ones().into()
+            } else {
+                self.llvm_context.bool_type().const_zero().into() 
+            });
+        }
+        let first_value = first_value.unwrap();
+        if let IRTypeEnum::Reference { ptr_type_id, is_mut } = self.ir_type(self_type).type_enum {
+            if core_trait == &CoreTraitFun::Eq {
+                return Ok(self.builder.build_int_compare(IntPredicate::EQ, first_value.into_pointer_value(), other_value.unwrap().into_pointer_value(), "tmp").unwrap().into());
+            }
+        }
         if let IRTypeEnum::Slice { slice_type } = self.ir_type(self_type).type_enum {
+            if core_trait == &CoreTraitFun::FromRawParts {
+                let unsized_ref_type = self.unsized_ref_type(self_type, true)?;
+                let mut llvm_value = self.ir_type(unsized_ref_type).llvm_type.into_struct_type().get_undef().into();
+                llvm_value = self.builder.build_insert_value(llvm_value, first_value, 0, "ptr").unwrap();
+                llvm_value = self.builder.build_insert_value(llvm_value, other_value.unwrap(), 1, "len").unwrap();
+                return Ok(llvm_value.as_basic_value_enum());
+            }
             if core_trait == &CoreTraitFun::AsRef {
-                let ref_value = self.builder.build_extract_value(self_value.into_struct_value(), 0, "ref").unwrap();
-                return ref_value;
+                let ref_value = self.builder.build_extract_value(first_value.into_struct_value(), 0, "ref").unwrap();
+                return Ok(ref_value);
             }
             if core_trait == &CoreTraitFun::Len {
-                let ref_value = self.builder.build_extract_value(self_value.into_struct_value(), 1, "len").unwrap();
-                return ref_value;
+                let len_value = self.builder.build_extract_value(first_value.into_struct_value(), 1, "len").unwrap();
+                return Ok(len_value);
+            }
+            if core_trait == &CoreTraitFun::Index || core_trait == &CoreTraitFun::IndexMut {
+                let ref_value = self.builder.build_extract_value(first_value.into_struct_value(), 0, "ref").unwrap();
+                let index_res = unsafe { self.builder.build_gep(self.ir_type(slice_type).llvm_type, ref_value.into_pointer_value(), &[other_value.unwrap().into_int_value()], "tmp_index").unwrap() };
+                return Ok(index_res.into());
+            }
+        }
+        if let IRTypeEnum::Array { arr_type, size } = self.ir_type(self_type).type_enum {
+            if core_trait == &CoreTraitFun::Index || core_trait == &CoreTraitFun::IndexMut {
+                let index_res = unsafe { self.builder.build_gep(self.ir_type(arr_type).llvm_type, first_value.into_pointer_value(), &[other_value.unwrap().into_int_value()], "tmp_index").unwrap() };
+                return Ok(index_res.into());
+            }
+            if core_trait == &CoreTraitFun::Deref || core_trait == &CoreTraitFun::DerefMut {
+                let slice_type = self.slice_type(arr_type)?;
+                let unsized_ref_type = self.unsized_ref_type(slice_type, true)?;
+                let mut llvm_value = self.ir_type(unsized_ref_type).llvm_type.into_struct_type().get_undef().into();
+                llvm_value = self.builder.build_insert_value(llvm_value, first_value, 0, "ptr").unwrap();
+                llvm_value = self.builder.build_insert_value(llvm_value, self.llvm_context.i64_type().const_int(size, false), 1, "len").unwrap();
+                return Ok(llvm_value.as_basic_value_enum());
             }
         }
         let primitive_type = match self.ir_type(self_type).type_enum { IRTypeEnum::Primitive(prim) => prim, _ => panic!() };
-        match core_trait {
-            CoreTraitFun::Not => self.builder.build_not(self_value.into_int_value(), "tmp").unwrap().into(),
+        Ok(match core_trait {
+            CoreTraitFun::Not => self.builder.build_not(first_value.into_int_value(), "tmp").unwrap().into(),
+            CoreTraitFun::And => self.builder.build_and(first_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into(),
+            CoreTraitFun::Or => self.builder.build_or(first_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into(),
+            CoreTraitFun::Xor => self.builder.build_xor(first_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into(),
+            CoreTraitFun::Neg => {
+                if primitive_type.is_int() || primitive_type.is_uint() {
+                    self.builder.build_int_neg(first_value.into_int_value(), "tmp").unwrap().into()
+                } else if primitive_type.is_float() {
+                    self.builder.build_float_neg(first_value.into_float_value(), "tmp").unwrap().into()
+                } else {
+                    panic!("build_core_opr")
+                }
+            },
             CoreTraitFun::Add => {
                 if primitive_type.is_int() || primitive_type.is_uint() {
-                    self.builder.build_int_add(self_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
+                    self.builder.build_int_add(first_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
                 } else if primitive_type.is_float() {
-                    self.builder.build_float_add(self_value.into_float_value(), other_value.unwrap().into_float_value(), "tmp").unwrap().into()
+                    self.builder.build_float_add(first_value.into_float_value(), other_value.unwrap().into_float_value(), "tmp").unwrap().into()
                 } else {
                     panic!("build_core_opr")
                 }
             },
             CoreTraitFun::Sub => {
                 if primitive_type.is_int() || primitive_type.is_uint() {
-                    self.builder.build_int_sub(self_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
+                    self.builder.build_int_sub(first_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
                 } else if primitive_type.is_float() {
-                    self.builder.build_float_sub(self_value.into_float_value(), other_value.unwrap().into_float_value(), "tmp").unwrap().into()
+                    self.builder.build_float_sub(first_value.into_float_value(), other_value.unwrap().into_float_value(), "tmp").unwrap().into()
                 } else {
                     panic!("build_core_opr")
                 }
             },
             CoreTraitFun::Mul => {
                 if primitive_type.is_int() || primitive_type.is_uint() {
-                    self.builder.build_int_mul(self_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
+                    self.builder.build_int_mul(first_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
                 } else if primitive_type.is_float() {
-                    self.builder.build_float_mul(self_value.into_float_value(), other_value.unwrap().into_float_value(), "tmp").unwrap().into()
+                    self.builder.build_float_mul(first_value.into_float_value(), other_value.unwrap().into_float_value(), "tmp").unwrap().into()
                 } else {
                     panic!("build_core_opr")
                 }
             },
             CoreTraitFun::Div => {
                 if primitive_type.is_int() {
-                    self.builder.build_int_signed_div(self_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
+                    self.builder.build_int_signed_div(first_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
                 } else if primitive_type.is_uint() {
-                    self.builder.build_int_unsigned_div(self_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
+                    self.builder.build_int_unsigned_div(first_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
                 } else if primitive_type.is_float() {
-                    self.builder.build_float_div(self_value.into_float_value(), other_value.unwrap().into_float_value(), "tmp").unwrap().into()
+                    self.builder.build_float_div(first_value.into_float_value(), other_value.unwrap().into_float_value(), "tmp").unwrap().into()
                 } else {
                     panic!("build_core_opr")
                 }
             },
             CoreTraitFun::Mod => {
                 if primitive_type.is_int() {
-                    self.builder.build_int_signed_rem(self_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
+                    self.builder.build_int_signed_rem(first_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
                 } else if primitive_type.is_uint() {
-                    self.builder.build_int_unsigned_rem(self_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
+                    self.builder.build_int_unsigned_rem(first_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
                 } else if primitive_type.is_float() {
-                    self.builder.build_float_rem(self_value.into_float_value(), other_value.unwrap().into_float_value(), "tmp").unwrap().into()
+                    self.builder.build_float_rem(first_value.into_float_value(), other_value.unwrap().into_float_value(), "tmp").unwrap().into()
                 } else {
                     panic!("build_core_opr")
                 }
             },
             CoreTraitFun::Eq => {
                 if primitive_type.is_int() || primitive_type.is_uint() || primitive_type == PrimitiveType::Bool || primitive_type == PrimitiveType::Char {
-                    self.builder.build_int_compare(IntPredicate::EQ, self_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
+                    self.builder.build_int_compare(IntPredicate::EQ, first_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
                 } else if primitive_type.is_float() {
-                    self.builder.build_float_compare(FloatPredicate::OEQ, self_value.into_float_value(), other_value.unwrap().into_float_value(), "tmp").unwrap().into()
+                    self.builder.build_float_compare(FloatPredicate::OEQ, first_value.into_float_value(), other_value.unwrap().into_float_value(), "tmp").unwrap().into()
                 } else {
                     self.llvm_context.bool_type().const_all_ones().into()
                 }
@@ -229,18 +320,18 @@ impl<'ctx> CodeLowerer<'ctx> {
             CoreTraitFun::Lss | CoreTraitFun::Gtr => {
                 if primitive_type.is_int() {
                     let predicate = match core_trait { CoreTraitFun::Lss => IntPredicate::SLT, CoreTraitFun::Gtr => IntPredicate::SGT, _ => panic!() };
-                    self.builder.build_int_compare(predicate, self_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
+                    self.builder.build_int_compare(predicate, first_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
                 } else if primitive_type.is_uint() {
                     let predicate = match core_trait { CoreTraitFun::Lss => IntPredicate::ULT, CoreTraitFun::Gtr => IntPredicate::UGT, _ => panic!() };
-                    self.builder.build_int_compare(predicate, self_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
+                    self.builder.build_int_compare(predicate, first_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
                 } else if primitive_type.is_float() {
                     let predicate = match core_trait { CoreTraitFun::Lss => FloatPredicate::OLT, CoreTraitFun::Gtr => FloatPredicate::OGT, _ => panic!() };
-                    self.builder.build_float_compare(predicate, self_value.into_float_value(), other_value.unwrap().into_float_value(), "tmp").unwrap().into()
+                    self.builder.build_float_compare(predicate, first_value.into_float_value(), other_value.unwrap().into_float_value(), "tmp").unwrap().into()
                 } else {
                     panic!("build_core_opr")
                 }
             },
             _ => panic!()
-        }
+        })
     }
 }
