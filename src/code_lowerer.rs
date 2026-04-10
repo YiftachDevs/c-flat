@@ -42,7 +42,8 @@ pub struct IRVariable<'ctx> {
 pub struct IRVarDeclaration {
     pub name: String,
     pub type_id: IRTypeId,
-    pub is_mut: bool
+    pub is_mut: bool,
+    pub is_static: bool
 }
 
 pub type IRVariables<'ctx> = Vec<IRVariable<'ctx>>;
@@ -82,6 +83,11 @@ pub enum IRTemplate {
     Type
 }
 
+pub enum IRTypeConstraint {
+    Trait(IRTraitId),
+    Or()
+}
+
 #[derive(PartialEq, Clone)]
 pub enum IRExprContext<'ctx> {
     Value(Option<IRTypeId>),
@@ -89,7 +95,8 @@ pub enum IRExprContext<'ctx> {
     Function,
     Trait(IRTypeId),
     Impl(IRTemplateValue<'ctx>),
-    Template(IRTemplate)
+    Template(IRTemplate),
+    TypeConstraint(IRTypeId)
 }
 
 pub type IRTemplatesMap<'ctx> = IndexMap<IRTemplateKey, IRTemplateValue<'ctx>>;
@@ -379,8 +386,8 @@ impl<'ctx> CodeLowerer<'ctx> {
                 Template::VarType(key, opt_constraint) => {
                     let type_id = match templates_map[key] { IRTemplateValue::Type(type_id) => type_id, _ => panic!() };
                     if let Some(constraint) = opt_constraint {
-                        let trait_id = self.get_trait(ir_context, constraint, &IRExprContext::Trait(type_id))?;
-                        if !self.type_impls_trait(type_id, trait_id)? {
+                        let res = self.lower_expr(ir_context, constraint, &IRExprContext::TypeConstraint(type_id))?;
+                        if let IRExprResult::NoTypeConstraintMatch = res {
                             return Err(self.error(SemanticError::InvalidTemplateValue { key: key.clone(), type_str: self.format_type(type_id), templates_str: ast_templates.to_string() }, call_span));
                         }
                     }

@@ -1,0 +1,30 @@
+import std/core.cf;
+
+extern fun memcpy(dest_ptr: &(), src_ptr: &(), size: u64);
+extern fun malloc(size: u64) -> &();
+extern fun free(ptr: &());
+
+mod mem {
+    struct Manually_Drop<T> {
+        value: T
+    }
+
+    fun copy<T>(dest_ptr: &T, src_ptr: &T, size: u64) {
+        memcpy(dest_ptr as &(), src_ptr as &(), size);
+    }
+
+    fun heap_alloc<T>(size: u64) -> &T {
+        *heap_count() += 1;
+        malloc(size) as &T
+    }
+
+    fun heap_free<T>(ptr: &T) {
+        *heap_count() -= 1;
+        free(ptr as &())
+    }
+
+    fun heap_count() -> &mut u64 {
+        static mut count: u64 = 0;
+        &mut count
+    }
+}

@@ -46,8 +46,6 @@ fn main() {
         eprintln!("{}", err);
         return;
     }
-
-    // println!("{}", main_scope.to_string());
     
     let llvm_context: Context = Context::create();
     let mut code_lowerer = CodeLowerer::new(&main_scope, file_context, &llvm_context);

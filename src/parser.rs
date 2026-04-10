@@ -82,6 +82,7 @@ pub struct Variable {
     pub var_type: Option<ExprNode>,
     pub init_expr: Option<ExprNode>,
     pub is_mut: bool,
+    pub is_static: bool,
     pub span: Span
 }
 
@@ -292,6 +293,7 @@ pub struct Scope {
 #[derive(PartialEq, Clone)]
 pub enum ExprNodeEnum {
     Empty,
+    Brackets(Box<ExprNode>),
     Void,
     InfixOpr(InfixOpr, Box<ExprNode>, Box<ExprNode>),
     PrefixOpr(PrefixOpr, Box<ExprNode>),
@@ -583,6 +585,19 @@ impl PostfixOpr {
     }
 }
 
+impl ToString for PostfixOpr {
+    fn to_string(&self) -> String {
+        match self {
+            PostfixOpr::Idx => "[]",
+            PostfixOpr::Inv => "()",
+            PostfixOpr::Tmp => "<>",
+            PostfixOpr::Con => "{}",
+            PostfixOpr::Mem => ".",
+            PostfixOpr::Sep => ":"
+        }.to_string()
+    }
+}
+
 impl Literal {
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
         if parser.is_next("false") {
@@ -779,16 +794,15 @@ impl ExprNode {
         if root.value == ExprNodeEnum::Empty {
             return Ok(*root);
         }
-        let mut infix_span = parser.get_span_start()?;
-        if let Some(infix_opr) = InfixOpr::is_from_def(parser, is_value_expr)? {
-            parser.end_span(&mut infix_span);
-            let next_node: ExprNode = ExprNode::primary_from_def(parser)?;
-            root = Box::new(ExprNode{ value: ExprNodeEnum::InfixOpr(infix_opr, root, Box::new(next_node)), span: infix_span });
-        }
         loop {
             parser.skip_whitespace()?;
-            infix_span = parser.get_span_start()?;
-            let infix_opr = match InfixOpr::is_from_def(parser,is_value_expr)? { Some(opr) => opr, None => break };
+            let mut infix_span = parser.get_span_start()?;
+            let infix_opr = match InfixOpr::is_from_def(parser,is_value_expr)? {
+                Some(opr) => opr,
+                None => {
+                    break;
+                } 
+            };
             parser.end_span(&mut infix_span);
             let prec = infix_opr.precedence();
             let is_left_to_right = infix_opr.is_left_to_right();
@@ -852,9 +866,8 @@ impl ExprNode {
         } else if let Some(scope) = Scope::is_from_def(parser)? {
             result_enum = ExprNodeEnum::Scope(Box::new(scope));
         } else if parser.is_next("(") {
-            let inner_expr: ExprNode = ExprNode::from_def(parser, true)?;
+            result_enum = ExprNodeEnum::Brackets(Box::new(ExprNode::from_def(parser, true)?));
             parser.ensure_next(")")?;
-            result_enum = inner_expr.value;
         } else if parser.is_next("[") {
             let arr_expr: ExprNode = ExprNode::from_def(parser, true)?;
             let size = if parser.is_next(";") {
@@ -885,12 +898,13 @@ impl ToString for ExprNode {
     fn to_string(&self) -> String {
         match &self.value {
             ExprNodeEnum::Empty => "".to_string(),
+            ExprNodeEnum::Brackets(expr) => format!("({})", expr.to_string()),
             ExprNodeEnum::Void => "()".to_string(),
             ExprNodeEnum::PrefixOpr(prefix_opr, node) => {
                 format!("{}{}", prefix_opr.to_string(), node.to_string())
             },
             ExprNodeEnum::InfixOpr(infix_opr, left, right) => {
-                format!("{} {} {}", left.to_string(), infix_opr.to_string(), right.to_string())
+                format!("({}) {} ({})", left.to_string(), infix_opr.to_string(), right.to_string())
             },
             ExprNodeEnum::Literal(const_value) => {
                 const_value.to_string()
@@ -923,7 +937,7 @@ impl ToString for ExprNode {
 }
 
 impl Variable {
-    pub fn arg_from_def(parser: &mut Parser) -> Result<Self, CompilerError> {
+    pub fn arg_from_def(parser: &mut Parser, is_static: bool) -> Result<Self, CompilerError> {
         let mut span: Span = parser.get_span_start()?;
         let is_mut: bool = parser.is_next("mut");
         let mut refs = vec![];
@@ -935,7 +949,7 @@ impl Variable {
             for is_mut_ref in refs {
                 expr_enum = ExprNode { value: ExprNodeEnum::PrefixOpr(PrefixOpr::Addr { is_mut: is_mut_ref }, Box::new(expr_enum)), span };
             }
-            return Ok(Self { name: name, var_type: Some(expr_enum), init_expr: None, is_mut, span});
+            return Ok(Self { name: name, var_type: Some(expr_enum), init_expr: None, is_mut, span, is_static });
         }
         let mut var_type: Option<ExprNode> = None;
         let mut init_expr: Option<ExprNode> = None;
@@ -949,15 +963,17 @@ impl Variable {
             return Err(parser.error(CompilerErrorType::SyntaxError(SyntaxError::UndeducibleType)));
         }
         parser.end_span(&mut span);
-        return Ok(Self { name: name, var_type: var_type, init_expr: init_expr, is_mut: is_mut, span });
+        return Ok(Self { name: name, var_type: var_type, init_expr: init_expr, is_mut: is_mut, span, is_static });
     }
 
     pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
         let mut span: Span = parser.get_span_start()?;
-        if !parser.is_next("let") {
+        let is_let = parser.is_next("let");
+        let is_static = parser.is_next("static");
+        if !is_let && !is_static {
             return Ok(None);
         }
-        let mut result: Variable = Self::arg_from_def(parser)?;
+        let mut result: Variable = Self::arg_from_def(parser, is_static)?;
         parser.end_span(&mut span);
         result.span = span;
         Ok(Some(result))
@@ -1024,9 +1040,9 @@ impl Variables {
         let (opening_bracket, closing_bracket) = if curly_brackets { ("{", "}") } else { ("(", ")") };
         parser.ensure_next(opening_bracket)?;
         if !parser.is_next(closing_bracket) {
-            variables.push(Variable::arg_from_def(parser)?);
+            variables.push(Variable::arg_from_def(parser, false)?);
             while parser.is_next(",") {
-                variables.push(Variable::arg_from_def(parser)?);
+                variables.push(Variable::arg_from_def(parser, false)?);
             }
             parser.ensure_next(closing_bracket)?;
         }

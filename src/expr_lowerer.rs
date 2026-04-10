@@ -35,6 +35,7 @@ pub enum IRExprResult<'ctx> {
     TraitName(IRScopeId, String, IRTypeId),
     ModuleScope(IRScopeId),
     NoImplMatch,
+    NoTypeConstraintMatch,
     TemplatesValues(Vec<IRTemplateValue<'ctx>>)
 }
 
@@ -54,6 +55,7 @@ impl<'ctx> IRExprResult<'ctx> {
             IRExprResult::TraitName(_, _, _) => "TraitName",
             IRExprResult::ModuleScope(_) => "ModuleScope",
             IRExprResult::NoImplMatch => "NoImplMatch",
+            IRExprResult::NoTypeConstraintMatch => "NoTypeConstraintMatch",
             IRExprResult::TemplatesValues(_) => "TemplatesValues"
         }
     }
@@ -86,11 +88,11 @@ impl<'ctx> CodeLowerer<'ctx> {
                     if let Some(init_expr) = var.init_expr.as_ref() {
                         let ctx_type = if let Some(var_type) = var.var_type.as_ref() { IRExprContext::Value(Some(self.get_type(ir_context, var_type, &IRExprContext::Type)?)) } else { IRExprContext::Value(None) };
                         let expr_result = self.get_value(ir_context, init_expr, &ctx_type, true)?;
-                        let var_dec = IRVarDeclaration { name: var.name.clone(), type_id: expr_result.type_id, is_mut: var.is_mut };
+                        let var_dec = IRVarDeclaration { name: var.name.clone(), type_id: expr_result.type_id, is_mut: var.is_mut, is_static: var.is_static };
                         self.alloc_var(ir_context.into_fun_context(), &var_dec, Some(expr_result.llvm_value), Some(var.span))?;
                     } else {
                         let var_type = self.get_type(ir_context, var.var_type.as_ref().unwrap(), &IRExprContext::Type)?;
-                        let var_dec = IRVarDeclaration { name: var.name.clone(), type_id: var_type, is_mut: var.is_mut };
+                        let var_dec = IRVarDeclaration { name: var.name.clone(), type_id: var_type, is_mut: var.is_mut, is_static: var.is_static };
                         self.alloc_var(ir_context.into_fun_context(), &var_dec, None, Some(var.span))?;
                     }
                 },
@@ -131,7 +133,11 @@ impl<'ctx> CodeLowerer<'ctx> {
 
     pub fn drop_vars(&mut self, ir_context: &mut IRContext<'ctx>, prev_len: usize, span: Span) -> Result<(), CompilerError> {
         for i in prev_len..ir_context.into_fun_context().vars.len() {
-            let place = ir_context.into_fun_context().vars[i].place.clone();
+            let var = &ir_context.into_fun_context().vars[i];
+            if var.moved {
+                continue;
+            }
+            let place = var.place.clone();
             let core_scope = self.get_core_scope();
             let drop_trait = self.lower_trait(core_scope, "Drop", &Vec::new(), place.type_id, None)?;
             if self.type_impls_trait(place.type_id, drop_trait)? {
@@ -150,7 +156,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             return Ok(expr_value);
         }
         if let IRExprResult::Place(place) = expr_result.clone() {
-            let mut value = self.load_place(place, span)?;
+            let mut value = self.load_place(ir_context, place, span)?;
             if ensure_type && let IRExprContext::Value(expected_type) = context_type {
                 value.type_id = self.ensure_type_matches(value.type_id, *expected_type, Some(span), true)?;
             }
@@ -271,7 +277,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 self.lower_expr_first_name(ir_context, name, expr.span, context_type)?
             },
             ExprNodeEnum::PostfixOpr(opr, left_expr, right_expr) => {
-                self.lower_postfix_opr(ir_context, *opr, left_expr, right_expr, context_type)?
+                self.lower_postfix_opr(ir_context, *opr, left_expr, right_expr, expr.span, context_type)?
             },
             ExprNodeEnum::InfixOpr(opr, left_expr, right_expr) => {
                 self.lower_infix_opr(ir_context, *opr, left_expr, right_expr, expr.span, context_type)?
@@ -290,9 +296,13 @@ impl<'ctx> CodeLowerer<'ctx> {
                     IRExprResult::Type(self.primitive_type(PrimitiveType::Void)?)
                 }
             },
+            ExprNodeEnum::Brackets(expr) => self.lower_expr(ir_context, expr, context_type)?,
             ExprNodeEnum::Empty => IRExprResult::Empty,
             _ => todo!("lower_expr 2")
         };
+        if let IRExprContext::TypeConstraint(type_id) = context_type && let IRExprResult::Trait(trait_id) = result && !self.type_impls_trait(*type_id, trait_id)? {
+            return Ok(IRExprResult::NoTypeConstraintMatch);
+        }
         Ok(result)
     }
 
@@ -310,9 +320,9 @@ impl<'ctx> CodeLowerer<'ctx> {
     fn lower_expr_first_name(&mut self, ir_context: &mut IRContext<'ctx>, name: &str, span: Span, context_type: &IRExprContext<'ctx>) -> Result<IRExprResult<'ctx>, CompilerError> {
         if let IRContext::FunContext(fun_context) = ir_context {
             if let IRExprContext::Value(_) = context_type && let Some(var) = fun_context.vars.iter().find(|var| var.name == name) {
-                /*if var.moved {
+                if var.moved {
                     return Err(self.error(SemanticError::MovedValue, Some(span)));
-                }*/
+                }
                 return Ok(IRExprResult::Place(var.place.clone()));
             }
             let search_scope = self.ir_function(fun_context.fun).parent_scope;
@@ -341,6 +351,9 @@ impl<'ctx> CodeLowerer<'ctx> {
             return Ok(result);
         }
         if let IRExprContext::Trait(self_type) = context_type && let Some(result) = self.lower_trait_name(scope, name, *self_type, span)? {
+            return Ok(result);
+        }
+        if let IRExprContext::TypeConstraint(type_id) = context_type && let Some(result) = self.lower_trait_name(scope, name, *type_id, span)? {
             return Ok(result);
         }
         if let Some(module) = self.get_module_scope_in_scope(scope, name) {
@@ -541,16 +554,25 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(IRExprResult::TemplatesValues(result))
     }
 
-    pub fn load_place(&self, place: IRExprPlaceResult<'ctx>, span: Span) -> Result<IRExprValueResult<'ctx>, CompilerError> {
+    pub fn load_place(&mut self, ir_context: &mut IRContext<'ctx>, place: IRExprPlaceResult<'ctx>, span: Span) -> Result<IRExprValueResult<'ctx>, CompilerError> {
         if self.is_type_unsized(place.type_id)? {
             return Err(self.error(SemanticError::LoadingUnsized, Some(span)));
+        }
+        if let Some(owner) = place.owner {
+            let var = &mut ir_context.into_fun_context().vars[owner];
+            if let None = self.find_impl_of_core_trait(place.type_id, &CoreTraitFun::Copy)? {
+                if var.moved {
+                    return Err(self.error(SemanticError::MovedValue, Some(span)));
+                }
+                var.moved = true;
+            }
         }
         let ir_type = self.ir_type(place.type_id);
         let llvm_value = self.builder.build_load(ir_type.llvm_type, place.ptr_value.into_pointer_value(), "tmp").unwrap();
         Ok(IRExprValueResult { type_id: place.type_id, llvm_value })
     }
 
-    pub fn load_if_place(&self, expr_result: IRExprResult<'ctx>, span: Span) -> Result<IRExprValueResult<'ctx>, CompilerError> {
-        match expr_result { IRExprResult::Value(value) => Ok(value), IRExprResult::Place(place) => self.load_place(place, span), _ => panic!() }
+    pub fn load_if_place(&mut self, ir_context: &mut IRContext<'ctx>, expr_result: IRExprResult<'ctx>, span: Span) -> Result<IRExprValueResult<'ctx>, CompilerError> {
+        match expr_result { IRExprResult::Value(value) => Ok(value), IRExprResult::Place(place) => self.load_place(ir_context, place, span), _ => panic!() }
     }
 }

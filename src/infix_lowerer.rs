@@ -6,12 +6,31 @@ use crate::{code_lowerer::{CodeLowerer, CoreOpr, IRContext, IRExprContext, IRFun
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn lower_infix_opr(&mut self, ir_context: &mut IRContext<'ctx>, opr: InfixOpr, left_expr: &Box<ExprNode>, right_expr: &Box<ExprNode>, span: Span, context_type: &IRExprContext<'ctx>) -> Result<IRExprResult<'ctx>, CompilerError> {
+        let err = self.error(SemanticError::InvalidOpr(opr.to_string()), Some(span));
         if opr == InfixOpr::Com {
             return Ok(IRExprResult::CommaSeperated(left_expr.clone(), right_expr.clone()));
         }
+        if let IRExprContext::TypeConstraint(type_id) = context_type {
+            let left_res = self.lower_expr(ir_context, left_expr, context_type)?;
+            let right_res = self.lower_expr(ir_context, left_expr, context_type)?;
+            match opr {
+                InfixOpr::And => {
+                    if let IRExprResult::NoTypeConstraintMatch = left_res { return Ok(IRExprResult::NoTypeConstraintMatch); }
+                    if let IRExprResult::NoTypeConstraintMatch = right_res { return Ok(IRExprResult::NoTypeConstraintMatch); }
+                    return Ok(IRExprResult::Type(*type_id));
+                },
+                InfixOpr::Or => {
+                    if let IRExprResult::Type(_) = left_res { return Ok(IRExprResult::Type(*type_id)); }
+                    if let IRExprResult::Type(_) = right_res { return Ok(IRExprResult::Type(*type_id)); }
+                    return Ok(IRExprResult::NoTypeConstraintMatch);
+                },
+                _ => return Err(err)
+            }
+        }
+        if let IRContext::FunContext(_) = ir_context { } else { return Err(err); }
         if opr == InfixOpr::As {
             let left_expr_result = self.get_value(ir_context, left_expr, &IRExprContext::Value(None), false)?;
-            let new_type = self.get_type(ir_context, right_expr , &IRExprContext::Type)?;
+            let new_type = self.get_type(ir_context, right_expr, &IRExprContext::Type)?;
             return Ok(IRExprResult::Value(self.convert_type(left_expr_result, new_type)?));
         }
         if opr == InfixOpr::Asn {

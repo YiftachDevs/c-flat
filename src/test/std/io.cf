@@ -1,4 +1,6 @@
 import std/core.cf;
+import std/mem.cf;
+import std/heap.cf;
 
 extern fun getchar() -> char;
 extern fun putchar(chr: char) -> char;
@@ -33,7 +35,7 @@ fun read() -> String {
         let mut idx: u64 = 0;
         while idx < ch.utf8_len() {
             let utf8_slice: u8 = 0;
-            memcpy(&utf8_slice as &(), (&ch as u64 + idx) as &(), 1);
+            mem:copy<u8>(&utf8_slice, (&ch as u64 + idx) as &u8, 1);
             input.push(utf8_slice);
             idx += 1;
         }

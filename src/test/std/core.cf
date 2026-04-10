@@ -62,6 +62,7 @@ trait Drop { fun drop(&self); }
 trait AsRef<T> { fun as_ref(&self) -> &T; }
 trait Index<Index_T, Value_T> { fun index(&self, idx: Index_T) -> &Value_T; fun index_mut(&mut self, idx: Index_T) -> &mut Value_T; }
 trait Iter<T> { fun iter(&self) -> &T; fun iter_done(&self) -> bool; }
+trait Copy;
 
 impl<T: Numeral> Add<T> for T { fun add(self, other: Self) -> Self; }
 impl<T: Numeral> Sub<T> for T { fun sub(self, other: Self) -> Self; }
@@ -73,6 +74,13 @@ impl<T: Numeral> Ord for T { fun lss(self, other: Self) -> bool; fun gtr(self, o
 impl<T: Primitive> Eq for T { fun eq(self, other: Self) -> bool; }
 impl Bitwise for bool { fun not(self) -> Self; fun and(self, other: Self) -> Self; fun or(self, other: Self) -> Self; fun xor(self, other: Self) -> Self; }
 impl<T: Integer> Bitwise for T { fun not(self) -> Self; fun and(self, other: Self) -> Self; fun or(self, other: Self) -> Self; fun xor(self, other: Self) -> Self; }
+impl<T: Primitive> Copy for T;
+impl<T> Copy for &T;
+impl<T> Copy for &mut T;
+
+impl<T: !Drop> T {
+    fun drop(&self) { }
+}
 
 impl<T> Eq for &T {
     fun eq(self, other: Self) -> bool {
@@ -115,5 +123,3 @@ impl<T> T {
 impl<T> [T] {
     fun from_raw_parts(ptr: &T, len: u64) -> &mut Self;
 }
-
-extern fun memcpy(dest_ptr: &(), src_ptr: &(), size: u64);

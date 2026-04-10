@@ -22,13 +22,13 @@ pub enum CoreTraitFun {
     Deref,
     DerefMut,
     Drop,
-    NeedsDrop,
     AsRef,
     Len,
     MemSize,
     Index,
     IndexMut,
-    FromRawParts
+    FromRawParts,
+    Copy
 }
 
 impl CoreTraitFun {
@@ -53,6 +53,7 @@ impl CoreTraitFun {
             Self::AsRef => "AsRef",
             Self::Index => "Index",
             Self::IndexMut => "Index",
+            Self::Copy => "Copy",
             _ => panic!()
         }
     }
@@ -72,7 +73,6 @@ impl CoreTraitFun {
             Self::And => "and",
             Self::Xor => "xor",
             Self::Or => "or",
-            Self::NeedsDrop => "needs_drop",
             Self::Deref => "deref",
             Self::DerefMut => "deref_mut",
             Self::Drop => "drop",
@@ -82,6 +82,7 @@ impl CoreTraitFun {
             Self::Index => "index",
             Self::IndexMut => "index_mut",
             Self::FromRawParts => "from_raw_parts",
+            _ => panic!()
         }
     }
 }
@@ -133,7 +134,6 @@ impl<'ctx> CodeLowerer<'ctx> {
         if !self.is_type_unsized(type_id)? {
             self.build_core_trait_funs(type_id, &CoreTraitFun::MemSize)?;
         }
-        self.build_core_trait_funs(type_id, &CoreTraitFun::NeedsDrop)?;
         Ok(())
     }
 
@@ -194,13 +194,6 @@ impl<'ctx> CodeLowerer<'ctx> {
         if core_trait == &CoreTraitFun::MemSize {
             let size = self.get_type_mem_size(self_type);
             return Ok(self.llvm_context.i64_type().const_int(size as u64, false).into());
-        }
-        if core_trait == &CoreTraitFun::NeedsDrop {
-            return Ok(if let Some(_) = self.find_impl_of_core_trait(self_type, &CoreTraitFun::Drop)? {
-                self.llvm_context.bool_type().const_all_ones().into()
-            } else {
-                self.llvm_context.bool_type().const_zero().into() 
-            });
         }
         let first_value = first_value.unwrap();
         if let IRTypeEnum::Reference { ptr_type_id, is_mut } = self.ir_type(self_type).type_enum {

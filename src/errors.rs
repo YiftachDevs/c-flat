@@ -82,6 +82,8 @@ pub enum SemanticError {
     NonPrimConstant,
     ExpectdConstant,
     LoadingUnsized,
+    UninitializedStatic,
+    InvalidOpr(String),
 }
 
 impl SemanticError {
@@ -114,7 +116,9 @@ impl SemanticError {
             Self::UndeducibleType => ("Undeducible Type", None),
             Self::NonPrimConstant => ("Non-primitive Constant", None),
             Self::ExpectdConstant => ("Expected Constant", None),
-            Self::LoadingUnsized => ("Cannot load Unsized Value", None)
+            Self::LoadingUnsized => ("Cannot load Unsized Value", None),
+            Self::UninitializedStatic => ("Uninitialized Static", None),
+            Self::InvalidOpr(opr) => ("Invalid Opr", Some(format!("Cannot use opr '{}' in this context", opr)))
         }
     }
 }

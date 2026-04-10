@@ -1,7 +1,5 @@
 import std/core.cf;
-
-extern fun malloc(size: u64) -> &();
-extern fun free(ptr: &());
+import std/mem.cf;
 
 struct Box<T> {
     value_ref: &T
@@ -10,8 +8,8 @@ struct Box<T> {
 impl<T> Box<T> {
     fun new(value: T) -> Self {
         let mem_size = T:mem_size();
-        let value_ref = malloc(mem_size) as &T;
-        memcpy(value_ref as &(), &value as &(), mem_size);
+        let value_ref = mem:heap_alloc<T>(mem_size);
+        mem:copy<T>(value_ref, &value, mem_size);
         Self{ value_ref }
     }
 
@@ -27,7 +25,7 @@ impl<T> Deref<T> for Box<T> {
 
 impl<T> Drop for Box<T> {
     fun drop(&self) {
-        free(self.value_ref as &());
+        mem:heap_free<T>(self.value_ref);
     }
 }
 
@@ -40,12 +38,13 @@ struct Vec<T> {
 impl<T> Vec<T> {
     fun new() -> Self {
         let type_mem_size = T:mem_size();
-        Self{ malloc(4 * type_mem_size) as &T, 0, 4 }
+        Self{ mem:heap_alloc<T>(4 * type_mem_size), 0, 4 }
     }
 
     fun from(slice: &[T]) -> Self {
         let mut vec = Self:new();
         let mut idx: u64 = 0;
+
         while idx < slice.len() {
             vec.push(slice[idx]);
             idx += 1;
@@ -57,13 +56,14 @@ impl<T> Vec<T> {
         let type_mem_size = T:mem_size();
         if self.len == self.capacity {
             self.capacity *= 2;
-            let ptr = malloc(self.capacity * type_mem_size);
-            memcpy(ptr, self.ptr as &(), self.len * type_mem_size);
-            free(self.ptr as &());
+            let ptr = mem:heap_alloc<T>(self.capacity * type_mem_size);
+            mem:copy<T>(ptr, self.ptr, self.len * type_mem_size);
+            mem:heap_free<T>(self.ptr);
             self.ptr = ptr as &T;
         }
         memcpy((self.ptr as u64 + self.len * type_mem_size) as &(), &value as &(), type_mem_size);
         self.len += 1;
+        let man_drop = mem:Manually_Drop<T>{ value };
     }
 
     fun pop(&self) {
@@ -71,6 +71,17 @@ impl<T> Vec<T> {
             let v = self[self.len];
             self.len -= 1;
         }
+    }
+}
+
+impl<T> Drop for Vec<T> {
+    fun drop(&self) {
+        let mut idx: u64 = 0;
+        while idx < self.len() {
+            self[idx].drop();
+            idx += 1;
+        }
+        mem:heap_free<T>(self.ptr);
     }
 }
 

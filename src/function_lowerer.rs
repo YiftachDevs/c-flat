@@ -1,35 +1,46 @@
 
-use inkwell::{types::{BasicMetadataTypeEnum, BasicType}, values::{BasicValueEnum, FunctionValue, PointerValue}};
+use inkwell::{AddressSpace, module::Linkage, types::{BasicMetadataTypeEnum, BasicType}, values::{BasicValueEnum, FunctionValue, PointerValue}};
 use crate::{code_lowerer::*, errors::{CompilerError, SemanticError}, expr_lowerer::IRExprPlaceResult, parser::{Function, Span, Variable}};
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn get_ir_var_declaration(&mut self, ir_context: &mut IRContext<'ctx>, var: &Variable) -> Result<IRVarDeclaration, CompilerError> {
         let type_id = self.get_type(ir_context, var.var_type.as_ref().unwrap(), &IRExprContext::Type)?;
-        Ok(IRVarDeclaration { name: var.name.clone(), type_id, is_mut: var.is_mut })
+        Ok(IRVarDeclaration { name: var.name.clone(), type_id, is_mut: var.is_mut, is_static: var.is_static })
     }
 
     pub fn alloc_var(&self, ir_fun_context: &mut IRFunContext<'ctx>, var_dec: &IRVarDeclaration, opt_init_value: Option<BasicValueEnum<'ctx>>, span: Option<Span>) -> Result<IRVarId, CompilerError> {
         if ir_fun_context.vars.iter().any(|v| v.name == var_dec.name) {
-            // return Err(self.error(sdsd, opt_span));
+            return Err(self.error(SemanticError::CollidingNames { parent_scope: self.format_scope_path(self.ir_function(ir_fun_context.fun).scope), name: var_dec.name.clone() }, span));
         }
-
-        let current_block = self.builder.get_insert_block();
-
-        if let Some(entry_block) = self.ir_function(ir_fun_context.fun).llvm_value.get_first_basic_block() {
-            match entry_block.get_first_instruction() {
-                Some(first_instr) => self.builder.position_before(&first_instr),
-                None => self.builder.position_at_end(entry_block),
+        let result: usize = ir_fun_context.vars.len();
+        let ptr_value = if var_dec.is_static {
+            let global = self.module.add_global(self.ir_type(var_dec.type_id).llvm_type, Some(AddressSpace::default()), &var_dec.name);
+            global.set_constant(!var_dec.is_mut);
+            global.set_linkage(Linkage::Internal);
+            if let Some(init_value) = opt_init_value {
+                global.set_initializer(&init_value);
+            } else {
+                return Err(self.error(SemanticError::UninitializedStatic, span));
             }
-        }
-        let alloca =  self.builder.build_alloca(self.ir_type(var_dec.type_id).llvm_type, &var_dec.name).unwrap();
-        if let Some(entry_block) = current_block {
-            self.builder.position_at_end(entry_block);
-        }
-        if let Some(init_value) = opt_init_value {
-            self.builder.build_store(alloca, init_value).unwrap();
-        }
-        let result = ir_fun_context.vars.len();
-        ir_fun_context.vars.push(IRVariable { name: var_dec.name.clone(), moved: false, is_mut: var_dec.is_mut, place: IRExprPlaceResult { type_id: var_dec.type_id, ptr_value: alloca.into(), owner: Some(result), is_mut: var_dec.is_mut }});
+            global.as_pointer_value()
+        } else {
+            let current_block = self.builder.get_insert_block();
+            if let Some(entry_block) = self.ir_function(ir_fun_context.fun).llvm_value.get_first_basic_block() {
+                match entry_block.get_first_instruction() {
+                    Some(first_instr) => self.builder.position_before(&first_instr),
+                    None => self.builder.position_at_end(entry_block),
+                }
+            }
+            let alloca =  self.builder.build_alloca(self.ir_type(var_dec.type_id).llvm_type, &var_dec.name).unwrap();
+            if let Some(entry_block) = current_block {
+                self.builder.position_at_end(entry_block);
+            }
+            if let Some(init_value) = opt_init_value {
+                self.builder.build_store(alloca, init_value).unwrap();
+            }
+            alloca
+        };
+        ir_fun_context.vars.push(IRVariable { name: var_dec.name.clone(), moved: false, is_mut: var_dec.is_mut, place: IRExprPlaceResult { type_id: var_dec.type_id, ptr_value: ptr_value.into(), owner: Some(result), is_mut: var_dec.is_mut }});
         Ok(result)
     }
 
@@ -120,11 +131,12 @@ impl<'ctx> CodeLowerer<'ctx> {
 
         for (i, arg_dec) in ir_fun.args.iter().enumerate() {
             let arg_llvm_value = llvm_value.get_nth_param(i as u32).unwrap();
-            self.alloc_var(&mut ir_fun_context, arg_dec, Some(arg_llvm_value), Some(ir_fun.ast_def.args.variables[i].span));
+            self.alloc_var(&mut ir_fun_context, arg_dec, Some(arg_llvm_value), Some(ir_fun.ast_def.args.variables[i].span))?;
         }
 
         let mut ir_context = IRContext::FunContext(ir_fun_context);
         let result = self.lower_scope(&mut ir_context, fun_def.scope.as_ref().unwrap(), &IRExprContext::Value(Some(return_type)))?;
+        self.drop_vars(&mut ir_context, 0, fun_def.span)?;
 
         if result.type_id != self.primitive_type(PrimitiveType::Never)? {
             self.builder.build_return(Some(&result.llvm_value)).expect("Return build failed");
@@ -134,5 +146,13 @@ impl<'ctx> CodeLowerer<'ctx> {
             self.builder.position_at_end(block);
         }
         Ok(())
+    }
+
+    pub fn save_vars(&mut self, ir_fun_context: &mut IRFunContext<'ctx>) -> IRVariables<'ctx> {
+        ir_fun_context.vars.clone()
+    }
+
+    pub fn load_vars(&mut self, ir_fun_context: &mut IRFunContext<'ctx>, vars: IRVariables<'ctx>) {
+        ir_fun_context.vars = vars;
     }
 }

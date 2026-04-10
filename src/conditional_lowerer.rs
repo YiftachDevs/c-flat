@@ -124,12 +124,14 @@ impl<'ctx> CodeLowerer<'ctx> {
             ControlFlow::Return(expr) => {
                 let fun_type = self.ir_function(ir_context.into_fun_context().fun).return_type;
                 let fun_type_ctx = IRExprContext::Value(Some(fun_type));
+                let saved_vars = self.save_vars(ir_context.into_fun_context());
                 let return_expr_result = self.lower_expr(ir_context, expr, &fun_type_ctx)?;
                 let return_result = if let IRExprResult::Empty = return_expr_result {
                     self.ensure_expr_result_value(ir_context, &IRExprResult::Void, true, expr.span, &fun_type_ctx)?
                 } else {
                     self.ensure_expr_result_value(ir_context, &return_expr_result, true, expr.span, &fun_type_ctx)?
                 };
+                self.load_vars(ir_context.into_fun_context(), saved_vars);
                 self.builder.build_return(Some(&return_result.llvm_value)).expect("Return build failed");
             },
             ControlFlow::Skip { label, span } => {

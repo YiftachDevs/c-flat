@@ -5,12 +5,18 @@ use crate::{code_lowerer::{CodeLowerer, IRContext, IRExprContext, IRTemplateValu
 
 
 impl<'ctx> CodeLowerer<'ctx> {
-    pub fn lower_postfix_opr(&mut self, ir_context: &mut IRContext<'ctx>, opr: PostfixOpr, left_expr: &Box<ExprNode>, right_expr: &Box<ExprNode>, context_type: &IRExprContext<'ctx>) -> Result<IRExprResult<'ctx>, CompilerError> {
+    pub fn lower_postfix_opr(&mut self, ir_context: &mut IRContext<'ctx>, opr: PostfixOpr, left_expr: &Box<ExprNode>, right_expr: &Box<ExprNode>, span: Span, context_type: &IRExprContext<'ctx>) -> Result<IRExprResult<'ctx>, CompilerError> {
+        let err = self.error(SemanticError::InvalidOpr(opr.to_string()), Some(span));
+        if opr == PostfixOpr::Sep {
+            let left_expr_result = self.lower_expr(ir_context, left_expr, &IRExprContext::Type)?;
+            return self.lower_postfix_opr_seperator(ir_context, left_expr_result, right_expr, context_type, left_expr.span);
+        }
+        if opr == PostfixOpr::Tmp {
+            let left_expr_result = self.lower_expr(ir_context, left_expr, context_type)?;
+            return self.lower_postfix_opr_templates(ir_context, left_expr_result, right_expr, context_type, left_expr.span);
+        }
+        if let IRContext::FunContext(_) = ir_context { } else { return Err(err); }
         match opr {
-            PostfixOpr::Sep => {
-                let left_expr_result = self.lower_expr(ir_context, left_expr, &IRExprContext::Type)?;
-                self.lower_postfix_opr_seperator(ir_context, left_expr_result, right_expr, context_type, left_expr.span)
-            }
             PostfixOpr::Mem => {
                 let left_expr_result = self.lower_expr(ir_context, left_expr, &IRExprContext::Value(None))?;
                 self.lower_postfix_opr_member(ir_context, left_expr_result, right_expr, context_type, left_expr.span)
@@ -23,14 +29,11 @@ impl<'ctx> CodeLowerer<'ctx> {
                 let left_expr_result = self.lower_expr(ir_context, left_expr, &IRExprContext::Type)?;
                 Ok(IRExprResult::Value(self.lower_postfix_opr_constructor(ir_context, left_expr_result, right_expr, context_type, left_expr.span)?))
             },
-            PostfixOpr::Tmp => {
-                let left_expr_result = self.lower_expr(ir_context, left_expr, context_type)?;
-                self.lower_postfix_opr_templates(ir_context, left_expr_result, right_expr, context_type, left_expr.span)
-            }
             PostfixOpr::Idx => {
                 let left_expr_result = self.lower_expr(ir_context, left_expr, &IRExprContext::Value(None))?;
                 Ok(self.lower_postfix_opr_index(ir_context, left_expr_result, right_expr, left_expr.span)?)
-            }
+            },
+            _ => panic!()
         }
     }
 
@@ -177,8 +180,13 @@ impl<'ctx> CodeLowerer<'ctx> {
             let mut args_context_types = self.ir_function(fun_id).args.iter().map(|arg| IRExprContext::Value(Some(arg.type_id))).collect::<Vec<IRExprContext<'ctx>>>();
             let llvm_args = if let Some(self_value) = opt_self_value {
                 let mut res = if let IRExprContext::Value(Some(ctx_self)) = args_context_types.remove(0) {
+                    println!("{}", right_expr.to_string());
+                    println!("a");
                     let auto_ref_result = self.auto_reference(ir_context, *self_value, ctx_self, span)?;
-                    vec![self.load_if_place(auto_ref_result, span)?]
+                    println!("a"); 
+                    let e = vec![self.load_if_place(ir_context, auto_ref_result, span)?];
+                    println!("a");
+                    e
                 } else { panic!() };
                 res.extend(self.lower_args_values(ir_context, right_expr, &args_context_types, false)?);
                 res
