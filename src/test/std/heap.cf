@@ -1,5 +1,6 @@
 import std/core.cf;
 import std/mem.cf;
+import std/iter.cf;
 
 struct Box<T> {
     value_ref: &T
@@ -7,9 +8,9 @@ struct Box<T> {
 
 impl<T> Box<T> {
     fun new(value: T) -> Self {
-        let mem_size = T:mem_size();
-        let value_ref = mem:heap_alloc<T>(mem_size);
-        mem:copy<T>(value_ref, &value, mem_size);
+        let value_ref = mem:heap_alloc<T>(1);
+        mem:copy<T>(value_ref, &value);
+        let man_drop = mem:Manually_Drop<T>{ value };
         Self{ value_ref }
     }
 
@@ -25,58 +26,95 @@ impl<T> Deref<T> for Box<T> {
 
 impl<T> Drop for Box<T> {
     fun drop(&self) {
+        self.value_ref.drop();
         mem:heap_free<T>(self.value_ref);
     }
 }
 
 struct Vec<T> {
     ptr: &T,
-    len: u64,
-    capacity: u64
+    len: usize,
+    capacity: usize
 }
 
 impl<T> Vec<T> {
     fun new() -> Self {
-        let type_mem_size = T:mem_size();
-        Self{ mem:heap_alloc<T>(4 * type_mem_size), 0, 4 }
+        Self:with_capacity(4)
     }
 
     fun from(slice: &[T]) -> Self {
-        let mut vec = Self:new();
-        let mut idx: u64 = 0;
+        let mut result = Self:new();
+        result.extend_from_slice(slice);
+        result
+    }
 
+    fun capacity(&self) -> usize { self.capacity }
+    fun is_empty(&self) -> bool { self.len == 0 }
+
+    fun with_capacity(capacity: usize) -> Self {
+        Self{ mem:heap_alloc<T>(capacity), 0, capacity }
+    }
+
+    fun reserve(&mut self, additional: usize) {
+        let new_len = self.len + additional;
+        if new_len > self.capacity {
+            while new_len > self.capacity {
+                self.capacity *= 2;
+            }
+            let new_ptr = mem:heap_alloc<T>(self.capacity);
+            mem:copy_range<T>(new_ptr, self.ptr, self.len);
+            mem:heap_free<T>(self.ptr);
+            self.ptr = new_ptr;
+        }
+    }
+
+    fun extend_from_slice(&mut self, slice: &[T]) {
+        let mut idx: usize = 0;
         while idx < slice.len() {
-            vec.push(slice[idx]);
+            self.push(slice[idx]);
             idx += 1;
         }
-        vec
+    }
+
+    fun extend(&mut self, other: Self) {
+        self.extend_from_slice(&other);
     }
 
     fun push(&mut self, value: T) {
-        let type_mem_size = T:mem_size();
-        if self.len == self.capacity {
-            self.capacity *= 2;
-            let ptr = mem:heap_alloc<T>(self.capacity * type_mem_size);
-            mem:copy<T>(ptr, self.ptr, self.len * type_mem_size);
-            mem:heap_free<T>(self.ptr);
-            self.ptr = ptr as &T;
-        }
-        memcpy((self.ptr as u64 + self.len * type_mem_size) as &(), &value as &(), type_mem_size);
+        self.reserve(1);
+        mem:copy<T>((self.ptr as usize + self.len * T:mem_size()) as &T, &value);
         self.len += 1;
         let man_drop = mem:Manually_Drop<T>{ value };
     }
 
-    fun pop(&self) {
+    fun pop(&mut self) {
         if self.len > 0 {
-            let v = self[self.len];
             self.len -= 1;
+            self[self.len].drop();
         }
     }
+
+    fun insert(&mut self, idx: usize, value: T) {
+        let type_mem_size = T:mem_size();
+        self.reserve(1);
+        let insert_ptr = (self.ptr as usize + idx * type_mem_size) as &T;
+        mem:copy_range<T>((insert_ptr as usize + type_mem_size) as &T, insert_ptr, self.len - idx);
+        mem:copy<T>(insert_ptr, &value);
+        self.len += 1;
+        let man_drop = mem:Manually_Drop<T>{ value };
+    }
+
+    fun iter(&self) -> SliceIter<T> {
+        SliceIter<T>{ self.ptr, (self.ptr as usize + self.len * T:mem_size()) as &T }
+    }
+
+    fun as_slice(&self) -> &[T] { [T]:from_raw_parts(self.ptr, self.len) }
+    fun as_mut_slice(&mut self) -> &mut [T] { [T]:from_raw_parts(self.ptr, self.len) }
 }
 
 impl<T> Drop for Vec<T> {
     fun drop(&self) {
-        let mut idx: u64 = 0;
+        let mut idx: usize = 0;
         while idx < self.len() {
             self[idx].drop();
             idx += 1;
@@ -86,31 +124,50 @@ impl<T> Drop for Vec<T> {
 }
 
 impl<T> Deref<[T]> for Vec<T> {
-    fun deref(&self) -> &[T] { [T]:from_raw_parts(self.ptr, self.len) }
-    fun deref_mut(&mut self) -> &mut [T] { [T]:from_raw_parts(self.ptr, self.len) }
+    fun deref(&self) -> &[T] { self.as_slice() }
+    fun deref_mut(&mut self) -> &mut [T] { self.as_mut_slice() }
 }
 
-struct String {
-    chars: Vec<u8>
-}
+type String = Vec<char>;
 
-impl String {
-    fun new() -> Self {
-        Self{ Vec<u8>:new() }
+impl<T: ToString> ToString for Vec<T> {
+    fun to_string(&self) -> String {
+        if self.is_empty() {
+            return "[]".to_string();
+        }
+        let mut result = "[".to_string();
+        let mut idx: usize = 0;
+        while idx < self.len() {
+            result.extend(self[idx].to_string());
+            result.extend_from_slice(", ");
+            idx += 1;
+        }
+        result.pop();
+        result.pop();
+        result.push(']');
+        result
     }
-
-    fun from(slice: &[u8]) -> Self {
-        Self{ Vec<u8>:from(slice) }
-    }
 }
 
-impl Deref<Vec<u8>> for String {
-    fun deref(&self) -> &Vec<u8> { &self.chars }
-    fun deref_mut(&mut self) -> &mut Vec<u8> { &mut self.chars }
-}
+trait ToString { fun to_string(&self) -> String; }
 
-impl [u8] {
+impl ToString for [char] {
     fun to_string(&self) -> String {
         String:from(self)
+    }
+}
+
+impl<T: Integer> ToString for T {
+    fun to_string(&self) -> String {
+        let mut result = String:new();
+        let mut num = if *self < 0 { -*self } else { *self };
+        while num != 0 {
+            result.insert(0, ('0' as T + num % 10) as char);
+            num /= 10;
+        }
+        if *self < 0 {
+            result.insert(0, '-');
+        }
+        result
     }
 }

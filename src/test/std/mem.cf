@@ -1,7 +1,7 @@
 import std/core.cf;
 
-extern fun memcpy(dest_ptr: &(), src_ptr: &(), size: u64);
-extern fun malloc(size: u64) -> &();
+extern fun memcpy(dest_ptr: &(), src_ptr: &(), size: usize);
+extern fun malloc(size: usize) -> &();
 extern fun free(ptr: &());
 
 mod mem {
@@ -9,13 +9,17 @@ mod mem {
         value: T
     }
 
-    fun copy<T>(dest_ptr: &T, src_ptr: &T, size: u64) {
-        memcpy(dest_ptr as &(), src_ptr as &(), size);
+    fun copy<T>(dest_ptr: &T, src_ptr: &T) {
+        memcpy(dest_ptr as &(), src_ptr as &(), T:mem_size());
     }
 
-    fun heap_alloc<T>(size: u64) -> &T {
+    fun copy_range<T>(dest_ptr: &T, src_ptr: &T, len: usize) {
+        memcpy(dest_ptr as &(), src_ptr as &(), len * T:mem_size());
+    }
+
+    fun heap_alloc<T>(len: usize) -> &T {
         *heap_count() += 1;
-        malloc(size) as &T
+        malloc(len * T:mem_size()) as &T
     }
 
     fun heap_free<T>(ptr: &T) {
@@ -23,8 +27,8 @@ mod mem {
         free(ptr as &())
     }
 
-    fun heap_count() -> &mut u64 {
-        static mut count: u64 = 0;
+    fun heap_count() -> &mut usize {
+        static mut count: usize = 0;
         &mut count
     }
 }

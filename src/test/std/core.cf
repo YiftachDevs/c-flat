@@ -48,6 +48,8 @@ impl Primitive for bool;
 impl Primitive for char;
 impl Primitive for ();
 
+type usize = u64;
+
 trait Add<T> { fun add(self, other: T) -> Self; }
 trait Sub<T> { fun sub(self, other: T) -> Self; }
 trait Mul<T> { fun mul(self, other: T) -> Self; }
@@ -61,7 +63,7 @@ trait Deref<T> { fun deref(&self) -> &T; fun deref_mut(&mut self) -> &mut T; }
 trait Drop { fun drop(&self); }
 trait AsRef<T> { fun as_ref(&self) -> &T; }
 trait Index<Index_T, Value_T> { fun index(&self, idx: Index_T) -> &Value_T; fun index_mut(&mut self, idx: Index_T) -> &mut Value_T; }
-trait Iter<T> { fun iter(&self) -> &T; fun iter_done(&self) -> bool; }
+trait Iter<T> { fun next(&mut self) -> &T; fun has_next(&self) -> bool; }
 trait Copy;
 
 impl<T: Numeral> Add<T> for T { fun add(self, other: Self) -> Self; }
@@ -78,6 +80,18 @@ impl<T: Primitive> Copy for T;
 impl<T> Copy for &T;
 impl<T> Copy for &mut T;
 
+impl<T: Drop> &T {
+    fun drop(&self) {
+        (**self).drop();
+    }
+}
+
+impl<T: Drop> &mut T {
+    fun drop(&self) {
+        (**self).drop();
+    }
+}
+
 impl<T: !Drop> T {
     fun drop(&self) { }
 }
@@ -92,34 +106,33 @@ impl<T> AsRef<T> for [T] {
     fun as_ref(&self) -> &T;
 }
 
-impl<T, const S: u64> Deref<[T]> for [T; S] {
+impl<T, const S: usize> Deref<[T]> for [T; S] {
     fun deref(&self) -> &[T];
     fun deref_mut(&mut self) -> &mut [T];
 }
 
-impl<T> Index<u64, T> for [T] {
-    fun index(&self, idx: u64) -> &T;
-    fun index_mut(&mut self, idx: u64) -> &mut T;
+impl<T> Index<usize, T> for [T] {
+    fun index(&self, idx: usize) -> &T;
+    fun index_mut(&mut self, idx: usize) -> &mut T;
 }
 
-impl<T, const S: u64> Index<u64, T> for [T; S] {
-    fun index(&self, idx: u64) -> &T;
-    fun index_mut(&mut self, idx: u64) -> &mut T;
+impl<T, const S: usize> Index<usize, T> for [T; S] {
+    fun index(&self, idx: usize) -> &T;
+    fun index_mut(&mut self, idx: usize) -> &mut T;
 }
 
-impl<T, const S: u64> [T; S] {
-    fun len(&self) -> u64 { S }
+impl<T, const S: usize> [T; S] {
+    fun len(&self) -> usize { S }
 }
 
 impl<T> [T] {
-    fun len(&self) -> u64;
+    fun len(&self) -> usize;
 }
 
 impl<T> T {
-    fun mem_size() -> u64;
-    fun needs_drop() -> bool;
+    fun mem_size() -> usize;
 }
 
 impl<T> [T] {
-    fun from_raw_parts(ptr: &T, len: u64) -> &mut Self;
+    fun from_raw_parts(ptr: &T, len: usize) -> &mut Self;
 }

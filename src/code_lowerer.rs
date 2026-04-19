@@ -147,9 +147,9 @@ impl PrimitiveType {
     pub fn get_mem_size(&self) -> u64 {
         match self {
             Self::Void | Self::Never => 0,
-            Self::I8 | Self::U8 | Self::Bool => 1,
+            Self::I8 | Self::U8 | Self::Bool | Self::Char => 1,
             Self::I16 | Self::U16 | Self::F16 => 2,
-            Self::I32 | Self::U32 | Self::F32 | Self::Char => 4,
+            Self::I32 | Self::U32 | Self::F32 => 4,
             Self::I64 | Self::U64 | Self::F64 => 8,
             Self::I128 | Self::U128 => 16,
         }
@@ -415,7 +415,8 @@ impl<'ctx> CodeLowerer<'ctx> {
         let fun_results_len = if let Some(ast_def) = ir_scope.ast_def { ast_def.functions.iter().filter(|def| def.name == name).count() } else { 0 };
         let structs_results_len = if let Some(ast_def) = ir_scope.ast_def { ast_def.structs.iter().filter(|def| def.name == name).count() } else { 0 };
         let traits_results_len = if let Some(ast_def) = ir_scope.ast_def { ast_def.traits.iter().filter(|def| def.name == name).count() } else { 0 };
-        let total_len = fun_results_len + structs_results_len + traits_results_len;
+        let type_def_results_len = if let Some(ast_def) = ir_scope.ast_def { ast_def.type_defs.iter().filter(|def| def.name == name).count() } else { 0 };
+        let total_len = fun_results_len + structs_results_len + traits_results_len + type_def_results_len;
 
         if total_len > 1 {
             return Err(self.error(SemanticError::CollidingNames { parent_scope: self.format_scope_path(parent_scope), name: name.to_string() }, opt_call_span));

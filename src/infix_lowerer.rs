@@ -69,7 +69,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         let new_llvm_value = self.ir_type(new_type).llvm_type;
         let new_value = if cur_bit_size < new_bit_size {
             self.builder.build_int_z_extend(value.llvm_value.into_int_value(), new_llvm_value.into_int_type(), "cast").unwrap().into()
-        } else if new_bit_size > cur_bit_size {
+        } else if cur_bit_size > new_bit_size {
             self.builder.build_int_truncate(value.llvm_value.into_int_value(), new_llvm_value.into_int_type(), "cast").unwrap().into()
         } else {
             if let IRTypeEnum::Reference { ptr_type_id, is_mut } = self.ir_type(type_id).type_enum && let IRTypeEnum::Primitive(_) = self.ir_type(new_type).type_enum {

@@ -1,0 +1,18 @@
+import std/core.cf;
+
+struct SliceIter<T> {
+    cur: &T,
+    end: &T
+}
+
+impl<T> Iter<T> for SliceIter<T> {
+    fun next(&mut self) -> &T {
+        let result = self.cur;
+        self.cur = (self.cur as usize + T:mem_size()) as &T;
+        result
+    }
+    
+    fun has_next(&self) -> bool {
+        self.cur as usize < self.end as usize
+    }
+}

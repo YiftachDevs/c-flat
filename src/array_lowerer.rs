@@ -3,6 +3,7 @@ use inkwell::values::{BasicValue, BasicValueEnum, IntValue};
 use crate::{code_lowerer::{CodeLowerer, IRContext, IRExprContext, IRTemplateValue, IRTypeEnum, IRVarDeclaration, PrimitiveType}, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprResult, IRExprValueResult}, parser::{ExprNode, Literal, Span}};
 
 
+
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn lower_array(&mut self, ir_context: &mut IRContext<'ctx>, expr: &Box<ExprNode>, opt_size: &Option<Box<ExprNode>>, span: Span, context_type: &IRExprContext<'ctx>) -> Result<IRExprResult<'ctx>, CompilerError> {
         if let IRExprContext::Value(opt_ctx_t) = context_type {

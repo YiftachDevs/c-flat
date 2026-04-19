@@ -74,7 +74,7 @@ impl<'ctx> IRExprResult<'ctx> {
 }
 
 impl<'ctx> CodeLowerer<'ctx> {
-    pub fn lower_scope(&mut self, ir_context: &mut IRContext<'ctx>, scope: &Scope, context_type: &IRExprContext<'ctx>) -> Result<IRExprValueResult<'ctx>, CompilerError> {
+    pub fn lower_scope(&mut self, ir_context: &mut IRContext<'ctx>, scope: &Scope, expr_context: &IRExprContext<'ctx>) -> Result<IRExprValueResult<'ctx>, CompilerError> {
         let prev_vars_len = ir_context.into_fun_context().vars.len();
     
         let void_type = self.primitive_type(PrimitiveType::Void)?;
@@ -82,7 +82,7 @@ impl<'ctx> CodeLowerer<'ctx> {
 
         for (i, statement) in scope.statements.iter().enumerate() {
             let is_final_statement = i == scope.statements.len() - 1;
-            let ctx_t = if is_final_statement { context_type } else { &IRExprContext::Value(None) }; 
+            let ctx_t = if is_final_statement { expr_context } else { &IRExprContext::Value(None) }; 
             match statement {
                 Statement::VarDeclaration(var) => {
                     if let Some(init_expr) = var.init_expr.as_ref() {
@@ -98,7 +98,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 },
                 Statement::Expression { expr, is_final_value } => {
                     if *is_final_value {
-                        scope_result = self.get_value(ir_context, expr, context_type, true)?;
+                        scope_result = self.get_value(ir_context, expr, expr_context, true)?;
                         break;
                     } else {
                         let expr_result = self.get_value(ir_context, expr, &IRExprContext::Value(None), false)?;
@@ -123,16 +123,18 @@ impl<'ctx> CodeLowerer<'ctx> {
             }
         }
 
-        self.drop_vars(ir_context, prev_vars_len, scope.span)?;
+        if scope_result.type_id != self.primitive_type(PrimitiveType::Never)? {
+            self.drop_vars(ir_context, prev_vars_len, scope.span)?;
+        }
 
-        if let IRExprContext::Value(expected_type) = context_type {
+        if let IRExprContext::Value(expected_type) = expr_context {
             scope_result.type_id = self.ensure_type_matches(scope_result.type_id, *expected_type, Some(scope.span), true)?;
         }
         Ok(scope_result)
     }
 
     pub fn drop_vars(&mut self, ir_context: &mut IRContext<'ctx>, prev_len: usize, span: Span) -> Result<(), CompilerError> {
-        for i in prev_len..ir_context.into_fun_context().vars.len() {
+        for i in (prev_len..ir_context.into_fun_context().vars.len()).rev() {
             let var = &ir_context.into_fun_context().vars[i];
             if var.moved {
                 continue;
@@ -148,16 +150,16 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(())
     }
  
-    pub fn ensure_expr_result_value(&mut self, ir_context: &mut IRContext<'ctx>, expr_result: &IRExprResult<'ctx>, ensure_type: bool, span: Span, context_type: &IRExprContext) -> Result<IRExprValueResult<'ctx>, CompilerError> {
+    pub fn ensure_expr_result_value(&mut self, ir_context: &mut IRContext<'ctx>, expr_result: &IRExprResult<'ctx>, ensure_type: bool, span: Span, expr_context: &IRExprContext) -> Result<IRExprValueResult<'ctx>, CompilerError> {
         if let IRExprResult::Value(expr_value) = expr_result.clone() {
-            if ensure_type && let IRExprContext::Value(expected_type) = context_type {
+            if ensure_type && let IRExprContext::Value(expected_type) = expr_context {
                 self.ensure_type_matches(expr_value.type_id, *expected_type, Some(span), true)?;
             }
             return Ok(expr_value);
         }
         if let IRExprResult::Place(place) = expr_result.clone() {
             let mut value = self.load_place(ir_context, place, span)?;
-            if ensure_type && let IRExprContext::Value(expected_type) = context_type {
+            if ensure_type && let IRExprContext::Value(expected_type) = expr_context {
                 value.type_id = self.ensure_type_matches(value.type_id, *expected_type, Some(span), true)?;
             }
             return Ok(value);
@@ -165,7 +167,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         if let IRExprResult::Void = expr_result {
             let void_type =  self.primitive_type(PrimitiveType::Void)?;
             let void_value = self.get_type_zero(void_type);
-            return self.ensure_expr_result_value(ir_context, &IRExprResult::Value(void_value), ensure_type, span, context_type);
+            return self.ensure_expr_result_value(ir_context, &IRExprResult::Value(void_value), ensure_type, span, expr_context);
         }
         return Err(self.error(SemanticError::ExpectedValueExpr, Some(span)));
     }
@@ -188,10 +190,10 @@ impl<'ctx> CodeLowerer<'ctx> {
         return Err(self.error(SemanticError::ExpectedTypeExpr, Some(span)));
     }
 
-    pub fn ensure_expr_result_trait(&mut self, expr_result: &IRExprResult<'ctx>, span: Span, context_type: &IRExprContext<'ctx>) -> Result<IRTraitId, CompilerError> {
+    pub fn ensure_expr_result_trait(&mut self, expr_result: &IRExprResult<'ctx>, span: Span, expr_context: &IRExprContext<'ctx>) -> Result<IRTraitId, CompilerError> {
         if let IRExprResult::Trait(trait_id) = expr_result {
             let ir_trait = self.ir_trait(*trait_id);
-            if let IRExprContext::Trait(self_type) = context_type {
+            if let IRExprContext::Trait(self_type) = expr_context {
                 self.ensure_type_matches(ir_trait.self_type, Some(*self_type), Some(span), false)?;
             }
             return Ok(*trait_id);
@@ -199,8 +201,8 @@ impl<'ctx> CodeLowerer<'ctx> {
         return Err(self.error(SemanticError::ExpectedTrait, Some(span)));
     }
 
-    pub fn ensure_expr_result_template_value(&mut self, ir_context: &mut IRContext<'ctx>, expr_result: &IRExprResult<'ctx>, span: Span, context_type: &IRExprContext<'ctx>) -> Result<IRTemplateValue<'ctx>, CompilerError> {
-        if let IRExprContext::Template(template) = context_type {
+    pub fn ensure_expr_result_template_value(&mut self, ir_context: &mut IRContext<'ctx>, expr_result: &IRExprResult<'ctx>, span: Span, expr_context: &IRExprContext<'ctx>) -> Result<IRTemplateValue<'ctx>, CompilerError> {
+        if let IRExprContext::Template(template) = expr_context {
             match template {
                 IRTemplate::Const(const_type) => {
                     let value = self.ensure_expr_result_value(ir_context, expr_result, true, span, &IRExprContext::Value(Some(*const_type)))?;
@@ -211,7 +213,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                     Ok(IRTemplateValue::Type(type_id))
                 }
             }
-        } else if let IRExprContext::Impl(template_value) = context_type {
+        } else if let IRExprContext::Impl(template_value) = expr_context {
             Ok(template_value.clone())
         } else { panic!() }
     }
@@ -222,35 +224,35 @@ impl<'ctx> CodeLowerer<'ctx> {
         } else { panic!() }
     }
 
-    pub fn get_type(&mut self, ir_context: &mut IRContext<'ctx>, expr: &ExprNode, context_type: &IRExprContext<'ctx>) -> Result<IRTypeId, CompilerError> {
-        let expr_result = self.lower_expr(ir_context, expr, context_type)?;
+    pub fn get_type(&mut self, ir_context: &mut IRContext<'ctx>, expr: &ExprNode, ir_expr_context: &IRExprContext<'ctx>) -> Result<IRTypeId, CompilerError> {
+        let expr_result = self.lower_expr(ir_context, expr, ir_expr_context)?;
         self.ensure_expr_result_type(&expr_result, expr.span)
     }
 
-    pub fn get_value(&mut self, ir_context: &mut IRContext<'ctx>, expr: &ExprNode, context_type: &IRExprContext<'ctx>, ensure_type: bool) -> Result<IRExprValueResult<'ctx>, CompilerError> {
-        let expr_result = self.lower_expr(ir_context, expr, context_type)?;
-        self.ensure_expr_result_value(ir_context, &expr_result, ensure_type, expr.span, context_type)
+    pub fn get_value(&mut self, ir_context: &mut IRContext<'ctx>, expr: &ExprNode, expr_context: &IRExprContext<'ctx>, ensure_type: bool) -> Result<IRExprValueResult<'ctx>, CompilerError> {
+        let expr_result = self.lower_expr(ir_context, expr, expr_context)?;
+        self.ensure_expr_result_value(ir_context, &expr_result, ensure_type, expr.span, expr_context)
     }
 
-    pub fn get_place(&mut self, ir_context: &mut IRContext<'ctx>, expr: &ExprNode, context_type: &IRExprContext<'ctx>) -> Result<IRExprPlaceResult<'ctx>, CompilerError> {
-        let expr_result = self.lower_expr(ir_context, expr, context_type)?;
+    pub fn get_place(&mut self, ir_context: &mut IRContext<'ctx>, expr: &ExprNode, expr_context: &IRExprContext<'ctx>) -> Result<IRExprPlaceResult<'ctx>, CompilerError> {
+        let expr_result = self.lower_expr(ir_context, expr, expr_context)?;
         self.ensure_expr_result_place(ir_context, expr_result, expr.span)
     }
 
 
-    pub fn get_trait(&mut self, ir_context: &mut IRContext<'ctx>, expr: &ExprNode, context_type: &IRExprContext<'ctx>) -> Result<IRTraitId, CompilerError> {
-        let expr_result = self.lower_expr(ir_context, expr, context_type)?;
-        self.ensure_expr_result_trait(&expr_result, expr.span, context_type)
+    pub fn get_trait(&mut self, ir_context: &mut IRContext<'ctx>, expr: &ExprNode, expr_context: &IRExprContext<'ctx>) -> Result<IRTraitId, CompilerError> {
+        let expr_result = self.lower_expr(ir_context, expr, expr_context)?;
+        self.ensure_expr_result_trait(&expr_result, expr.span, expr_context)
     }
     
-    pub fn get_template_value(&mut self, ir_context: &mut IRContext<'ctx>, expr: &ExprNode, context_type: &IRExprContext<'ctx>) -> Result<IRTemplateValue<'ctx>, CompilerError> {
-        let expr_result = self.lower_expr(ir_context, expr, context_type)?;
-        self.ensure_expr_result_template_value(ir_context, &expr_result, expr.span, context_type)
+    pub fn get_template_value(&mut self, ir_context: &mut IRContext<'ctx>, expr: &ExprNode, expr_context: &IRExprContext<'ctx>) -> Result<IRTemplateValue<'ctx>, CompilerError> {
+        let expr_result = self.lower_expr(ir_context, expr, expr_context)?;
+        self.ensure_expr_result_template_value(ir_context, &expr_result, expr.span, expr_context)
     }
 
 
-    pub fn get_constant(&mut self, ir_context: &mut IRContext<'ctx>, expr: &ExprNode, context_type: &IRExprContext<'ctx>, ensure_type: bool) -> Result<IRExprValueResult<'ctx>, CompilerError> {
-        let value = self.get_value(ir_context, expr, context_type, ensure_type)?;
+    pub fn get_constant(&mut self, ir_context: &mut IRContext<'ctx>, expr: &ExprNode, expr_context: &IRExprContext<'ctx>, ensure_type: bool) -> Result<IRExprValueResult<'ctx>, CompilerError> {
+        let value = self.get_value(ir_context, expr, expr_context, ensure_type)?;
         if let IRTypeEnum::Primitive(_) = self.ir_type(value.type_id).type_enum {
             if value.llvm_value.is_const() {
                 Ok(value)
@@ -262,45 +264,45 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
     }
 
-    pub fn lower_expr(&mut self, ir_context: &mut IRContext<'ctx>, expr: &ExprNode, context_type: &IRExprContext<'ctx>) -> Result<IRExprResult<'ctx>, CompilerError> {
+    pub fn lower_expr(&mut self, ir_context: &mut IRContext<'ctx>, expr: &ExprNode, expr_context: &IRExprContext<'ctx>) -> Result<IRExprResult<'ctx>, CompilerError> {
         let result = match &expr.value {
             ExprNodeEnum::Literal(literal) => {
-                IRExprResult::Value(self.lower_expr_literal(literal, context_type)?)
+                IRExprResult::Value(self.lower_expr_literal(literal, expr_context)?)
             },
             ExprNodeEnum::Scope(scope) => {
-                IRExprResult::Value(self.lower_scope(ir_context, scope, context_type)?)
+                IRExprResult::Value(self.lower_scope(ir_context, scope, expr_context)?)
             },
             ExprNodeEnum::Array(arr_expr, opt_size) => {
-                self.lower_array(ir_context, arr_expr, opt_size, expr.span, context_type)?
+                self.lower_array(ir_context, arr_expr, opt_size, expr.span, expr_context)?
             },
             ExprNodeEnum::Name(name) => {
-                self.lower_expr_first_name(ir_context, name, expr.span, context_type)?
+                self.lower_expr_first_name(ir_context, name, expr.span, expr_context)?
             },
             ExprNodeEnum::PostfixOpr(opr, left_expr, right_expr) => {
-                self.lower_postfix_opr(ir_context, *opr, left_expr, right_expr, expr.span, context_type)?
+                self.lower_postfix_opr(ir_context, *opr, left_expr, right_expr, expr.span, expr_context)?
             },
             ExprNodeEnum::InfixOpr(opr, left_expr, right_expr) => {
-                self.lower_infix_opr(ir_context, *opr, left_expr, right_expr, expr.span, context_type)?
+                self.lower_infix_opr(ir_context, *opr, left_expr, right_expr, expr.span, expr_context)?
             },
             ExprNodeEnum::PrefixOpr(opr, right_expr) => {
-                self.lower_prefix_opr(ir_context, *opr, right_expr, expr.span, context_type)?
+                self.lower_prefix_opr(ir_context, *opr, right_expr, expr.span, expr_context)?
             },
             ExprNodeEnum::ConditionalChain(conditional_chain) => {
-                IRExprResult::Value(self.lower_conditional_chain(ir_context, conditional_chain, context_type)?)
+                IRExprResult::Value(self.lower_conditional_chain(ir_context, conditional_chain, expr_context)?)
             },
             ExprNodeEnum::Void => {
-                if let IRExprContext::Value(_) = context_type {
+                if let IRExprContext::Value(_) = expr_context {
                     let void_type = self.primitive_type(PrimitiveType::Void)?;
                     IRExprResult::Value(self.get_type_zero(void_type))
                 } else {
                     IRExprResult::Type(self.primitive_type(PrimitiveType::Void)?)
                 }
             },
-            ExprNodeEnum::Brackets(expr) => self.lower_expr(ir_context, expr, context_type)?,
+            ExprNodeEnum::Brackets(expr) => self.lower_expr(ir_context, expr, expr_context)?,
             ExprNodeEnum::Empty => IRExprResult::Empty,
             _ => todo!("lower_expr 2")
         };
-        if let IRExprContext::TypeConstraint(type_id) = context_type && let IRExprResult::Trait(trait_id) = result && !self.type_impls_trait(*type_id, trait_id)? {
+        if let IRExprContext::TypeConstraint(type_id) = expr_context && let IRExprResult::Trait(trait_id) = result && !self.type_impls_trait(*type_id, trait_id)? {
             return Ok(IRExprResult::NoTypeConstraintMatch);
         }
         Ok(result)
@@ -317,19 +319,23 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(result)
     }
 
-    fn lower_expr_first_name(&mut self, ir_context: &mut IRContext<'ctx>, name: &str, span: Span, context_type: &IRExprContext<'ctx>) -> Result<IRExprResult<'ctx>, CompilerError> {
+    fn lower_expr_first_name(&mut self, ir_context: &mut IRContext<'ctx>, name: &str, span: Span, expr_context: &IRExprContext<'ctx>) -> Result<IRExprResult<'ctx>, CompilerError> {
         if let IRContext::FunContext(fun_context) = ir_context {
-            if let IRExprContext::Value(_) = context_type && let Some(var) = fun_context.vars.iter().find(|var| var.name == name) {
+            if let IRExprContext::Value(_) = expr_context && let Some(var) = fun_context.vars.iter().find(|var| var.name == name) {
                 if var.moved {
                     return Err(self.error(SemanticError::MovedValue, Some(span)));
                 }
                 return Ok(IRExprResult::Place(var.place.clone()));
             }
             let search_scope = self.ir_function(fun_context.fun).parent_scope;
-            if let IRExprContext::Function = context_type && let Some(fun_result) = self.lower_fun_name(search_scope, name, span)? {
-                return Ok(fun_result);
+            if let IRExprContext::Function = expr_context {
+                return if let Some(fun_result) = self.lower_fun_name(search_scope, name, span)? {
+                    Ok(fun_result)
+                } else {
+                    Err(self.error(SemanticError::ExpectedFunction, Some(span)))
+                };
             }
-        } else if let IRExprContext::Impl(ctx_template_value) = context_type && let IRContext::ImplDefContext(parent_scope, matches_map, templates_map) = ir_context {
+        } else if let IRExprContext::Impl(ctx_template_value) = expr_context && let IRContext::ImplDefContext(parent_scope, matches_map, templates_map) = ir_context {
             for template_match in matches_map.keys() {
                 if template_match == name {
                     templates_map.insert(template_match.clone(), ctx_template_value.clone());
@@ -350,10 +356,13 @@ impl<'ctx> CodeLowerer<'ctx> {
         if let Some(result) = self.lower_struct_name(scope, name, span)? {
             return Ok(result);
         }
-        if let IRExprContext::Trait(self_type) = context_type && let Some(result) = self.lower_trait_name(scope, name, *self_type, span)? {
+        if let Some(result) = self.lower_type_def_name(scope, name, span)? {
             return Ok(result);
         }
-        if let IRExprContext::TypeConstraint(type_id) = context_type && let Some(result) = self.lower_trait_name(scope, name, *type_id, span)? {
+        if let IRExprContext::Trait(self_type) = expr_context && let Some(result) = self.lower_trait_name(scope, name, *self_type, span)? {
+            return Ok(result);
+        }
+        if let IRExprContext::TypeConstraint(self_type) = expr_context && let Some(result) = self.lower_trait_name(scope, name, *self_type, span)? {
             return Ok(result);
         }
         if let Some(module) = self.get_module_scope_in_scope(scope, name) {
@@ -403,6 +412,15 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(None)
     }
 
+    pub fn lower_type_def_name(&mut self, search_scope: IRScopeId, type_def_name: &str, span: Span) -> Result<Option<IRExprResult<'ctx>>, CompilerError> {
+        if let Some((type_def_scope, type_def)) = self.find_type_def_in_scope(search_scope, type_def_name, Some(span))? {
+            let ir_context = &mut IRContext::ScopeContext(type_def_scope);
+            let type_id = self.get_type(ir_context, &type_def.expr, &IRExprContext::Type)?;
+            return Ok(Some(IRExprResult::Type(type_id)));
+        }
+        Ok(None)
+    }
+
     pub fn lower_trait_name(&mut self, search_scope: IRScopeId, trait_name: &str, self_type: IRTypeId, span: Span) -> Result<Option<IRExprResult<'ctx>>, CompilerError> {
         if let Some((trait_scope, trait_def)) = self.find_trait_def_in_scope(search_scope, trait_name, Some(span))? {
             if !trait_def.templates.templates.is_empty() {
@@ -414,15 +432,15 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(None)
     }
 
-    pub fn lower_expr_literal(&mut self, literal: &Literal, context_type: &IRExprContext<'ctx>) -> Result<IRExprValueResult<'ctx>, CompilerError> {
-        let ctx_type = if let IRExprContext::Value(ctx_t) = context_type { *ctx_t } else { panic!() };
+    pub fn lower_expr_literal(&mut self, literal: &Literal, expr_context: &IRExprContext<'ctx>) -> Result<IRExprValueResult<'ctx>, CompilerError> {
+        let ctx_type = if let IRExprContext::Value(ctx_t) = expr_context { *ctx_t } else { panic!() };
         let result = match &literal {
             Literal::Bool(v) => {
                 let llvm_value = if *v { self.llvm_context.bool_type().const_all_ones() } else { self.llvm_context.bool_type().const_zero() }.into();
                 IRExprValueResult{ type_id: self.primitive_type(PrimitiveType::Bool)?, llvm_value }
             },
             Literal::Char(ch) => {
-                IRExprValueResult{ type_id: self.primitive_type(PrimitiveType::Char)?, llvm_value: self.llvm_context.i32_type().const_int(*ch as u64, false).into() }
+                IRExprValueResult{ type_id: self.primitive_type(PrimitiveType::Char)?, llvm_value: self.llvm_context.i8_type().const_int(*ch as u64, false).into() }
             },
             Literal::UnresolvedInteger(int) => {
                 let default = (self.primitive_type(PrimitiveType::I32)?, self.llvm_context.i32_type());
@@ -452,8 +470,8 @@ impl<'ctx> CodeLowerer<'ctx> {
             },
             Literal::String(string) => {
                 let ptr_value = self.builder.build_global_string_ptr(string, "global_string").unwrap();
-                let u8_type = self.primitive_type(PrimitiveType::U8)?;
-                let slice_type = self.slice_type(u8_type)?;
+                let char_type = self.primitive_type(PrimitiveType::Char)?;
+                let slice_type = self.slice_type(char_type)?;
                 let unsized_ref_type = self.unsized_ref_type(slice_type, false)?;
                 IRExprValueResult { type_id: unsized_ref_type, llvm_value: self.unsized_ref_value(unsized_ref_type, ptr_value.as_pointer_value(), string.len() as u64)? }
             },
@@ -466,18 +484,18 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(result)
     }
 
-    pub fn lower_args(&mut self, ir_context: &mut IRContext<'ctx>, args_expr: &Box<ExprNode>, context_types: &[IRExprContext<'ctx>], any_size: bool) -> Result<Vec<(IRExprResult<'ctx>, Span)>, CompilerError> {
-        let args_len = context_types.len();
+    pub fn lower_args(&mut self, ir_context: &mut IRContext<'ctx>, args_expr: &Box<ExprNode>, expr_contexts: &[IRExprContext<'ctx>], any_size: bool) -> Result<Vec<(IRExprResult<'ctx>, Span)>, CompilerError> {
+        let args_len = expr_contexts.len();
         let mut args: Vec<(IRExprResult<'ctx>, Span)> = Vec::new();
         let mut i: usize = 0;
         let mut cur_expr = args_expr.clone();
         while i < args_len || any_size {
-            let context_type = context_types.get(i).unwrap_or(&context_types[0]);
-            let expr_result = self.lower_expr(ir_context, cur_expr.as_ref(), context_type)?;
+            let expr_context = expr_contexts.get(i).unwrap_or(&expr_contexts[0]);
+            let expr_result = self.lower_expr(ir_context, cur_expr.as_ref(), expr_context)?;
             if let IRExprResult::Empty = expr_result {
                 break;
             } else if let IRExprResult::CommaSeperated(left_expr, right_expr) = expr_result {
-                let arg_result = self.lower_expr(ir_context, left_expr.as_ref(), context_type)?;
+                let arg_result = self.lower_expr(ir_context, left_expr.as_ref(), expr_context)?;
                 args.push((arg_result, left_expr.span));
                 if i + 1 >= args_len && !any_size {
                     i += 2;
@@ -497,18 +515,18 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(args)
     }
 
-    pub fn lower_args_values(&mut self, ir_context: &mut IRContext<'ctx>, args_expr: &Box<ExprNode>, context_types: &[IRExprContext<'ctx>], any_size: bool) -> Result<Vec<IRExprValueResult<'ctx>>, CompilerError> {
-        let args = self.lower_args(ir_context, args_expr, context_types, any_size)?;
+    pub fn lower_args_values(&mut self, ir_context: &mut IRContext<'ctx>, args_expr: &Box<ExprNode>, expr_contexts: &[IRExprContext<'ctx>], any_size: bool) -> Result<Vec<IRExprValueResult<'ctx>>, CompilerError> {
+        let args = self.lower_args(ir_context, args_expr, expr_contexts, any_size)?;
         let mut args_values = Vec::new();
         for (i, (expr_result, span)) in args.iter().enumerate() {
-            let ctx_t = context_types.get(i).unwrap_or(&context_types[0]);
+            let ctx_t = expr_contexts.get(i).unwrap_or(&expr_contexts[0]);
             args_values.push(self.ensure_expr_result_value(ir_context, expr_result, true, *span, ctx_t)?);
         }
         Ok(args_values)
     }
 
-    pub fn lower_args_types(&mut self, ir_context: &mut IRContext<'ctx>, args_expr: &Box<ExprNode>, context_types: &[IRExprContext<'ctx>]) -> Result<Vec<IRTypeId>, CompilerError> {
-        let args = self.lower_args(ir_context, args_expr, context_types, false)?;
+    pub fn lower_args_types(&mut self, ir_context: &mut IRContext<'ctx>, args_expr: &Box<ExprNode>, expr_contexts: &[IRExprContext<'ctx>]) -> Result<Vec<IRTypeId>, CompilerError> {
+        let args = self.lower_args(ir_context, args_expr, expr_contexts, false)?;
         let mut args_types = Vec::new();
         for (i, (expr_result, span)) in args.iter().enumerate() {
             args_types.push(self.ensure_expr_result_type(expr_result, *span)?);
@@ -516,11 +534,11 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(args_types)
     }
 
-    pub fn lower_args_traits(&mut self, ir_context: &mut IRContext<'ctx>, args_expr: &Box<ExprNode>, context_types: &[IRExprContext<'ctx>]) -> Result<Vec<IRTraitId>, CompilerError> {
-        let args = self.lower_args(ir_context, args_expr, context_types, false)?;
+    pub fn lower_args_traits(&mut self, ir_context: &mut IRContext<'ctx>, args_expr: &Box<ExprNode>, expr_contexts: &[IRExprContext<'ctx>]) -> Result<Vec<IRTraitId>, CompilerError> {
+        let args = self.lower_args(ir_context, args_expr, expr_contexts, false)?;
         let mut args_types = Vec::new();
         for (i, (expr_result, span)) in args.iter().enumerate() {
-            args_types.push(self.ensure_expr_result_trait(expr_result, *span, &context_types[i])?);
+            args_types.push(self.ensure_expr_result_trait(expr_result, *span, &expr_contexts[i])?);
         }
         Ok(args_types)
     }
@@ -542,14 +560,14 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(templates)
     }
 
-    pub fn lower_args_templates(&mut self, ir_context: &mut IRContext<'ctx>, args_expr: &Box<ExprNode>, context_types: &[IRExprContext<'ctx>]) -> Result<IRExprResult<'ctx>, CompilerError> {
-        let args = self.lower_args(ir_context, args_expr, &context_types, false)?;
+    pub fn lower_args_templates(&mut self, ir_context: &mut IRContext<'ctx>, args_expr: &Box<ExprNode>, expr_contexts: &[IRExprContext<'ctx>]) -> Result<IRExprResult<'ctx>, CompilerError> {
+        let args = self.lower_args(ir_context, args_expr, &expr_contexts, false)?;
         let mut result = Vec::new();
         for (i, (expr_result, span)) in args.iter().enumerate() {
             if let IRExprResult::NoImplMatch = expr_result {
                 return Ok(IRExprResult::NoImplMatch);
             }
-            result.push(self.ensure_expr_result_template_value(ir_context, expr_result, *span, &context_types[i])?);
+            result.push(self.ensure_expr_result_template_value(ir_context, expr_result, *span, &expr_contexts[i])?);
         }
         Ok(IRExprResult::TemplatesValues(result))
     }

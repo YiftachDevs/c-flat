@@ -136,9 +136,9 @@ impl<'ctx> CodeLowerer<'ctx> {
 
         let mut ir_context = IRContext::FunContext(ir_fun_context);
         let result = self.lower_scope(&mut ir_context, fun_def.scope.as_ref().unwrap(), &IRExprContext::Value(Some(return_type)))?;
-        self.drop_vars(&mut ir_context, 0, fun_def.span)?;
 
         if result.type_id != self.primitive_type(PrimitiveType::Never)? {
+            self.drop_vars(&mut ir_context, 0, fun_def.span)?;
             self.builder.build_return(Some(&result.llvm_value)).expect("Return build failed");
         }
         

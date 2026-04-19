@@ -131,8 +131,9 @@ impl<'ctx> CodeLowerer<'ctx> {
                 } else {
                     self.ensure_expr_result_value(ir_context, &return_expr_result, true, expr.span, &fun_type_ctx)?
                 };
-                self.load_vars(ir_context.into_fun_context(), saved_vars);
+                self.drop_vars(ir_context, 0, expr.span)?;
                 self.builder.build_return(Some(&return_result.llvm_value)).expect("Return build failed");
+                self.load_vars(ir_context.into_fun_context(), saved_vars);
             },
             ControlFlow::Skip { label, span } => {
                 let loop_idx = self.find_loop_idx(ir_context.into_fun_context(), control_flow, label, *span)?;

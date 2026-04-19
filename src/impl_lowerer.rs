@@ -163,6 +163,11 @@ impl<'ctx> CodeLowerer<'ctx> {
         let mut ir_context = IRContext::ImplDefContext(parent_scope, index_map, IndexMap::new());
         let expr_result = self.lower_expr(&mut ir_context, expr, &IRExprContext::Impl(IRTemplateValue::Type(target_type)))?;
         if let IRExprResult::Type(result_type) = expr_result && result_type == target_type && let IRContext::ImplDefContext(_, _, map) = ir_context {
+            for key in keys.iter() {
+                if !map.contains_key(key) {
+                    return Err(self.error(SemanticError::UnresolvableTemplate(key.clone()), Some(expr.span)));
+                }
+            }
             return Ok(Some(map));
         }
         Ok(None)

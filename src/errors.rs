@@ -30,9 +30,8 @@ pub enum SyntaxError {
     ExpectedPrimaryExpression,
     UndeducibleType,
     ScriptEndedTooEarly,
-    ExpectedLowercaseName,
-    ExpectedUppercaseName,
     ExpectedName,
+    MissingSemicolon,
     ExpectedToken(&'static str)
 }
 
@@ -43,9 +42,8 @@ impl SyntaxError {
             Self::ExpectedNumeral => ("Expected Numeral", None),
             Self::ExpectedPrimaryExpression => ("Expected Primary Expression", None),
             Self::UndeducibleType => ("Undeducible Type", None),
+            Self::MissingSemicolon => ("Missing Semicolon", None),
             Self::ScriptEndedTooEarly => ("Script Ended Too Early", None),
-            Self::ExpectedLowercaseName => ("Expected Lowercase Name", None),
-            Self::ExpectedUppercaseName => ("Expected Uppercase Name", None),
             Self::ExpectedName => ("Expected Name", None),
             Self::ExpectedToken(tok) => ("Expected Specific Token", Some(format!("Expected '{}'", tok))),
         }
@@ -84,6 +82,7 @@ pub enum SemanticError {
     LoadingUnsized,
     UninitializedStatic,
     InvalidOpr(String),
+    UnresolvableTemplate(String)
 }
 
 impl SemanticError {
@@ -118,7 +117,8 @@ impl SemanticError {
             Self::ExpectdConstant => ("Expected Constant", None),
             Self::LoadingUnsized => ("Cannot load Unsized Value", None),
             Self::UninitializedStatic => ("Uninitialized Static", None),
-            Self::InvalidOpr(opr) => ("Invalid Opr", Some(format!("Cannot use opr '{}' in this context", opr)))
+            Self::InvalidOpr(opr) => ("Invalid Opr", Some(format!("Cannot use opr '{}' in this context", opr))),
+            Self::UnresolvableTemplate(t) => ("Unresolvable Template", Some(format!("Cannot resolve template '{}'", t)))
         }
     }
 }

@@ -2,7 +2,7 @@ use std::any::Any;
 
 use inkwell::{AddressSpace, types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum}, values::{BasicValue, BasicValueEnum, PointerValue}};
 
-use crate::{code_lowerer::{CodeLowerer, IRContext, IRExprContext, IRScope, IRScopeId, IRScopePath, IRStruct, IRTemplateValue, IRTemplatesMap, IRType, IRTypeEnum, IRTypeId, IRVarDeclaration, IRVarDeclarations, IRVariable, IRVariables, PrimitiveType}, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprPlaceResult, IRExprResult, IRExprValueResult}, parser::{ExprNode, Span, Struct, Templates}};
+use crate::{code_lowerer::{CodeLowerer, IRContext, IRExprContext, IRScope, IRScopeId, IRScopePath, IRStruct, IRTemplateValue, IRTemplatesMap, IRType, IRTypeEnum, IRTypeId, IRVarDeclaration, IRVarDeclarations, IRVariable, IRVariables, PrimitiveType}, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprPlaceResult, IRExprResult, IRExprValueResult}, parser::{ExprNode, Span, Struct, Templates, TypeDef}};
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn find_struct_def_in_scope(&self, parent_scope: IRScopeId, name: &str, opt_call_span: Option<Span>) -> Result<Option<(IRScopeId, &'ctx Struct)>, CompilerError> {
@@ -15,12 +15,22 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(None)
     }
 
+    pub fn find_type_def_in_scope(&self, parent_scope: IRScopeId, name: &str, opt_call_span: Option<Span>) -> Result<Option<(IRScopeId, &'ctx TypeDef)>, CompilerError> {
+        if let Some(actual_scope) = self.get_name_parent_scope(parent_scope, name, opt_call_span)? {
+            let ir_scope = self.ir_scope(actual_scope);
+            if let Some(def) = ir_scope.ast_def.unwrap().type_defs.iter().find(|def| def.name == name) {
+                return Ok(Some((actual_scope, def)));
+            }
+        }
+        Ok(None)
+    }
+
     pub fn primitive_type(&mut self, prim: PrimitiveType) -> Result<IRTypeId, CompilerError> {
         let ir_type_enum = IRTypeEnum::Primitive(prim);
         let llvm_type: BasicTypeEnum = match prim {
-            PrimitiveType::I8 | PrimitiveType::U8 => self.llvm_context.i8_type().into(),
+            PrimitiveType::I8 | PrimitiveType::U8 | PrimitiveType::Char => self.llvm_context.i8_type().into(),
             PrimitiveType::I16 | PrimitiveType::U16 => self.llvm_context.i16_type().into(),
-            PrimitiveType::I32 | PrimitiveType::U32 | PrimitiveType::Char => self.llvm_context.i32_type().into(),
+            PrimitiveType::I32 | PrimitiveType::U32 => self.llvm_context.i32_type().into(),
             PrimitiveType::I64 | PrimitiveType::U64 => self.llvm_context.i64_type().into(),
             PrimitiveType::I128 | PrimitiveType::U128 => self.llvm_context.i128_type().into(),
             PrimitiveType::F16 => self.llvm_context.f16_type().into(),

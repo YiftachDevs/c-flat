@@ -38,7 +38,7 @@ impl Template {
         if let Some(const_value) = Const::is_from_def(parser)? {
             return Ok(Self::Const(const_value));
         }
-        let key = parser.next_name(false)?;
+        let key = parser.next_name()?;
         let mut contraints = None;
         if parser.is_next(":") {
             contraints = Some(ExprNode::primary_from_def(parser)?);
@@ -241,7 +241,7 @@ impl Label {
             return Ok(None);
         }
         parser.end_span(&mut span);
-        Ok(Some(Self { label: parser.next_name(true)?, span }))
+        Ok(Some(Self { label: parser.next_name()?, span }))
     }
 
     fn to_string(&self) -> String {
@@ -283,6 +283,7 @@ pub struct Scope {
     pub functions: Vec<Function>,
     pub structs: Vec<Struct>,
     pub enums: Vec<Enum>,
+    pub type_defs: Vec<TypeDef>,
     pub modules: Vec<Module>,
     pub implementations: Vec<Implementation>,
     pub traits: Vec<Trait>,
@@ -327,9 +328,15 @@ pub struct Struct {
 
 #[derive(PartialEq, Clone)]
 pub struct Enum {
-    name: String,
-    templates: Templates,
-    structs: Structs
+    pub name: String,
+    pub templates: Templates,
+    pub structs: Structs
+}
+
+#[derive(PartialEq, Clone)]
+pub struct TypeDef {
+    pub name: String,
+    pub expr: ExprNode
 }
 
 #[derive(PartialEq, Clone)]
@@ -555,20 +562,16 @@ impl PostfixOpr {
             PostfixOpr::Tmp  
         } else if cur_char == '.' {
             let mut span: Span = parser.get_span_start()?;
-            let name: String = parser.next_name(true)?;
+            let name: String = parser.next_name()?;
             parser.end_span(&mut span);
             expr_result = ExprNode { value: ExprNodeEnum::Name(name), span }; 
             PostfixOpr::Mem
         } else if cur_char == ':' {
             let mut span: Span = parser.get_span_start()?;
-            if parser.is_name_start(true)? {
-                let name: String = parser.next_name(true)?;
+            if parser.is_name_start()? {
+                let name: String = parser.next_name()?;
                 parser.end_span(&mut span);
                 expr_result = ExprNode { value: ExprNodeEnum::Name(name), span };
-            } else if parser.is_name_start(false)? {
-                let name: String = parser.next_name(false)?;
-                parser.end_span(&mut span);
-                expr_result = ExprNode { value: ExprNodeEnum::Name(name), span };  
             } else {
                 return Err(parser.error(CompilerErrorType::SyntaxError(SyntaxError::ExpectedName)));
             }
@@ -875,11 +878,8 @@ impl ExprNode {
             } else { None };
             parser.ensure_next("]")?;
             result_enum = ExprNodeEnum::Array(Box::new(arr_expr), size);
-        } else if parser.is_name_start(false)? {
-            let name: String = parser.next_name(false)?;
-            result_enum = ExprNodeEnum::Name(name);
-        } else if parser.is_name_start(true)? {
-            let name: String = parser.next_name(true)?;
+        } else if parser.is_name_start()? {
+            let name: String = parser.next_name()?;
             result_enum = ExprNodeEnum::Name(name);
         } else {
             return Err(parser.error(CompilerErrorType::SyntaxError(SyntaxError::ExpectedPrimaryExpression)));
@@ -942,7 +942,7 @@ impl Variable {
         let is_mut: bool = parser.is_next("mut");
         let mut refs = vec![];
         loop { if parser.is_next("&mut") { refs.push(true); } else if parser.is_next("&") { refs.push(false);} else { break; }}
-        let name: String = parser.next_name(true)?;
+        let name: String = parser.next_name()?;
         if name == "self".to_string() {
             parser.end_span(&mut span);
             let mut expr_enum = ExprNode { value: ExprNodeEnum::Name("Self".to_string()), span };
@@ -1001,7 +1001,7 @@ impl Const {
         if !parser.is_next("const") {
             return Ok(None);
         }
-        let name: String = parser.next_name(false)?;
+        let name: String = parser.next_name()?;
         parser.ensure_next(":")?;
         let var_type = ExprNode::primary_from_def(parser)?;
         let init_expr = if parser.is_next("=") { Some(ExprNode::from_def(parser, true)?) } else { None };
@@ -1098,7 +1098,7 @@ impl Function {
             return Ok(None);
         }
         let mut span: Span = parser.get_span_start()?;
-        let name: String = parser.next_name(true)?;
+        let name: String = parser.next_name()?;
         parser.end_span(&mut span);
         let templates: Templates = Templates::is_from_def(parser)?;
         let args: Variables = Variables::from_def(parser, false)?;
@@ -1136,7 +1136,7 @@ impl Struct {
     }
 
     pub fn from_after_def(parser: &mut Parser) -> Result<Self, CompilerError> {
-        let name: String = parser.next_name(false)?;
+        let name: String = parser.next_name()?;
         let templates: Templates = Templates::is_from_def(parser)?;
         let vars: Variables = if parser.is_next(";") { Variables { variables: Vec::new() } } else { Variables::from_def(parser, true)? };
         Ok(Self { name, templates, vars })
@@ -1158,7 +1158,7 @@ impl Enum {
         if !parser.is_next("enum") {
             return Ok(None);
         }
-        let name: String = parser.next_name(false)?;
+        let name: String = parser.next_name()?;
         let templates: Templates = Templates::is_from_def(parser)?;
         let structs: Structs = Structs::from_def(parser)?;
         Ok(Some(Self { name, templates, structs }))
@@ -1172,6 +1172,19 @@ impl ToString for Enum {
             self.templates.to_string(),
             self.structs.to_string()
         )
+    }
+}
+
+impl TypeDef {
+    pub fn is_from_def(parser: &mut Parser) -> Result<Option<Self>, CompilerError> {
+        if !parser.is_next("type") {
+            return Ok(None);
+        }
+        let name: String = parser.next_name()?;
+        parser.ensure_next("=")?;
+        let expr = ExprNode::from_def(parser, false)?;
+        parser.ensure_next(";");
+        Ok(Some(Self { name, expr }))
     }
 }
 
@@ -1210,7 +1223,7 @@ impl Trait {
         if !parser.is_next("trait") {
             return Ok(None);
         }
-        let name: String = parser.next_name(false)?;
+        let name: String = parser.next_name()?;
         let templates: Templates = Templates::is_from_def(parser)?;
         let sub_traits = if parser.is_next(":") {
             Some(Box::new(ExprNode::primary_from_def(parser)?))
@@ -1242,6 +1255,10 @@ impl Statement {
         } else {
             let expr: ExprNode = ExprNode::from_def(parser, true)?;
             let is_final_value: bool = !parser.is_next(";");
+            parser.skip_whitespace()?;
+            if is_final_value && parser.cur_char()? != '}' {
+                return Err(parser.error(CompilerErrorType::SyntaxError(SyntaxError::MissingSemicolon)));
+            }
             return Ok(Statement::Expression { expr, is_final_value });
         }
     }
@@ -1255,6 +1272,7 @@ impl Scope {
             functions: Vec::new(),
             structs: Vec::new(),
             enums: Vec::new(),
+            type_defs: Vec::new(),
             implementations: Vec::new(),
             traits: Vec::new(),
             modules: Vec::new(),
@@ -1292,6 +1310,8 @@ impl Scope {
             self.structs.push(strct);
         } else if let Some(enm) = Enum::is_from_def(parser)? {
             self.enums.push(enm);
+        } else if let Some(type_def) = TypeDef::is_from_def(parser)? {
+            self.type_defs.push(type_def);
         } else if let Some(imp) = Implementation::is_from_def(parser)? {
             self.implementations.push(imp);
         } else if let Some(trt) = Trait::is_from_def(parser)? {
@@ -1320,7 +1340,7 @@ impl Module {
         if !parser.is_next("mod") {
             return Ok(None);
         }
-        let name: String = parser.next_name(true)?;
+        let name: String = parser.next_name()?;
         let scope: Scope = Scope::from_def(parser)?;
         Ok(Some(Module { name, scope }))
     }
@@ -1537,14 +1557,16 @@ impl<'fctx> Parser<'fctx> {
         let file_text: &Vec<char> = self.file_context.files.get(&self.cur_file_id).unwrap();
         if let Some(ch) = file_text.get(self.index).copied() {
             return Ok(ch);
+        } else {
+            return Ok('\0');
         }
         let err = CompilerError { err_type: CompilerErrorType::SyntaxError(SyntaxError::ScriptEndedTooEarly), file: self.file_context.get_path(self.cur_file_id), span: None , line_str: "".to_string() };
         Err(err)
     }
 
-    pub fn is_name_start(&mut self, is_lower_case: bool) -> Result<bool, CompilerError> {
+    pub fn is_name_start(&mut self) -> Result<bool, CompilerError> {
         let ch = self.cur_char()?;
-        Ok((ch >= 'a' && ch <= 'z' && is_lower_case) || (!is_lower_case && ch >= 'A' && ch <= 'Z'))
+        Ok(ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z')
     }
 
     pub fn is_num_start(&mut self) -> Result<bool, CompilerError> {
@@ -1567,11 +1589,11 @@ impl<'fctx> Parser<'fctx> {
         Ok(result)
     }
 
-    pub fn next_name(&mut self, is_lower_case: bool) -> Result<String, CompilerError> {
+    pub fn next_name(&mut self) -> Result<String, CompilerError> {
         self.skip_whitespace()?;
         let start_index: usize = self.index;
-        if !self.is_name_start(is_lower_case)? {
-            return Err(self.error(CompilerErrorType::SyntaxError(if is_lower_case { SyntaxError::ExpectedLowercaseName } else { SyntaxError::ExpectedUppercaseName })));
+        if !self.is_name_start()? {
+            return Err(self.error(CompilerErrorType::SyntaxError(SyntaxError::ExpectedName)));
         }
         self.index += 1;
         while let Ok(ch) = self.cur_char() {

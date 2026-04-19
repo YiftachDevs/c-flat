@@ -4,14 +4,16 @@ import std/heap.cf;
 
 extern fun getchar() -> char;
 extern fun putchar(chr: char) -> char;
-extern fun puts(c_str: &u8);
+extern fun puts(c_str: &char);
 
-fun print(str: &[u8]) {
-    puts(str.as_ref());
+fun print(str: &[char]) {
+    let mut null_terminated = String:from(str);
+    null_terminated.push('\0');
+    puts(null_terminated.as_ref());
 }
 
 impl char {
-    fun utf8_len(self) -> u64 {
+    fun utf8_len(self) -> usize {
         let num = self as u32;
         if num < 0x7F {
             1
@@ -32,10 +34,10 @@ fun read() -> String {
         if ch == '\n' | ch == '\0' {
             break;
         }
-        let mut idx: u64 = 0;
+        let mut idx: usize = 0;
         while idx < ch.utf8_len() {
-            let utf8_slice: u8 = 0;
-            mem:copy<u8>(&utf8_slice, (&ch as u64 + idx) as &u8, 1);
+            let utf8_slice: char = 0;
+            mem:copy<char>(&utf8_slice, (&ch as usize + idx) as &char, 1);
             input.push(utf8_slice);
             idx += 1;
         }

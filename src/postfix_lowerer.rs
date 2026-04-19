@@ -36,7 +36,6 @@ impl<'ctx> CodeLowerer<'ctx> {
             _ => panic!()
         }
     }
-
     fn lower_postfix_opr_index(&mut self, ir_context: &mut IRContext<'ctx>, left_expr_result: IRExprResult<'ctx>, right_expr: &Box<ExprNode>, span: Span) -> Result<IRExprResult<'ctx>, CompilerError> {
         let type_id = left_expr_result.get_type_id();
         if let Some(_) = self.find_impl_of_core_trait(type_id, &CoreTraitFun::Index)? {
@@ -92,8 +91,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             let templates_values = self.ensure_expr_result_template_values(templates_values);
             let trait_id = self.lower_trait(parent_scope, trait_name.as_str(), &templates_values, trait_type_id, Some(span))?;
             Ok(IRExprResult::Trait(trait_id))
-        }
-        else {
+        } else {
             return Err(self.error(SemanticError::UnrecognizedName, Some(span)));
         }
     }
@@ -110,6 +108,8 @@ impl<'ctx> CodeLowerer<'ctx> {
                     return Ok(fun_result);
                 } else if let Some(struct_result) = self.lower_struct_name(scope, name.as_str(), right_expr.span)? {
                     return Ok(struct_result);
+                } else if let Some(type_def_result) = self.lower_type_def_name(scope, name.as_str(), right_expr.span)? {
+                    return Ok(type_def_result);
                 } else if let IRExprContext::Trait(self_type) = context_type && let Some(trait_result) = self.lower_trait_name(scope, name.as_str(), *self_type, right_expr.span)? {
                     return Ok(trait_result);
                 } else {
@@ -180,12 +180,8 @@ impl<'ctx> CodeLowerer<'ctx> {
             let mut args_context_types = self.ir_function(fun_id).args.iter().map(|arg| IRExprContext::Value(Some(arg.type_id))).collect::<Vec<IRExprContext<'ctx>>>();
             let llvm_args = if let Some(self_value) = opt_self_value {
                 let mut res = if let IRExprContext::Value(Some(ctx_self)) = args_context_types.remove(0) {
-                    println!("{}", right_expr.to_string());
-                    println!("a");
                     let auto_ref_result = self.auto_reference(ir_context, *self_value, ctx_self, span)?;
-                    println!("a"); 
                     let e = vec![self.load_if_place(ir_context, auto_ref_result, span)?];
-                    println!("a");
                     e
                 } else { panic!() };
                 res.extend(self.lower_args_values(ir_context, right_expr, &args_context_types, false)?);
@@ -197,7 +193,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 return Err(self.error(SemanticError::FunctionMissingBody { fun_str: self.format_scope_path(self.ir_function(fun_id).scope) }, Some(span)));
             }
             let fun_call = self.builder.build_call(self.ir_function(fun_id).llvm_value, &llvm_args, "fun_call_tmp").unwrap();
-            self.drop_vars(ir_context, prev_vars_len, span)?;
+            // self.drop_vars(ir_context, prev_vars_len, span)?;
             let ret_value = fun_call.try_as_basic_value().unwrap_basic();
             Ok(IRExprValueResult { type_id: self.ir_function(fun_id).return_type, llvm_value: ret_value })
         } else {
