@@ -82,7 +82,8 @@ pub enum SemanticError {
     LoadingUnsized,
     UninitializedStatic,
     InvalidOpr(String),
-    UnresolvableTemplate(String)
+    UnresolvableTemplate(String),
+    ExpectedIter,
 }
 
 impl SemanticError {
@@ -118,7 +119,8 @@ impl SemanticError {
             Self::LoadingUnsized => ("Cannot load Unsized Value", None),
             Self::UninitializedStatic => ("Uninitialized Static", None),
             Self::InvalidOpr(opr) => ("Invalid Opr", Some(format!("Cannot use opr '{}' in this context", opr))),
-            Self::UnresolvableTemplate(t) => ("Unresolvable Template", Some(format!("Cannot resolve template '{}'", t)))
+            Self::UnresolvableTemplate(t) => ("Unresolvable Template", Some(format!("Cannot resolve template '{}'", t))),
+            Self::ExpectedIter => ("Expected Iterator", None)
         }
     }
 }

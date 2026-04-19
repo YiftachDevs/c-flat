@@ -142,6 +142,7 @@ pub enum InfixOpr {
     AsnMul,
     AsnDiv,
     AsnMod,
+    Range,
     Com
 }
 
@@ -193,6 +194,7 @@ pub enum Conditional {
 pub struct ConditionalChain {
     pub kind: Conditional,
     pub label: Option<Label>,
+    pub iter_name: Option<String>,
     pub cond_expr: Option<ExprNode>,
     pub then_scope: Scope,
     pub else_node: Option<Box<ConditionalChain>>,
@@ -373,6 +375,13 @@ impl ConditionalChain {
             return Ok(None);
         };
         parser.end_span(&mut span);
+
+        let iter_name = if kind == Conditional::For {
+            let name = parser.next_name()?;
+            parser.ensure_next("in")?;
+            Some(name)
+        } else { None };
+
         let cond_expr: Option<ExprNode> = if kind != Conditional::Loop { Some(ExprNode::from_def(parser, true)?) } else { None };
 
         let then_scope: Scope = Scope::from_def(parser)?;
@@ -381,10 +390,10 @@ impl ConditionalChain {
                 Some(Box::new(cond_chain))
             } else {
                 let else_scope: Scope = Scope::from_def(parser)?;
-                Some(Box::new(ConditionalChain { kind: Conditional::Else, label: label.clone(), cond_expr: None, then_scope: else_scope, else_node: None, span }))
+                Some(Box::new(ConditionalChain { kind: Conditional::Else, label: label.clone(), cond_expr: None, then_scope: else_scope, iter_name: iter_name.clone(), else_node: None, span }))
             }
         } else { None };
-        return Ok(Some(ConditionalChain { kind, label, cond_expr, then_scope, else_node, span }));
+        return Ok(Some(ConditionalChain { kind, label, cond_expr, then_scope, iter_name, else_node, span }));
     }
 }
 
@@ -417,6 +426,9 @@ impl InfixOpr {
         }
         parser.index += 1;
         let result: InfixOpr = match ch {
+            '.' => if parser.cur_char()? == '.' {
+                parser.index += 1; InfixOpr::Range
+            } else { parser.index -= 1; return Ok(None); }
             'a' => if parser.cur_char()? == 's' {
                 parser.index += 1; InfixOpr::As
             } else {
@@ -473,8 +485,9 @@ impl InfixOpr {
             InfixOpr::Or => 8,
             InfixOpr::LAnd => 9,
             InfixOpr::LOr => 10,
-            InfixOpr::Asn | InfixOpr::AsnAdd | InfixOpr::AsnDiv | InfixOpr::AsnMod | InfixOpr::AsnMul | InfixOpr::AsnSub => 11,
-            InfixOpr::Com => 12
+            InfixOpr::Range => 11,
+            InfixOpr::Asn | InfixOpr::AsnAdd | InfixOpr::AsnDiv | InfixOpr::AsnMod | InfixOpr::AsnMul | InfixOpr::AsnSub => 12,
+            InfixOpr::Com => 13
         }
     }
 
@@ -506,6 +519,7 @@ impl ToString for InfixOpr {
             InfixOpr::Or   => "|".to_string(),
             InfixOpr::LAnd => "&&".to_string(),
             InfixOpr::LOr  => "||".to_string(),
+            InfixOpr::Range  => "..".to_string(),
             InfixOpr::Asn  => "=".to_string(),
             InfixOpr::AsnAdd  => "+=".to_string(),
             InfixOpr::AsnSub  => "-=".to_string(),
@@ -561,6 +575,10 @@ impl PostfixOpr {
             parser.ensure_next(">")?;
             PostfixOpr::Tmp  
         } else if cur_char == '.' {
+            if parser.cur_char()? == '.' {
+                parser.index -= 1;
+                return Ok(None);
+            }
             let mut span: Span = parser.get_span_start()?;
             let name: String = parser.next_name()?;
             parser.end_span(&mut span);

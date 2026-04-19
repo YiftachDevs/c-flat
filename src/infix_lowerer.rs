@@ -114,6 +114,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                     InfixOpr::AsnMul => CoreTraitFun::Mul,
                     InfixOpr::AsnDiv => CoreTraitFun::Div,
                     InfixOpr::AsnMod => CoreTraitFun::Mod,
+                    InfixOpr::Range => CoreTraitFun::UpTo,
                     _ => panic!()
                 }
             }

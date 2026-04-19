@@ -50,6 +50,11 @@ impl Primitive for ();
 
 type usize = u64;
 
+struct Range<T: Integer> {
+    cur: T,
+    end: T
+}
+
 trait Add<T> { fun add(self, other: T) -> Self; }
 trait Sub<T> { fun sub(self, other: T) -> Self; }
 trait Mul<T> { fun mul(self, other: T) -> Self; }
@@ -63,8 +68,9 @@ trait Deref<T> { fun deref(&self) -> &T; fun deref_mut(&mut self) -> &mut T; }
 trait Drop { fun drop(&self); }
 trait AsRef<T> { fun as_ref(&self) -> &T; }
 trait Index<Index_T, Value_T> { fun index(&self, idx: Index_T) -> &Value_T; fun index_mut(&mut self, idx: Index_T) -> &mut Value_T; }
-trait Iter<T> { fun next(&mut self) -> &T; fun has_next(&self) -> bool; }
+trait Iter<T> { fun next(&mut self) -> T; fun has_next(&self) -> bool; }
 trait Copy;
+trait UpTo<T> { fun up_to(self, other: T) -> Range<T>; }
 
 impl<T: Numeral> Add<T> for T { fun add(self, other: Self) -> Self; }
 impl<T: Numeral> Sub<T> for T { fun sub(self, other: Self) -> Self; }
@@ -79,6 +85,7 @@ impl<T: Integer> Bitwise for T { fun not(self) -> Self; fun and(self, other: Sel
 impl<T: Primitive> Copy for T;
 impl<T> Copy for &T;
 impl<T> Copy for &mut T;
+impl<T: Integer> UpTo<T> for T { fun up_to(self, other: T) -> Range<T>; }
 
 impl<T: Drop> &T {
     fun drop(&self) {

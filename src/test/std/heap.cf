@@ -136,11 +136,9 @@ impl<T: ToString> ToString for Vec<T> {
             return "[]".to_string();
         }
         let mut result = "[".to_string();
-        let mut idx: usize = 0;
-        while idx < self.len() {
-            result.extend(self[idx].to_string());
+        for item in self.iter() {
+            result.extend(item.to_string());
             result.extend_from_slice(", ");
-            idx += 1;
         }
         result.pop();
         result.pop();

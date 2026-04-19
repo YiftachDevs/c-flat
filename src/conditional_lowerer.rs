@@ -1,6 +1,6 @@
 use inkwell::{basic_block::BasicBlock, values::{BasicValue, BasicValueEnum}};
 
-use crate::{code_lowerer::{CodeLowerer, IRContext, IRExprContext, IRFunContext, IRLoop, IRPhiValues, PrimitiveType}, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprResult, IRExprValueResult}, parser::{Conditional, ConditionalChain, ControlFlow, Label, Span}};
+use crate::{code_lowerer::{CodeLowerer, IRContext, IRExprContext, IRFunContext, IRLoop, IRPhiValues, IRVarDeclaration, PrimitiveType}, core_lowerer::CoreTraitFun, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprResult, IRExprValueResult}, parser::{Conditional, ConditionalChain, ControlFlow, Label, Span}};
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn lower_conditional_chain(&mut self, ir_context: &mut IRContext<'ctx>, conditional_chain: &ConditionalChain, context_type: &IRExprContext<'ctx>) -> Result<IRExprValueResult<'ctx>, CompilerError> {
@@ -30,6 +30,17 @@ impl<'ctx> CodeLowerer<'ctx> {
         let void_type = self.primitive_type(PrimitiveType::Void)?;
         let never_type = self.primitive_type(PrimitiveType::Never)?;
 
+        let iter_place = if conditional_chain.kind == Conditional::For {
+            let iter_result = self.get_value(ir_context, conditional_chain.cond_expr.as_ref().unwrap(), &IRExprContext::Value(None), false)?;
+            /*if let None = self.find_impl_of_core_trait(iter_result.type_id, &CoreTraitFun::HasNext)? {
+                return Err(self.error(SemanticError::ExpectedIter, Some(conditional_chain.cond_expr.as_ref().unwrap().span)));
+            }*/
+            let temp_name = format!("tmp_iter{}", ir_context.into_fun_context().vars.len());
+            let var_dec = IRVarDeclaration { name: temp_name, type_id: iter_result.type_id, is_mut: true, is_static: false };
+            let var_id = self.alloc_var(ir_context.into_fun_context(), &var_dec, Some(iter_result.llvm_value), Some(conditional_chain.span))?;
+            Some(ir_context.into_fun_context().vars[var_id].place.clone())
+        } else { None };
+
         let then_block = self.llvm_context.append_basic_block(fun_value, "then");
 
         let (cond_block, else_block) = if conditional_chain.kind != Conditional::Else && conditional_chain.kind != Conditional::Loop {
@@ -37,7 +48,11 @@ impl<'ctx> CodeLowerer<'ctx> {
             let else_block = self.llvm_context.append_basic_block(fun_value, "else");
             self.builder.build_unconditional_branch(cond_block).unwrap();
             self.builder.position_at_end(cond_block);
-            let cond_result = self.get_value(ir_context, conditional_chain.cond_expr.as_ref().unwrap(), &IRExprContext::Value(Some(bool_type)), true)?;
+            let cond_result = if conditional_chain.kind == Conditional::For {
+                self.call_core_trait(ir_context, IRExprResult::Place(iter_place.clone().unwrap()), None, &CoreTraitFun::HasNext, conditional_chain.cond_expr.as_ref().unwrap().span)?
+            } else {
+                self.get_value(ir_context, conditional_chain.cond_expr.as_ref().unwrap(), &IRExprContext::Value(Some(bool_type)), true)?
+            };
             self.builder.build_conditional_branch(cond_result.llvm_value.into_int_value(), then_block, else_block).unwrap();
             (Some(cond_block), Some(else_block))
         } else {
@@ -46,7 +61,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         };
         self.builder.position_at_end(then_block);
         
-        if conditional_chain.kind == Conditional::Loop || conditional_chain.kind == Conditional::While {
+        if conditional_chain.kind == Conditional::Loop || conditional_chain.kind == Conditional::While || conditional_chain.kind == Conditional::For {
             let (loop_block, merge_block) = if conditional_chain.kind == Conditional::Loop { (then_block, merge_block) } else { (cond_block.unwrap(), merge_block) };
             let ir_loop = IRLoop { loop_block, merge_block: merge_block, label: conditional_chain.label.clone(), span: conditional_chain.span, ctx_type: context_type.clone(), phi_values: Vec::new() };
             ir_context.into_fun_context().loop_stack.push(ir_loop);
@@ -78,6 +93,22 @@ impl<'ctx> CodeLowerer<'ctx> {
             },
             Conditional::While => {
                 let then_result: IRExprValueResult<'_> = self.lower_scope(ir_context, &conditional_chain.then_scope, &IRExprContext::Value(None))?;
+                let cur_block = self.builder.get_insert_block().unwrap();
+                if then_result.type_id != never_type {
+                    self.builder.build_unconditional_branch(cond_block.unwrap()).unwrap();
+                } else if cur_block.get_terminator().is_none() {
+                    self.builder.build_unreachable().unwrap();
+                }  
+                let ir_loop = ir_context.into_fun_context().loop_stack.pop().unwrap();
+                ir_loop.phi_values
+            },
+            Conditional::For => {
+                let prev_len = ir_context.into_fun_context().vars.len();
+                let next_value = self.call_core_trait(ir_context, IRExprResult::Place(iter_place.unwrap()), None, &CoreTraitFun::Next, conditional_chain.cond_expr.as_ref().unwrap().span)?;
+                let var_dec = IRVarDeclaration { name: conditional_chain.iter_name.as_ref().unwrap().clone(), type_id: next_value.type_id, is_mut: false, is_static: false };
+                self.alloc_var(ir_context.into_fun_context(), &var_dec, Some(next_value.llvm_value), Some(conditional_chain.span))?; 
+                let then_result: IRExprValueResult<'_> = self.lower_scope(ir_context, &conditional_chain.then_scope, &IRExprContext::Value(None))?;
+                self.drop_vars(ir_context, prev_len, conditional_chain.span)?;
                 let cur_block = self.builder.get_insert_block().unwrap();
                 if then_result.type_id != never_type {
                     self.builder.build_unconditional_branch(cond_block.unwrap()).unwrap();

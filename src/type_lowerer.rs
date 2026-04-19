@@ -1,6 +1,6 @@
 use std::any::Any;
 
-use inkwell::{AddressSpace, types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum}, values::{BasicValue, BasicValueEnum, PointerValue}};
+use inkwell::{AddressSpace, types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum}, values::{BasicValue, BasicValueEnum, IntValue, PointerValue}};
 
 use crate::{code_lowerer::{CodeLowerer, IRContext, IRExprContext, IRScope, IRScopeId, IRScopePath, IRStruct, IRTemplateValue, IRTemplatesMap, IRType, IRTypeEnum, IRTypeId, IRVarDeclaration, IRVarDeclarations, IRVariable, IRVariables, PrimitiveType}, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprPlaceResult, IRExprResult, IRExprValueResult}, parser::{ExprNode, Span, Struct, Templates, TypeDef}};
 
@@ -110,7 +110,7 @@ impl<'ctx> CodeLowerer<'ctx> {
     }
 
     pub fn unsized_ref_type(&mut self, unsized_type: IRTypeId, is_mut: bool) -> Result<IRTypeId, CompilerError> {
-        let ptr_type = self.llvm_context.ptr_type(AddressSpace::default());
+        let ptr_type: inkwell::types::PointerType<'_> = self.llvm_context.ptr_type(AddressSpace::default());
         let usize_type = self.llvm_context.i64_type();
         let llvm_type = self.llvm_context.struct_type(&[ptr_type.into(), usize_type.into()], false).into();
         let type_id = self.type_id(IRType { type_enum: IRTypeEnum::UnsizedRef { unsized_type, is_mut }, llvm_type, lowered_impls: None });
@@ -129,6 +129,13 @@ impl<'ctx> CodeLowerer<'ctx> {
         let mut llvm_value = self.ir_type(unsized_ref_type).llvm_type.into_struct_type().get_undef().into();
         llvm_value = self.builder.build_insert_value(llvm_value, ptr_value, 0, "ptr").unwrap();
         llvm_value = self.builder.build_insert_value(llvm_value, self.llvm_context.i64_type().const_int(len, false), 1, "len").unwrap();
+        Ok(llvm_value.as_basic_value_enum())
+    }
+
+    pub fn range_value(&mut self, range_type: IRTypeId, start: IntValue<'ctx>, end: IntValue<'ctx>) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+        let mut llvm_value = self.ir_type(range_type).llvm_type.into_struct_type().get_undef().into();
+        llvm_value = self.builder.build_insert_value(llvm_value, start, 0, "start").unwrap();
+        llvm_value = self.builder.build_insert_value(llvm_value, end, 1, "end").unwrap();
         Ok(llvm_value.as_basic_value_enum())
     }
 

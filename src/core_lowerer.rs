@@ -28,7 +28,10 @@ pub enum CoreTraitFun {
     Index,
     IndexMut,
     FromRawParts,
-    Copy
+    Copy,
+    Next,
+    HasNext,
+    UpTo
 }
 
 impl CoreTraitFun {
@@ -54,6 +57,9 @@ impl CoreTraitFun {
             Self::Index => "Index",
             Self::IndexMut => "Index",
             Self::Copy => "Copy",
+            Self::Next => "Iter",
+            Self::HasNext => "Iter",
+            Self::UpTo => "UpTo",
             _ => panic!()
         }
     }
@@ -82,6 +88,9 @@ impl CoreTraitFun {
             Self::Index => "index",
             Self::IndexMut => "index_mut",
             Self::FromRawParts => "from_raw_parts",
+            Self::Next => "next",
+            Self::HasNext => "has_next",
+            Self::UpTo => "up_to",
             _ => panic!()
         }
     }
@@ -98,6 +107,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             let primitive_trait = self.lower_trait(core_scope, "Primitive", &Vec::new(), type_id, None)?;
             let numeral_trait = self.lower_trait(core_scope, "Numeral", &Vec::new(), type_id, None)?;
             let integer_trait = self.lower_trait(core_scope, "Integer", &Vec::new(), type_id, None)?;
+            let is_integer = self.type_impls_trait(type_id, integer_trait)?;
             if self.type_impls_trait(type_id, numeral_trait)? {
                 self.build_core_trait_funs(type_id, &CoreTraitFun::Add)?;
                 self.build_core_trait_funs(type_id, &CoreTraitFun::Sub)?;
@@ -111,11 +121,14 @@ impl<'ctx> CodeLowerer<'ctx> {
             if self.type_impls_trait(type_id, primitive_trait)? {
                 self.build_core_trait_funs(type_id, &CoreTraitFun::Eq)?;
             }
-            if self.type_impls_trait(type_id, integer_trait)? || type_id == self.primitive_type(PrimitiveType::Bool)? {
+            if is_integer || type_id == self.primitive_type(PrimitiveType::Bool)? {
                 self.build_core_trait_funs(type_id, &CoreTraitFun::Not)?;
                 self.build_core_trait_funs(type_id, &CoreTraitFun::Or)?;
                 self.build_core_trait_funs(type_id, &CoreTraitFun::And)?;
                 self.build_core_trait_funs(type_id, &CoreTraitFun::Xor)?;
+            }
+            if is_integer {
+                self.build_core_trait_funs(type_id, &CoreTraitFun::UpTo)?;
             }
         } else if let IRTypeEnum::Slice { slice_type } = ir_type.type_enum {
             self.build_core_trait_funs(type_id, &CoreTraitFun::AsRef)?;
@@ -239,6 +252,11 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
         let primitive_type = match self.ir_type(self_type).type_enum { IRTypeEnum::Primitive(prim) => prim, _ => panic!() };
         Ok(match core_trait {
+            CoreTraitFun::UpTo => {
+                let global_scope = self.get_global_scope();
+                let struct_id = self.lower_struct(global_scope, "Range", &[IRTemplateValue::Type(self_type)], None)?;
+                self.range_value(struct_id, first_value.into_int_value(), other_value.unwrap().into_int_value())?
+            },
             CoreTraitFun::Not => self.builder.build_not(first_value.into_int_value(), "tmp").unwrap().into(),
             CoreTraitFun::And => self.builder.build_and(first_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into(),
             CoreTraitFun::Or => self.builder.build_or(first_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into(),

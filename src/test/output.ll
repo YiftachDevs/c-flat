@@ -2,50 +2,91 @@
 source_filename = "main_module"
 
 %"Vec<T = char>" = type { ptr, i64, i64 }
+%"Range<T = i32>" = type { i32, i32 }
 %"Vec<T = i32>" = type { ptr, i64, i64 }
+%"SliceIter<T = i32>" = type { ptr, ptr }
 
 @count = internal global i64 0
-@global_string = private unnamed_addr constant [3 x i8] c"[]\00", align 1
-@global_string.1 = private unnamed_addr constant [2 x i8] c"[\00", align 1
-@global_string.2 = private unnamed_addr constant [3 x i8] c", \00", align 1
+@global_string = private unnamed_addr constant [6 x i8] c"sum: \00", align 1
+@global_string.1 = private unnamed_addr constant [3 x i8] c"[]\00", align 1
+@global_string.2 = private unnamed_addr constant [2 x i8] c"[\00", align 1
+@global_string.3 = private unnamed_addr constant [3 x i8] c", \00", align 1
 
 define i64 @main() {
 entry:
-  %tmp2 = alloca %"Vec<T = char>", align 8
+  %tmp519 = alloca %"Vec<T = char>", align 8
+  %tmp4 = alloca %"Vec<T = char>", align 8
+  %i = alloca i32, align 4
+  %tmp_iter3 = alloca %"Range<T = i32>", align 8
+  %sum = alloca i32, align 4
   %vec = alloca %"Vec<T = i32>", align 8
   %tmp0 = alloca [3 x i32], align 4
   store i32 1, ptr %tmp0, align 4
-  %tmp0.repack8 = getelementptr inbounds nuw i8, ptr %tmp0, i64 4
-  store i32 2, ptr %tmp0.repack8, align 4
-  %tmp0.repack9 = getelementptr inbounds nuw i8, ptr %tmp0, i64 8
-  store i32 3, ptr %tmp0.repack9, align 4
+  %tmp0.repack28 = getelementptr inbounds nuw i8, ptr %tmp0, i64 4
+  store i32 124, ptr %tmp0.repack28, align 4
+  %tmp0.repack29 = getelementptr inbounds nuw i8, ptr %tmp0, i64 8
+  store i32 3, ptr %tmp0.repack29, align 4
   %ptr.i = insertvalue { ptr, i64 } undef, ptr %tmp0, 0
   %len.i = insertvalue { ptr, i64 } %ptr.i, i64 3, 1
   %fun_call_tmp1 = call %"Vec<T = i32>" @"Vec<T = i32>:from"({ ptr, i64 } %len.i)
   %fun_call_tmp1.elt = extractvalue %"Vec<T = i32>" %fun_call_tmp1, 0
   store ptr %fun_call_tmp1.elt, ptr %vec, align 8
-  %vec.repack10 = getelementptr inbounds nuw i8, ptr %vec, i64 8
-  %fun_call_tmp1.elt11 = extractvalue %"Vec<T = i32>" %fun_call_tmp1, 1
-  store i64 %fun_call_tmp1.elt11, ptr %vec.repack10, align 8
-  %vec.repack12 = getelementptr inbounds nuw i8, ptr %vec, i64 16
-  %fun_call_tmp1.elt13 = extractvalue %"Vec<T = i32>" %fun_call_tmp1, 2
-  store i64 %fun_call_tmp1.elt13, ptr %vec.repack12, align 8
-  %fun_call_tmp2 = call %"Vec<T = char>" @"Vec<T = i32>:to_string"(ptr nonnull %vec)
-  %fun_call_tmp2.elt = extractvalue %"Vec<T = char>" %fun_call_tmp2, 0
-  store ptr %fun_call_tmp2.elt, ptr %tmp2, align 8
-  %tmp2.repack14 = getelementptr inbounds nuw i8, ptr %tmp2, i64 8
-  %fun_call_tmp2.elt15 = extractvalue %"Vec<T = char>" %fun_call_tmp2, 1
-  store i64 %fun_call_tmp2.elt15, ptr %tmp2.repack14, align 8
-  %tmp2.repack16 = getelementptr inbounds nuw i8, ptr %tmp2, i64 16
-  %fun_call_tmp2.elt17 = extractvalue %"Vec<T = char>" %fun_call_tmp2, 2
-  store i64 %fun_call_tmp2.elt17, ptr %tmp2.repack16, align 8
-  %fun_call_tmp3 = call { ptr, i64 } @"Vec<T = char>:deref_mut"(ptr nonnull %tmp2)
-  %fun_call_tmp4 = call {} @print({ ptr, i64 } %fun_call_tmp3)
-  %fun_call_tmp5 = call {} @"Vec<T = char>:drop"(ptr nonnull %tmp2)
-  %fun_call_tmp6 = call {} @"Vec<T = i32>:drop"(ptr nonnull %vec)
-  %fun_call_tmp7 = call ptr @"mem:heap_count"()
-  %tmp = load i64, ptr %fun_call_tmp7, align 4
-  ret i64 %tmp
+  %vec.repack30 = getelementptr inbounds nuw i8, ptr %vec, i64 8
+  %fun_call_tmp1.elt31 = extractvalue %"Vec<T = i32>" %fun_call_tmp1, 1
+  store i64 %fun_call_tmp1.elt31, ptr %vec.repack30, align 8
+  %vec.repack32 = getelementptr inbounds nuw i8, ptr %vec, i64 16
+  %fun_call_tmp1.elt33 = extractvalue %"Vec<T = i32>" %fun_call_tmp1, 2
+  store i64 %fun_call_tmp1.elt33, ptr %vec.repack32, align 8
+  store i32 0, ptr %sum, align 4
+  store i32 0, ptr %tmp_iter3, align 4
+  %tmp_iter3.repack34 = getelementptr inbounds nuw i8, ptr %tmp_iter3, i64 4
+  store i32 10, ptr %tmp_iter3.repack34, align 4
+  br label %cond
+
+merge:                                            ; preds = %then, %cond
+  %fun_call_tmp14 = call {} @print({ ptr, i64 } { ptr @global_string, i64 5 })
+  %fun_call_tmp15 = call %"Vec<T = char>" @"i32:to_string"(ptr nonnull %sum)
+  %fun_call_tmp15.elt = extractvalue %"Vec<T = char>" %fun_call_tmp15, 0
+  store ptr %fun_call_tmp15.elt, ptr %tmp4, align 8
+  %tmp4.repack35 = getelementptr inbounds nuw i8, ptr %tmp4, i64 8
+  %fun_call_tmp15.elt36 = extractvalue %"Vec<T = char>" %fun_call_tmp15, 1
+  store i64 %fun_call_tmp15.elt36, ptr %tmp4.repack35, align 8
+  %tmp4.repack37 = getelementptr inbounds nuw i8, ptr %tmp4, i64 16
+  %fun_call_tmp15.elt38 = extractvalue %"Vec<T = char>" %fun_call_tmp15, 2
+  store i64 %fun_call_tmp15.elt38, ptr %tmp4.repack37, align 8
+  %fun_call_tmp16 = call { ptr, i64 } @"Vec<T = char>:deref_mut"(ptr nonnull %tmp4)
+  %fun_call_tmp17 = call {} @print({ ptr, i64 } %fun_call_tmp16)
+  %fun_call_tmp18 = call %"Vec<T = char>" @"Vec<T = i32>:to_string"(ptr nonnull %vec)
+  %fun_call_tmp18.elt = extractvalue %"Vec<T = char>" %fun_call_tmp18, 0
+  store ptr %fun_call_tmp18.elt, ptr %tmp519, align 8
+  %tmp519.repack39 = getelementptr inbounds nuw i8, ptr %tmp519, i64 8
+  %fun_call_tmp18.elt40 = extractvalue %"Vec<T = char>" %fun_call_tmp18, 1
+  store i64 %fun_call_tmp18.elt40, ptr %tmp519.repack39, align 8
+  %tmp519.repack41 = getelementptr inbounds nuw i8, ptr %tmp519, i64 16
+  %fun_call_tmp18.elt42 = extractvalue %"Vec<T = char>" %fun_call_tmp18, 2
+  store i64 %fun_call_tmp18.elt42, ptr %tmp519.repack41, align 8
+  %fun_call_tmp20 = call { ptr, i64 } @"Vec<T = char>:deref_mut"(ptr nonnull %tmp519)
+  %fun_call_tmp21 = call {} @print({ ptr, i64 } %fun_call_tmp20)
+  %fun_call_tmp22 = call {} @"Vec<T = char>:drop"(ptr nonnull %tmp519)
+  %fun_call_tmp23 = call {} @"Vec<T = char>:drop"(ptr nonnull %tmp4)
+  %fun_call_tmp24 = call {} @"Vec<T = i32>:drop"(ptr nonnull %vec)
+  %fun_call_tmp25 = call ptr @"mem:heap_count"()
+  %tmp26 = load i64, ptr %fun_call_tmp25, align 4
+  ret i64 %tmp26
+
+then:                                             ; preds = %cond
+  %fun_call_tmp4 = call i32 @"Range<T = i32>:next"(ptr nonnull %tmp_iter3)
+  store i32 %fun_call_tmp4, ptr %i, align 4
+  %tmp = load i32, ptr %sum, align 4
+  %tmp.i = add i32 %tmp, %fun_call_tmp4
+  store i32 %tmp.i, ptr %sum, align 4
+  %tmp11 = load i32, ptr %i, align 4
+  %tmp.i27 = icmp eq i32 %tmp11, 40
+  br i1 %tmp.i27, label %merge, label %cond
+
+cond:                                             ; preds = %then, %entry
+  %fun_call_tmp3 = call i1 @"Range<T = i32>:has_next"(ptr nonnull %tmp_iter3)
+  br i1 %fun_call_tmp3, label %then, label %merge
 }
 
 define %"Vec<T = i32>" @"Vec<T = i32>:from"({ ptr, i64 } %0) {
@@ -257,6 +298,23 @@ define {} @"mem:copy<T = i32>"(ptr %0, ptr %1) {
 entry:
   %fun_call_tmp2 = call {} @memcpy(ptr %0, ptr %1, i64 4)
   ret {} zeroinitializer
+}
+
+define i1 @"Range<T = i32>:has_next"(ptr %0) {
+entry:
+  %tmp1 = load i32, ptr %0, align 4
+  %tmp2.end = getelementptr inbounds nuw i8, ptr %0, i64 4
+  %tmp3 = load i32, ptr %tmp2.end, align 4
+  %tmp.i = icmp slt i32 %tmp1, %tmp3
+  ret i1 %tmp.i
+}
+
+define i32 @"Range<T = i32>:next"(ptr %0) {
+entry:
+  %tmp1 = load i32, ptr %0, align 4
+  %tmp.i = add i32 %tmp1, 1
+  store i32 %tmp.i, ptr %0, align 4
+  ret i32 %tmp1
 }
 
 define {} @print({ ptr, i64 } %0) {
@@ -548,138 +606,6 @@ entry:
   ret {} zeroinitializer
 }
 
-define %"Vec<T = char>" @"Vec<T = i32>:to_string"(ptr %0) {
-entry:
-  %idx = alloca i64, align 8
-  %result3 = alloca %"Vec<T = char>", align 8
-  %self = alloca ptr, align 8
-  store ptr %0, ptr %self, align 8
-  %tmp = load ptr, ptr %self, align 8
-  %fun_call_tmp = call i1 @"Vec<T = i32>:is_empty"(ptr %tmp)
-  br i1 %fun_call_tmp, label %then, label %else
-
-common.ret:                                       ; preds = %else7, %then
-  %common.ret.op = phi %"Vec<T = char>" [ %fun_call_tmp1, %then ], [ %tmp2636, %else7 ]
-  ret %"Vec<T = char>" %common.ret.op
-
-then:                                             ; preds = %entry
-  %fun_call_tmp1 = call %"Vec<T = char>" @"[char]:to_string"({ ptr, i64 } { ptr @global_string, i64 2 })
-  br label %common.ret
-
-else:                                             ; preds = %entry
-  %fun_call_tmp2 = call %"Vec<T = char>" @"[char]:to_string"({ ptr, i64 } { ptr @global_string.1, i64 1 })
-  %fun_call_tmp2.elt = extractvalue %"Vec<T = char>" %fun_call_tmp2, 0
-  store ptr %fun_call_tmp2.elt, ptr %result3, align 8
-  %result3.repack28 = getelementptr inbounds nuw i8, ptr %result3, i64 8
-  %fun_call_tmp2.elt29 = extractvalue %"Vec<T = char>" %fun_call_tmp2, 1
-  store i64 %fun_call_tmp2.elt29, ptr %result3.repack28, align 8
-  %result3.repack30 = getelementptr inbounds nuw i8, ptr %result3, i64 16
-  %fun_call_tmp2.elt31 = extractvalue %"Vec<T = char>" %fun_call_tmp2, 2
-  store i64 %fun_call_tmp2.elt31, ptr %result3.repack30, align 8
-  br label %cond6
-
-then5:                                            ; preds = %cond6
-  %tmp13 = load ptr, ptr %self, align 8
-  %fun_call_tmp14 = call { ptr, i64 } @"Vec<T = i32>:deref"(ptr %tmp13)
-  %tmp15 = load i64, ptr %idx, align 4
-  %ref.i = extractvalue { ptr, i64 } %fun_call_tmp14, 0
-  %tmp_index.i = getelementptr i32, ptr %ref.i, i64 %tmp15
-  %fun_call_tmp17 = call %"Vec<T = char>" @"i32:to_string"(ptr %tmp_index.i)
-  %fun_call_tmp18 = call {} @"Vec<T = char>:extend"(ptr nonnull %result3, %"Vec<T = char>" %fun_call_tmp17)
-  %fun_call_tmp19 = call {} @"Vec<T = char>:extend_from_slice"(ptr nonnull %result3, { ptr, i64 } { ptr @global_string.2, i64 2 })
-  %tmp.i = add i64 %tmp15, 1
-  br label %cond6
-
-cond6:                                            ; preds = %then5, %else
-  %storemerge = phi i64 [ 0, %else ], [ %tmp.i, %then5 ]
-  store i64 %storemerge, ptr %idx, align 4
-  %tmp9 = load ptr, ptr %self, align 8
-  %fun_call_tmp10 = call { ptr, i64 } @"Vec<T = i32>:deref"(ptr %tmp9)
-  %len.i = extractvalue { ptr, i64 } %fun_call_tmp10, 1
-  %tmp.i27 = icmp ult i64 %storemerge, %len.i
-  br i1 %tmp.i27, label %then5, label %else7
-
-else7:                                            ; preds = %cond6
-  %fun_call_tmp23 = call {} @"Vec<T = char>:pop"(ptr nonnull %result3)
-  %fun_call_tmp24 = call {} @"Vec<T = char>:pop"(ptr nonnull %result3)
-  %fun_call_tmp25 = call {} @"Vec<T = char>:push"(ptr nonnull %result3, i8 93)
-  %tmp26.unpack = load ptr, ptr %result3, align 8
-  %1 = insertvalue %"Vec<T = char>" poison, ptr %tmp26.unpack, 0
-  %tmp26.elt32 = getelementptr inbounds nuw i8, ptr %result3, i64 8
-  %tmp26.unpack33 = load i64, ptr %tmp26.elt32, align 8
-  %2 = insertvalue %"Vec<T = char>" %1, i64 %tmp26.unpack33, 1
-  %tmp26.elt34 = getelementptr inbounds nuw i8, ptr %result3, i64 16
-  %tmp26.unpack35 = load i64, ptr %tmp26.elt34, align 8
-  %tmp2636 = insertvalue %"Vec<T = char>" %2, i64 %tmp26.unpack35, 2
-  br label %common.ret
-}
-
-define i1 @"Vec<T = i32>:is_empty"(ptr %0) {
-entry:
-  %tmp.len = getelementptr inbounds nuw i8, ptr %0, i64 8
-  %tmp1 = load i64, ptr %tmp.len, align 4
-  %tmp.i = icmp eq i64 %tmp1, 0
-  ret i1 %tmp.i
-}
-
-define %"Vec<T = char>" @"[char]:to_string"({ ptr, i64 } %0) {
-entry:
-  %fun_call_tmp = call %"Vec<T = char>" @"Vec<T = char>:from"({ ptr, i64 } %0)
-  ret %"Vec<T = char>" %fun_call_tmp
-}
-
-define { ptr, i64 } @"Vec<T = i32>:deref_mut"(ptr %0) {
-entry:
-  %fun_call_tmp = call { ptr, i64 } @"Vec<T = i32>:as_mut_slice"(ptr %0)
-  ret { ptr, i64 } %fun_call_tmp
-}
-
-define { ptr, i64 } @"Vec<T = i32>:as_mut_slice"(ptr %0) {
-entry:
-  %tmp1.len = getelementptr inbounds nuw i8, ptr %0, i64 8
-  %tmp2 = load ptr, ptr %0, align 8
-  %tmp3 = load i64, ptr %tmp1.len, align 4
-  %ptr.i = insertvalue { ptr, i64 } undef, ptr %tmp2, 0
-  %len.i = insertvalue { ptr, i64 } %ptr.i, i64 %tmp3, 1
-  ret { ptr, i64 } %len.i
-}
-
-define { ptr, i64 } @"Vec<T = i32>:deref"(ptr %0) {
-entry:
-  %fun_call_tmp = call { ptr, i64 } @"Vec<T = i32>:as_slice"(ptr %0)
-  ret { ptr, i64 } %fun_call_tmp
-}
-
-define { ptr, i64 } @"Vec<T = i32>:as_slice"(ptr %0) {
-entry:
-  %tmp1.len = getelementptr inbounds nuw i8, ptr %0, i64 8
-  %tmp2 = load ptr, ptr %0, align 8
-  %tmp3 = load i64, ptr %tmp1.len, align 4
-  %ptr.i = insertvalue { ptr, i64 } undef, ptr %tmp2, 0
-  %len.i = insertvalue { ptr, i64 } %ptr.i, i64 %tmp3, 1
-  ret { ptr, i64 } %len.i
-}
-
-define {} @"Vec<T = char>:extend"(ptr %0, %"Vec<T = char>" %1) {
-entry:
-  %other = alloca %"Vec<T = char>", align 8
-  %self = alloca ptr, align 8
-  store ptr %0, ptr %self, align 8
-  %.elt = extractvalue %"Vec<T = char>" %1, 0
-  store ptr %.elt, ptr %other, align 8
-  %other.repack3 = getelementptr inbounds nuw i8, ptr %other, i64 8
-  %.elt4 = extractvalue %"Vec<T = char>" %1, 1
-  store i64 %.elt4, ptr %other.repack3, align 8
-  %other.repack5 = getelementptr inbounds nuw i8, ptr %other, i64 16
-  %.elt6 = extractvalue %"Vec<T = char>" %1, 2
-  store i64 %.elt6, ptr %other.repack5, align 8
-  %tmp = load ptr, ptr %self, align 8
-  %fun_call_tmp = call { ptr, i64 } @"Vec<T = char>:deref"(ptr nonnull %other)
-  %fun_call_tmp1 = call {} @"Vec<T = char>:extend_from_slice"(ptr %tmp, { ptr, i64 } %fun_call_tmp)
-  %fun_call_tmp2 = call {} @"Vec<T = char>:drop"(ptr nonnull %other)
-  ret {} zeroinitializer
-}
-
 define %"Vec<T = char>" @"i32:to_string"(ptr %0) {
 entry:
   %num = alloca i32, align 4
@@ -789,6 +715,137 @@ entry:
   ret {} zeroinitializer
 }
 
+define %"Vec<T = char>" @"Vec<T = i32>:to_string"(ptr %0) {
+entry:
+  %tmp_iter2 = alloca %"SliceIter<T = i32>", align 8
+  %result3 = alloca %"Vec<T = char>", align 8
+  %self = alloca ptr, align 8
+  store ptr %0, ptr %self, align 8
+  %tmp = load ptr, ptr %self, align 8
+  %fun_call_tmp = call i1 @"Vec<T = i32>:is_empty"(ptr %tmp)
+  br i1 %fun_call_tmp, label %then, label %else
+
+common.ret:                                       ; preds = %else9, %then
+  %common.ret.op = phi %"Vec<T = char>" [ %fun_call_tmp1, %then ], [ %tmp2031, %else9 ]
+  ret %"Vec<T = char>" %common.ret.op
+
+then:                                             ; preds = %entry
+  %fun_call_tmp1 = call %"Vec<T = char>" @"[char]:to_string"({ ptr, i64 } { ptr @global_string.1, i64 2 })
+  br label %common.ret
+
+else:                                             ; preds = %entry
+  %fun_call_tmp2 = call %"Vec<T = char>" @"[char]:to_string"({ ptr, i64 } { ptr @global_string.2, i64 1 })
+  %fun_call_tmp2.elt = extractvalue %"Vec<T = char>" %fun_call_tmp2, 0
+  store ptr %fun_call_tmp2.elt, ptr %result3, align 8
+  %result3.repack21 = getelementptr inbounds nuw i8, ptr %result3, i64 8
+  %fun_call_tmp2.elt22 = extractvalue %"Vec<T = char>" %fun_call_tmp2, 1
+  store i64 %fun_call_tmp2.elt22, ptr %result3.repack21, align 8
+  %result3.repack23 = getelementptr inbounds nuw i8, ptr %result3, i64 16
+  %fun_call_tmp2.elt24 = extractvalue %"Vec<T = char>" %fun_call_tmp2, 2
+  store i64 %fun_call_tmp2.elt24, ptr %result3.repack23, align 8
+  %tmp5 = load ptr, ptr %self, align 8
+  %fun_call_tmp6 = call %"SliceIter<T = i32>" @"Vec<T = i32>:iter"(ptr %tmp5)
+  %fun_call_tmp6.elt = extractvalue %"SliceIter<T = i32>" %fun_call_tmp6, 0
+  store ptr %fun_call_tmp6.elt, ptr %tmp_iter2, align 8
+  %tmp_iter2.repack25 = getelementptr inbounds nuw i8, ptr %tmp_iter2, i64 8
+  %fun_call_tmp6.elt26 = extractvalue %"SliceIter<T = i32>" %fun_call_tmp6, 1
+  store ptr %fun_call_tmp6.elt26, ptr %tmp_iter2.repack25, align 8
+  br label %cond8
+
+then7:                                            ; preds = %cond8
+  %fun_call_tmp11 = call ptr @"SliceIter<T = i32>:next"(ptr nonnull %tmp_iter2)
+  %fun_call_tmp13 = call %"Vec<T = char>" @"i32:to_string"(ptr %fun_call_tmp11)
+  %fun_call_tmp14 = call {} @"Vec<T = char>:extend"(ptr nonnull %result3, %"Vec<T = char>" %fun_call_tmp13)
+  %fun_call_tmp15 = call {} @"Vec<T = char>:extend_from_slice"(ptr nonnull %result3, { ptr, i64 } { ptr @global_string.3, i64 2 })
+  br label %cond8
+
+cond8:                                            ; preds = %then7, %else
+  %fun_call_tmp10 = call i1 @"SliceIter<T = i32>:has_next"(ptr nonnull %tmp_iter2)
+  br i1 %fun_call_tmp10, label %then7, label %else9
+
+else9:                                            ; preds = %cond8
+  %fun_call_tmp17 = call {} @"Vec<T = char>:pop"(ptr nonnull %result3)
+  %fun_call_tmp18 = call {} @"Vec<T = char>:pop"(ptr nonnull %result3)
+  %fun_call_tmp19 = call {} @"Vec<T = char>:push"(ptr nonnull %result3, i8 93)
+  %tmp20.unpack = load ptr, ptr %result3, align 8
+  %1 = insertvalue %"Vec<T = char>" poison, ptr %tmp20.unpack, 0
+  %tmp20.elt27 = getelementptr inbounds nuw i8, ptr %result3, i64 8
+  %tmp20.unpack28 = load i64, ptr %tmp20.elt27, align 8
+  %2 = insertvalue %"Vec<T = char>" %1, i64 %tmp20.unpack28, 1
+  %tmp20.elt29 = getelementptr inbounds nuw i8, ptr %result3, i64 16
+  %tmp20.unpack30 = load i64, ptr %tmp20.elt29, align 8
+  %tmp2031 = insertvalue %"Vec<T = char>" %2, i64 %tmp20.unpack30, 2
+  br label %common.ret
+}
+
+define i1 @"Vec<T = i32>:is_empty"(ptr %0) {
+entry:
+  %tmp.len = getelementptr inbounds nuw i8, ptr %0, i64 8
+  %tmp1 = load i64, ptr %tmp.len, align 4
+  %tmp.i = icmp eq i64 %tmp1, 0
+  ret i1 %tmp.i
+}
+
+define %"Vec<T = char>" @"[char]:to_string"({ ptr, i64 } %0) {
+entry:
+  %fun_call_tmp = call %"Vec<T = char>" @"Vec<T = char>:from"({ ptr, i64 } %0)
+  ret %"Vec<T = char>" %fun_call_tmp
+}
+
+define %"SliceIter<T = i32>" @"Vec<T = i32>:iter"(ptr %0) {
+entry:
+  %tmp2 = load ptr, ptr %0, align 8
+  %cast = ptrtoint ptr %tmp2 to i64
+  %tmp3.len = getelementptr inbounds nuw i8, ptr %0, i64 8
+  %tmp4 = load i64, ptr %tmp3.len, align 4
+  %tmp.i9 = shl i64 %tmp4, 2
+  %tmp.i = add i64 %tmp.i9, %cast
+  %cast7 = inttoptr i64 %tmp.i to ptr
+  %tmp8 = load ptr, ptr %0, align 8
+  %tmp_agg = insertvalue %"SliceIter<T = i32>" undef, ptr %tmp8, 0
+  %tmp_constructor = insertvalue %"SliceIter<T = i32>" %tmp_agg, ptr %cast7, 1
+  ret %"SliceIter<T = i32>" %tmp_constructor
+}
+
+define i1 @"SliceIter<T = i32>:has_next"(ptr %0) {
+entry:
+  %tmp1 = load ptr, ptr %0, align 8
+  %tmp2.end = getelementptr inbounds nuw i8, ptr %0, i64 8
+  %tmp3 = load ptr, ptr %tmp2.end, align 8
+  %tmp.i = icmp ult ptr %tmp1, %tmp3
+  ret i1 %tmp.i
+}
+
+define ptr @"SliceIter<T = i32>:next"(ptr %0) {
+entry:
+  %tmp1 = load ptr, ptr %0, align 8
+  %cast = ptrtoint ptr %tmp1 to i64
+  %tmp.i = add i64 %cast, 4
+  %cast6 = inttoptr i64 %tmp.i to ptr
+  store ptr %cast6, ptr %0, align 8
+  ret ptr %tmp1
+}
+
+define {} @"Vec<T = char>:extend"(ptr %0, %"Vec<T = char>" %1) {
+entry:
+  %other = alloca %"Vec<T = char>", align 8
+  %self = alloca ptr, align 8
+  store ptr %0, ptr %self, align 8
+  %.elt = extractvalue %"Vec<T = char>" %1, 0
+  store ptr %.elt, ptr %other, align 8
+  %other.repack3 = getelementptr inbounds nuw i8, ptr %other, i64 8
+  %.elt4 = extractvalue %"Vec<T = char>" %1, 1
+  store i64 %.elt4, ptr %other.repack3, align 8
+  %other.repack5 = getelementptr inbounds nuw i8, ptr %other, i64 16
+  %.elt6 = extractvalue %"Vec<T = char>" %1, 2
+  store i64 %.elt6, ptr %other.repack5, align 8
+  %tmp = load ptr, ptr %self, align 8
+  %fun_call_tmp = call { ptr, i64 } @"Vec<T = char>:deref"(ptr nonnull %other)
+  %fun_call_tmp1 = call {} @"Vec<T = char>:extend_from_slice"(ptr %tmp, { ptr, i64 } %fun_call_tmp)
+  %fun_call_tmp2 = call {} @"Vec<T = char>:drop"(ptr nonnull %other)
+  ret {} zeroinitializer
+}
+
 define {} @"Vec<T = char>:pop"(ptr %0) {
 entry:
   %self = alloca ptr, align 8
@@ -850,6 +907,38 @@ else:                                             ; preds = %cond
   %tmp12 = load ptr, ptr %tmp11, align 8
   %fun_call_tmp13 = call {} @"mem:heap_free<T = i32>"(ptr %tmp12)
   ret {} zeroinitializer
+}
+
+define { ptr, i64 } @"Vec<T = i32>:deref_mut"(ptr %0) {
+entry:
+  %fun_call_tmp = call { ptr, i64 } @"Vec<T = i32>:as_mut_slice"(ptr %0)
+  ret { ptr, i64 } %fun_call_tmp
+}
+
+define { ptr, i64 } @"Vec<T = i32>:as_mut_slice"(ptr %0) {
+entry:
+  %tmp1.len = getelementptr inbounds nuw i8, ptr %0, i64 8
+  %tmp2 = load ptr, ptr %0, align 8
+  %tmp3 = load i64, ptr %tmp1.len, align 4
+  %ptr.i = insertvalue { ptr, i64 } undef, ptr %tmp2, 0
+  %len.i = insertvalue { ptr, i64 } %ptr.i, i64 %tmp3, 1
+  ret { ptr, i64 } %len.i
+}
+
+define { ptr, i64 } @"Vec<T = i32>:deref"(ptr %0) {
+entry:
+  %fun_call_tmp = call { ptr, i64 } @"Vec<T = i32>:as_slice"(ptr %0)
+  ret { ptr, i64 } %fun_call_tmp
+}
+
+define { ptr, i64 } @"Vec<T = i32>:as_slice"(ptr %0) {
+entry:
+  %tmp1.len = getelementptr inbounds nuw i8, ptr %0, i64 8
+  %tmp2 = load ptr, ptr %0, align 8
+  %tmp3 = load i64, ptr %tmp1.len, align 4
+  %ptr.i = insertvalue { ptr, i64 } undef, ptr %tmp2, 0
+  %len.i = insertvalue { ptr, i64 } %ptr.i, i64 %tmp3, 1
+  ret { ptr, i64 } %len.i
 }
 
 define {} @"i32:drop"(ptr %0) {
