@@ -51,7 +51,7 @@ impl Primitive for ();
 type usize = u64;
 
 struct Range<T: Integer> {
-    cur: T,
+    start: T,
     end: T
 }
 
@@ -70,7 +70,8 @@ trait AsRef<T> { fun as_ref(&self) -> &T; }
 trait Index<Index_T, Value_T> { fun index(&self, idx: Index_T) -> &Value_T; fun index_mut(&mut self, idx: Index_T) -> &mut Value_T; }
 trait Iter<T> { fun next(&mut self) -> T; fun has_next(&self) -> bool; }
 trait Copy;
-trait UpTo<T> { fun up_to(self, other: T) -> Range<T>; }
+trait Up_To<T> { fun up_to(self, other: T) -> Range<T>; }
+trait Bitshift { fun shl(self, count: Self) -> Self; fun shr(self, count: Self) -> Self; }
 
 impl<T: Numeral> Add<T> for T { fun add(self, other: Self) -> Self; }
 impl<T: Numeral> Sub<T> for T { fun sub(self, other: Self) -> Self; }
@@ -85,7 +86,8 @@ impl<T: Integer> Bitwise for T { fun not(self) -> Self; fun and(self, other: Sel
 impl<T: Primitive> Copy for T;
 impl<T> Copy for &T;
 impl<T> Copy for &mut T;
-impl<T: Integer> UpTo<T> for T { fun up_to(self, other: T) -> Range<T>; }
+impl<T: Integer> Up_To<T> for T { fun up_to(self, other: T) -> Range<T>; }
+impl<T: Integer> Bitshift for T { fun shl(self, count: Self) -> Self; fun shr(self, count: Self) -> Self; }
 
 impl<T: Drop> &T {
     fun drop(&self) {
@@ -134,6 +136,7 @@ impl<T, const S: usize> [T; S] {
 
 impl<T> [T] {
     fun len(&self) -> usize;
+    fun is_empty(&self) -> bool { self.len() == 0 }
 }
 
 impl<T> T {

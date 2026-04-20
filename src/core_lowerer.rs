@@ -31,7 +31,9 @@ pub enum CoreTraitFun {
     Copy,
     Next,
     HasNext,
-    UpTo
+    UpTo,
+    Shl,
+    Shr
 }
 
 impl CoreTraitFun {
@@ -59,7 +61,9 @@ impl CoreTraitFun {
             Self::Copy => "Copy",
             Self::Next => "Iter",
             Self::HasNext => "Iter",
-            Self::UpTo => "UpTo",
+            Self::UpTo => "Up_To",
+            Self::Shl => "Bitshift",
+            Self::Shr => "Bitshift",
             _ => panic!()
         }
     }
@@ -91,6 +95,8 @@ impl CoreTraitFun {
             Self::Next => "next",
             Self::HasNext => "has_next",
             Self::UpTo => "up_to",
+            Self::Shl => "shl",
+            Self::Shr => "shr",
             _ => panic!()
         }
     }
@@ -128,6 +134,8 @@ impl<'ctx> CodeLowerer<'ctx> {
                 self.build_core_trait_funs(type_id, &CoreTraitFun::Xor)?;
             }
             if is_integer {
+                self.build_core_trait_funs(type_id, &CoreTraitFun::Shl)?;
+                self.build_core_trait_funs(type_id, &CoreTraitFun::Shr)?;
                 self.build_core_trait_funs(type_id, &CoreTraitFun::UpTo)?;
             }
         } else if let IRTypeEnum::Slice { slice_type } = ir_type.type_enum {
@@ -252,6 +260,18 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
         let primitive_type = match self.ir_type(self_type).type_enum { IRTypeEnum::Primitive(prim) => prim, _ => panic!() };
         Ok(match core_trait {
+            CoreTraitFun::Shr => {
+                if primitive_type.is_int() {
+                    self.builder.build_right_shift(first_value.into_int_value(), other_value.unwrap().into_int_value(), true, "tmp").unwrap().into()
+                } else if primitive_type.is_uint() {
+                    self.builder.build_right_shift(first_value.into_int_value(), other_value.unwrap().into_int_value(), false, "tmp").unwrap().into()
+                } else {
+                    panic!("build_core_opr")
+                }
+            },
+            CoreTraitFun::Shl => {
+                self.builder.build_left_shift(first_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
+            }
             CoreTraitFun::UpTo => {
                 let global_scope = self.get_global_scope();
                 let struct_id = self.lower_struct(global_scope, "Range", &[IRTemplateValue::Type(self_type)], None)?;

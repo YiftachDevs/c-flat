@@ -443,6 +443,9 @@ impl<'ctx> CodeLowerer<'ctx> {
                 IRExprValueResult{ type_id: self.primitive_type(PrimitiveType::Char)?, llvm_value: self.llvm_context.i8_type().const_int(*ch as u64, false).into() }
             },
             Literal::UnresolvedInteger(int) => {
+                if *int == 123 && let IRExprContext::Value(Some(e)) = expr_context {
+                    println!("exr: {}", self.format_type(*e));
+                }
                 let default = (self.primitive_type(PrimitiveType::I32)?, self.llvm_context.i32_type());
                 let (int_type_id, llvm_int_type) = if let Some(ctx_t) = ctx_type {
                     if let IRTypeEnum::Primitive(prim) = self.ir_type(ctx_t).type_enum && (prim.is_int() | prim.is_uint()) {

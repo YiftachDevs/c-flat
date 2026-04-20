@@ -1,0 +1,15 @@
+import std/core.cf;
+
+mod rng {
+    fun next() -> usize {
+        static mut seed: usize = 91237;
+        seed = seed * 6364136223846793005 + 1442695040888963407;
+        (seed >> 33)
+    }
+}
+
+impl<T: Integer> Range<T> {
+    fun rand(&self) -> T {
+        (rng:next() % (self.end - self.start) as usize) as T + self.start
+    }
+}

@@ -70,6 +70,8 @@ fn main() {
         return;
     }
 
+    return;
+
     println!("{}", "Done! [Running Script]:".green());
 
     let mut child = Command::new("./output_exec")
@@ -107,7 +109,7 @@ fn run_pipeline(module: &Module) -> Result<(), String> {
     let options = PassBuilderOptions::create();
     options.set_verify_each(true);
 
-    let passes = "always-inline,instcombine,simplifycfg,adce,globaldce";
+    let passes = "always-inline,instcombine<no-verify-fixpoint>,simplifycfg,adce,globaldce";
     
     module.run_passes(passes, &target_machine, options)
         .map_err(|e| format!("Pass execution failed: {:?}", e))?;

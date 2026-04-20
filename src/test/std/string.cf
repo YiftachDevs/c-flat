@@ -1,0 +1,54 @@
+import std/core.cf;
+import std/heap.cf;
+
+type String = Vec<char>;
+
+impl<T: ToString> ToString for [T] {
+    fun to_string(&self) -> String {
+        if self.is_empty() {
+            return "[]".to_string();
+        }
+        let mut result = "[".to_string();
+        for item in self.iter() {
+            result.extend(item.to_string());
+            result.extend_from_slice(", ");
+        }
+        result.pop();
+        result.pop();
+        result.push(']');
+        result
+    }
+}
+
+impl String {
+    fun null_terminate(&mut self) -> &mut Self {
+        self.push('\0');
+        self
+    }
+}
+
+trait ToString { fun to_string(&self) -> String; }
+
+impl ToString for [char] {
+    fun to_string(&self) -> String {
+        String:from(self)
+    }
+}
+
+impl<T: Integer> ToString for T {
+    fun to_string(&self) -> String {
+        if *self == 0 {
+            return "0".to_string();
+        }
+        let mut result = String:new();
+        let mut num = if *self < 0 { -*self } else { *self };
+        while num != 0 {
+            result.insert(0, ('0' as T + num % 10) as char);
+            num /= 10;
+        }
+        if *self < 0 {
+            result.insert(0, '-');
+        }
+        result
+    }
+}

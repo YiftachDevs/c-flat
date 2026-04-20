@@ -1,0 +1,56 @@
+import std/core.cf;
+
+impl<T: Integer> T {
+    fun abs(self) -> Self {
+        if self < 0 {
+            -self    
+        } else {
+            self
+        }
+    }
+}
+
+impl<T: Float> T {
+    fun abs(self) -> Self {
+        if self < 0.0 {
+            -self    
+        } else {
+            self
+        }
+    }
+}
+
+impl<T: Numeral> T {
+    fun min(self, other: Self) -> Self {
+        if self < other {
+            self
+        } else {
+            other
+        }
+    }
+
+    fun max(self, other: Self) -> Self {
+        if self > other {
+            self
+        } else {
+            other
+        }
+    }
+
+    fun clamp(self, min: Self, max: Self) -> Self {
+        self.max(min).min(max)
+    }
+}
+
+struct Vec_2<T: Numeral> {
+    x: T,
+    y: T
+}
+
+impl<T: Numeral> Eq for Vec_2<T> {
+    fun eq(self, other: Self) -> bool {
+        self.x == other.x & self.y == other.y
+    }
+}
+
+impl<T: Numeral> Copy for Vec_2<T>;

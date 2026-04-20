@@ -114,7 +114,7 @@ pub enum Statement {
     ControlFlow(ControlFlow)
 }
 
-#[derive(Eq, PartialEq, Clone, Copy)]
+#[derive(Eq, PartialEq, Clone, Copy, Debug)]
 pub enum InfixOpr {
     As,
     Is,

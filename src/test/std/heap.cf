@@ -49,7 +49,6 @@ impl<T> Vec<T> {
     }
 
     fun capacity(&self) -> usize { self.capacity }
-    fun is_empty(&self) -> bool { self.len == 0 }
 
     fun with_capacity(capacity: usize) -> Self {
         Self{ mem:heap_alloc<T>(capacity), 0, capacity }
@@ -104,12 +103,19 @@ impl<T> Vec<T> {
         let man_drop = mem:Manually_Drop<T>{ value };
     }
 
-    fun iter(&self) -> SliceIter<T> {
-        SliceIter<T>{ self.ptr, (self.ptr as usize + self.len * T:mem_size()) as &T }
-    }
-
     fun as_slice(&self) -> &[T] { [T]:from_raw_parts(self.ptr, self.len) }
     fun as_mut_slice(&mut self) -> &mut [T] { [T]:from_raw_parts(self.ptr, self.len) }
+}
+
+impl<T: Eq> Vec<T> {
+    fun has(&self, value: T) -> bool {
+        for item in self.iter() {
+            if *item == value {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 impl<T> Drop for Vec<T> {
@@ -126,46 +132,4 @@ impl<T> Drop for Vec<T> {
 impl<T> Deref<[T]> for Vec<T> {
     fun deref(&self) -> &[T] { self.as_slice() }
     fun deref_mut(&mut self) -> &mut [T] { self.as_mut_slice() }
-}
-
-type String = Vec<char>;
-
-impl<T: ToString> ToString for Vec<T> {
-    fun to_string(&self) -> String {
-        if self.is_empty() {
-            return "[]".to_string();
-        }
-        let mut result = "[".to_string();
-        for item in self.iter() {
-            result.extend(item.to_string());
-            result.extend_from_slice(", ");
-        }
-        result.pop();
-        result.pop();
-        result.push(']');
-        result
-    }
-}
-
-trait ToString { fun to_string(&self) -> String; }
-
-impl ToString for [char] {
-    fun to_string(&self) -> String {
-        String:from(self)
-    }
-}
-
-impl<T: Integer> ToString for T {
-    fun to_string(&self) -> String {
-        let mut result = String:new();
-        let mut num = if *self < 0 { -*self } else { *self };
-        while num != 0 {
-            result.insert(0, ('0' as T + num % 10) as char);
-            num /= 10;
-        }
-        if *self < 0 {
-            result.insert(0, '-');
-        }
-        result
-    }
 }

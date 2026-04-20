@@ -38,6 +38,11 @@ impl<'ctx> CodeLowerer<'ctx> {
             let value = self.get_value(ir_context, right_expr, &IRExprContext::Value(Some(place.type_id)), true)?;
             return self.lower_infix_opr_asn(ir_context, place, value, left_expr.span);
         }
+        let context_type = if opr == InfixOpr::Range && let IRExprContext::Value(Some(range_t)) = context_type && let IRTypeEnum::Struct(ir_struct) = &self.ir_type(*range_t).type_enum && let IRTemplateValue::Type(int_t) = ir_struct.templates_map[&"T".to_string()] {
+            &IRExprContext::Value(Some(int_t))
+        } else {
+            context_type
+        };
         let left_expr_result = self.get_value(ir_context, left_expr, &context_type, false)?;
         let mut result = self.call_core_trait(ir_context, IRExprResult::Value(left_expr_result), Some(right_expr), &Self::trait_from_opr(CoreOpr::Infix(opr)), span)?;
         if opr == InfixOpr::Neq {
@@ -115,7 +120,9 @@ impl<'ctx> CodeLowerer<'ctx> {
                     InfixOpr::AsnDiv => CoreTraitFun::Div,
                     InfixOpr::AsnMod => CoreTraitFun::Mod,
                     InfixOpr::Range => CoreTraitFun::UpTo,
-                    _ => panic!()
+                    InfixOpr::Shl => CoreTraitFun::Shl,
+                    InfixOpr::Shr => CoreTraitFun::Shr,
+                    _ => panic!("{:?}", infix_opr)
                 }
             }
         }

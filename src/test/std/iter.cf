@@ -1,30 +1,37 @@
 import std/core.cf;
 
 struct SliceIter<T> {
-    cur: &T,
+    start: &T,
     end: &T
 }
 
 impl<T> Iter<&T> for SliceIter<T> {
     fun next(&mut self) -> &T {
-        let result = self.cur;
-        self.cur = (self.cur as usize + T:mem_size()) as &T;
+        let result = self.start;
+        self.start = (self.start as usize + T:mem_size()) as &T;
         result
     }
     
     fun has_next(&self) -> bool {
-        self.cur as usize < self.end as usize
+        self.start as usize < self.end as usize
     }
 }
 
 impl<T> Iter<T> for Range<T> {
     fun next(&mut self) -> T {
-        let result = self.cur;
-        self.cur += 1;
+        let result = self.start;
+        self.start += 1;
         result
     }
     
     fun has_next(&self) -> bool {
-        self.cur < self.end
+        self.start < self.end
+    }
+}
+
+impl<T> [T] {
+    fun iter(&self) -> SliceIter<T> {
+        let ptr = self.as_ref();
+        SliceIter<T>{ ptr, (ptr as usize + self.len() * T:mem_size()) as &T }
     }
 }
