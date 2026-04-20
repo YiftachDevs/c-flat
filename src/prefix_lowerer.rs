@@ -28,8 +28,8 @@ impl<'ctx> CodeLowerer<'ctx> {
                 self.lower_prefix_opr_deref(ir_context, right_expr, span, context_type)
             },
             PrefixOpr::Not | PrefixOpr::UMin => {
-                if let IRExprContext::Value(_) = context_type {
-                    let expr_result = self.get_value(ir_context, right_expr, &IRExprContext::Value(None), false)?;
+                if let IRExprContext::Value(expected_t) = context_type {
+                    let expr_result = self.get_value(ir_context, right_expr, &IRExprContext::Value(*expected_t), true)?;
                     Ok(IRExprResult::Value(self.call_core_trait(ir_context, IRExprResult::Value(expr_result), None, &Self::trait_from_opr(CoreOpr::Prefix(opr)), span)?))
                 } else {
                     return Err(err);

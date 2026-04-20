@@ -1,6 +1,6 @@
 use std::any::Any;
 
-use inkwell::types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum};
+use inkwell::{types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, IntType}, values::{BasicValueEnum, IntValue}};
 
 use crate::{code_lowerer::{CodeLowerer, CoreOpr, IRContext, IRExprContext, IRFunctionId, IRScope, IRScopeId, IRScopePath, IRTemplateValue, IRTemplatesMap, IRTrait, IRTraitId, IRType, IRTypeEnum, IRTypeId, IRVariable, IRVariables, PrimitiveType}, core_lowerer::CoreTraitFun, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprPlaceResult, IRExprResult, IRExprValueResult}, parser::{ExprNode, InfixOpr, PostfixOpr, PrefixOpr, Span, Struct, Trait}};
 
@@ -31,7 +31,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         if opr == InfixOpr::As {
             let left_expr_result = self.get_value(ir_context, left_expr, &IRExprContext::Value(None), false)?;
             let new_type = self.get_type(ir_context, right_expr, &IRExprContext::Type)?;
-            return Ok(IRExprResult::Value(self.convert_type(left_expr_result, new_type)?));
+            return Ok(IRExprResult::Value(self.convert_type(left_expr_result, new_type, span)?));
         }
         if opr == InfixOpr::Asn {
             let place = self.get_place(ir_context, left_expr, &IRExprContext::Value(None))?;
@@ -67,22 +67,73 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(IRExprResult::Void)
     }
 
-    fn convert_type(&mut self, value: IRExprValueResult<'ctx>, new_type: IRTypeId) -> Result<IRExprValueResult<'ctx>, CompilerError> {
+    fn convert_type(&mut self, value: IRExprValueResult<'ctx>, new_type: IRTypeId, span: Span) -> Result<IRExprValueResult<'ctx>, CompilerError> {
         let type_id = value.type_id;
+        let err = self.error(SemanticError::InvalidTypeConversion(self.format_type(type_id), self.format_type(new_type)), Some(span));
+        let cur_llvm_value = value.llvm_value;
         let cur_bit_size = self.get_type_mem_size(type_id);
         let new_bit_size = self.get_type_mem_size(new_type);
-        let new_llvm_value = self.ir_type(new_type).llvm_type;
-        let new_value = if cur_bit_size < new_bit_size {
-            self.builder.build_int_z_extend(value.llvm_value.into_int_value(), new_llvm_value.into_int_type(), "cast").unwrap().into()
+        let new_llvm_type = self.ir_type(new_type).llvm_type;
+
+        let int_cast  = |signed: bool, val: IntValue<'ctx>, ty: IntType<'ctx>| -> BasicValueEnum<'ctx> {
+            if cur_bit_size < new_bit_size {
+                if signed {
+                    self.builder.build_int_s_extend(val, ty, "cast").unwrap().into()
+                } else {
+                    self.builder.build_int_z_extend(val, ty, "cast").unwrap().into()
+                }
+            } else if cur_bit_size > new_bit_size {
+                self.builder.build_int_truncate(val, ty, "cast").unwrap().into()
+            } else {
+                cur_llvm_value
+            }
+        };
+        let is_int_like = |p: PrimitiveType| p.is_int() || p.is_uint() || p == PrimitiveType::Char || p == PrimitiveType::Bool;
+
+
+        let new_value = if let IRTypeEnum::Primitive(cur_prim) = self.ir_type(type_id).type_enum && let IRTypeEnum::Primitive(new_prim) = self.ir_type(new_type).type_enum {
+            if new_prim.is_float() {
+                if cur_prim.is_int() {
+                    self.builder.build_signed_int_to_float(cur_llvm_value.into_int_value(), new_llvm_type.into_float_type(), "cast").unwrap().into()
+                } else if cur_prim.is_uint() {
+                    self.builder.build_unsigned_int_to_float(cur_llvm_value.into_int_value(), new_llvm_type.into_float_type(), "cast").unwrap().into()
+                } else if cur_prim.is_float() {
+                    if cur_bit_size < new_bit_size {
+                        self.builder.build_float_ext(cur_llvm_value.into_float_value(), new_llvm_type.into_float_type(), "cast").unwrap().into()
+                    } else if cur_bit_size > new_bit_size {
+                        self.builder.build_float_trunc(cur_llvm_value.into_float_value(), new_llvm_type.into_float_type(), "cast").unwrap().into()
+                    } else {
+                        cur_llvm_value
+                    }
+                } else {
+                    return Err(err);
+                }
+            } else if new_prim.is_int() || new_prim.is_uint() || new_prim == PrimitiveType::Char || new_prim == PrimitiveType::Bool {
+                if cur_prim.is_float() {
+                    if new_prim.is_int() {
+                        self.builder.build_float_to_signed_int(cur_llvm_value.into_float_value(), new_llvm_type.into_int_type(), "cast").unwrap().into()
+                    } else {
+                        self.builder.build_float_to_unsigned_int(cur_llvm_value.into_float_value(), new_llvm_type.into_int_type(), "cast").unwrap().into()
+                    }
+                } else if cur_prim.is_int() || cur_prim.is_uint() || cur_prim == PrimitiveType::Char || cur_prim == PrimitiveType::Bool {
+                    int_cast(cur_prim.is_int(), cur_llvm_value.into_int_value(), new_llvm_type.into_int_type())
+                } else {
+                    return Err(err);
+                }
+            } else {
+                return Err(err);
+            }
+        } else if cur_bit_size < new_bit_size {
+            self.builder.build_int_z_extend(cur_llvm_value.into_int_value(), new_llvm_type.into_int_type(), "cast").unwrap().into()
         } else if cur_bit_size > new_bit_size {
-            self.builder.build_int_truncate(value.llvm_value.into_int_value(), new_llvm_value.into_int_type(), "cast").unwrap().into()
+            self.builder.build_int_truncate(cur_llvm_value.into_int_value(), new_llvm_type.into_int_type(), "cast").unwrap().into()
         } else {
             if let IRTypeEnum::Reference { ptr_type_id, is_mut } = self.ir_type(type_id).type_enum && let IRTypeEnum::Primitive(_) = self.ir_type(new_type).type_enum {
-                self.builder.build_ptr_to_int(value.llvm_value.into_pointer_value(), new_llvm_value.into_int_type(), "cast").unwrap().into()
+                self.builder.build_ptr_to_int(cur_llvm_value.into_pointer_value(), new_llvm_type.into_int_type(), "cast").unwrap().into()
             } else if let IRTypeEnum::Reference { ptr_type_id, is_mut } = self.ir_type(new_type).type_enum && let IRTypeEnum::Primitive(_) = self.ir_type(type_id).type_enum {
-                self.builder.build_int_to_ptr(value.llvm_value.into_int_value(), new_llvm_value.into_pointer_type(), "cast").unwrap().into()
+                self.builder.build_int_to_ptr(cur_llvm_value.into_int_value(), new_llvm_type.into_pointer_type(), "cast").unwrap().into()
             } else {
-                self.builder.build_bit_cast(value.llvm_value, new_llvm_value, "cast").unwrap().into()
+                self.builder.build_bit_cast(cur_llvm_value, new_llvm_type, "cast").unwrap().into()
             }
         };
         Ok(IRExprValueResult { type_id: new_type, llvm_value: new_value })

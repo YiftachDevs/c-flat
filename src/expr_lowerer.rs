@@ -206,6 +206,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             match template {
                 IRTemplate::Const(const_type) => {
                     let value = self.ensure_expr_result_value(ir_context, expr_result, true, span, &IRExprContext::Value(Some(*const_type)))?;
+                    self.ensure_expr_value_result_constant(value, span)?;
                     Ok(IRTemplateValue::Const(value))
                 },
                 IRTemplate::Type => {
@@ -222,6 +223,18 @@ impl<'ctx> CodeLowerer<'ctx> {
         if let IRExprResult::TemplatesValues(values) = expr_result {
             values
         } else { panic!() }
+    }
+
+    pub fn ensure_expr_value_result_constant(&mut self, value: IRExprValueResult<'ctx>, span: Span) -> Result<(), CompilerError> {
+        if let IRTypeEnum::Primitive(_) = self.ir_type(value.type_id).type_enum {
+            if value.llvm_value.is_const() {
+                Ok(())
+            } else {
+                Err(self.error(SemanticError::ExpectdConstant, Some(span)))
+            }
+        } else {
+            Err(self.error(SemanticError::NonPrimConstant, Some(span)))
+        }
     }
 
     pub fn get_type(&mut self, ir_context: &mut IRContext<'ctx>, expr: &ExprNode, ir_expr_context: &IRExprContext<'ctx>) -> Result<IRTypeId, CompilerError> {
@@ -251,17 +264,10 @@ impl<'ctx> CodeLowerer<'ctx> {
     }
 
 
-    pub fn get_constant(&mut self, ir_context: &mut IRContext<'ctx>, expr: &ExprNode, expr_context: &IRExprContext<'ctx>, ensure_type: bool) -> Result<IRExprValueResult<'ctx>, CompilerError> {
-        let value = self.get_value(ir_context, expr, expr_context, ensure_type)?;
-        if let IRTypeEnum::Primitive(_) = self.ir_type(value.type_id).type_enum {
-            if value.llvm_value.is_const() {
-                Ok(value)
-            } else {
-                Err(self.error(SemanticError::ExpectdConstant, Some(expr.span)))
-            }
-        } else {
-            Err(self.error(SemanticError::NonPrimConstant, Some(expr.span)))
-        }
+    pub fn get_constant(&mut self, ir_context: &mut IRContext<'ctx>, expr: &ExprNode, expr_context: &IRExprContext<'ctx>) -> Result<IRExprValueResult<'ctx>, CompilerError> {
+        let value = self.get_value(ir_context, expr, expr_context, true)?;
+        self.ensure_expr_value_result_constant(value, expr.span)?;
+        Ok(value)
     }
 
     pub fn lower_expr(&mut self, ir_context: &mut IRContext<'ctx>, expr: &ExprNode, expr_context: &IRExprContext<'ctx>) -> Result<IRExprResult<'ctx>, CompilerError> {
@@ -443,9 +449,6 @@ impl<'ctx> CodeLowerer<'ctx> {
                 IRExprValueResult{ type_id: self.primitive_type(PrimitiveType::Char)?, llvm_value: self.llvm_context.i8_type().const_int(*ch as u64, false).into() }
             },
             Literal::UnresolvedInteger(int) => {
-                if *int == 123 && let IRExprContext::Value(Some(e)) = expr_context {
-                    println!("exr: {}", self.format_type(*e));
-                }
                 let default = (self.primitive_type(PrimitiveType::I32)?, self.llvm_context.i32_type());
                 let (int_type_id, llvm_int_type) = if let Some(ctx_t) = ctx_type {
                     if let IRTypeEnum::Primitive(prim) = self.ir_type(ctx_t).type_enum && (prim.is_int() | prim.is_uint()) {
@@ -507,12 +510,13 @@ impl<'ctx> CodeLowerer<'ctx> {
                 cur_expr = right_expr;
             } else {
                 args.push((expr_result, cur_expr.span));
+                cur_expr.value = ExprNodeEnum::Empty;
                 i += 1;
                 break;
             }
             i += 1;
         }
-        if i != args_len && !any_size {
+        if i != args_len && !any_size || cur_expr.value != ExprNodeEnum::Empty {
             return Err(self.error(SemanticError::UnmatchedArgCount { expected: args_len }, Some(cur_expr.span)));
         }
         Ok(args)

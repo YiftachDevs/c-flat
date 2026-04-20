@@ -45,7 +45,7 @@ impl SyntaxError {
             Self::MissingSemicolon => ("Missing Semicolon", None),
             Self::ScriptEndedTooEarly => ("Script Ended Too Early", None),
             Self::ExpectedName => ("Expected Name", None),
-            Self::ExpectedToken(tok) => ("Expected Specific Token", Some(format!("Expected '{}'", tok))),
+            Self::ExpectedToken(tok) => ("Expected Specific Token", Some(format!("Expected '{}'", tok)))
         }
     }
 }
@@ -83,7 +83,7 @@ pub enum SemanticError {
     UninitializedStatic,
     InvalidOpr(String),
     UnresolvableTemplate(String),
-    ExpectedIter,
+    InvalidTypeConversion(String, String)
 }
 
 impl SemanticError {
@@ -120,7 +120,7 @@ impl SemanticError {
             Self::UninitializedStatic => ("Uninitialized Static", None),
             Self::InvalidOpr(opr) => ("Invalid Opr", Some(format!("Cannot use opr '{}' in this context", opr))),
             Self::UnresolvableTemplate(t) => ("Unresolvable Template", Some(format!("Cannot resolve template '{}'", t))),
-            Self::ExpectedIter => ("Expected Iterator", None)
+            Self::InvalidTypeConversion(t1, t2) => ("Invalid Type Conversion", Some(format!("Cannot convert type '{}' to '{}'", t1, t2)))
         }
     }
 }

@@ -1,4 +1,3 @@
-import std/core.cf;
 import std/heap.cf;
 
 type String = Vec<char>;

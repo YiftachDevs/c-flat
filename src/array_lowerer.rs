@@ -1,14 +1,37 @@
 use inkwell::values::{BasicValue, BasicValueEnum, IntValue};
 
-use crate::{code_lowerer::{CodeLowerer, IRContext, IRExprContext, IRTemplateValue, IRTypeEnum, IRVarDeclaration, PrimitiveType}, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprResult, IRExprValueResult}, parser::{ExprNode, Literal, Span}};
+use crate::{code_lowerer::{CodeLowerer, IRContext, IRExprContext, IRTemplate, IRTemplateValue, IRTypeEnum, IRVarDeclaration, PrimitiveType}, core_lowerer::CoreTraitFun, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprResult, IRExprValueResult}, parser::{ExprNode, Literal, Span}};
 
 
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn lower_array(&mut self, ir_context: &mut IRContext<'ctx>, expr: &Box<ExprNode>, opt_size: &Option<Box<ExprNode>>, span: Span, context_type: &IRExprContext<'ctx>) -> Result<IRExprResult<'ctx>, CompilerError> {
+        let usize_type = self.primitive_type(PrimitiveType::U64)?;
         if let IRExprContext::Value(opt_ctx_t) = context_type {
-            if let Some(_) = opt_size {
-                panic!()
+            if let Some(arr_size_expr) = opt_size {
+                let arr_size = self.get_constant(ir_context, arr_size_expr, &IRExprContext::Value(Some(usize_type)))?.llvm_value.into_int_value().get_zero_extended_constant().unwrap();
+                let ctx_t = if let Some(cur_type) = opt_ctx_t {
+                    if let IRTypeEnum::Array { arr_type, size } = self.ir_type(*cur_type).type_enum && size == arr_size {
+                        IRExprContext::Value(Some(arr_type))
+                    } else {
+                        IRExprContext::Value(None)
+                    }
+                } else {
+                    IRExprContext::Value(None)
+                };
+                let arr_value = self.get_value(ir_context, expr, &ctx_t, true)?;
+                if let None = self.find_impl_of_core_trait(arr_value.type_id, &CoreTraitFun::Copy)? {
+                    return Err(self.error(SemanticError::MissingTrait { type_str: self.format_type(arr_value.type_id), trait_str: "Copy".to_string() }, Some(expr.span)));
+                }
+                let arr_type = self.array_type(arr_value.type_id, arr_size)?;
+                let temp_name = format!("tmp arr{}", ir_context.into_fun_context().vars.len());
+                let mut llvm_value: inkwell::values::AggregateValueEnum<'_> = self.ir_type(arr_type).llvm_type.into_array_type().get_undef().into();
+                for i in 0..arr_size {
+                    llvm_value.set_name("tmp_agg");
+                    llvm_value = self.builder.build_insert_value(llvm_value, arr_value.llvm_value, i as u32, "tmp_insert").unwrap();
+                }
+                llvm_value.set_name(&temp_name);
+                Ok(IRExprResult::Value(IRExprValueResult { type_id: arr_type, llvm_value: llvm_value.as_basic_value_enum() }))
             } else {
                 let ctx_t = if let Some(cur_type) = opt_ctx_t {
                     if let IRTypeEnum::Array { arr_type, size } = self.ir_type(*cur_type).type_enum {
@@ -41,17 +64,16 @@ impl<'ctx> CodeLowerer<'ctx> {
             }
         } else {
             if let Some(cur_size) = opt_size {
-                let u64_type = self.primitive_type(PrimitiveType::U64)?;
                 let (ctx_t, size_value) = if let IRExprContext::Impl(template_value) = context_type && let IRTemplateValue::Type(ctx_type) = template_value {
                     if let IRTypeEnum::Array { arr_type, size } = self.ir_type(*ctx_type).type_enum {
                         let size_value = IRExprValueResult { type_id: self.primitive_type(PrimitiveType::U64)?, llvm_value: self.llvm_context.i64_type().const_int(size, false).into() };
-                        let size = self.get_constant(ir_context, cur_size, &IRExprContext::Impl(IRTemplateValue::Const(size_value)), true)?.llvm_value.into_int_value().get_zero_extended_constant().unwrap();
+                        let size = self.get_constant(ir_context, cur_size, &IRExprContext::Impl(IRTemplateValue::Const(size_value)))?.llvm_value.into_int_value().get_zero_extended_constant().unwrap();
                         (&IRExprContext::Impl(IRTemplateValue::Type(arr_type)), size)
                     } else {
                         return Ok(IRExprResult::NoImplMatch);
                     }
                 } else {
-                    let size = self.get_constant(ir_context, cur_size, &IRExprContext::Value(Some(u64_type)), true)?.llvm_value.into_int_value().get_zero_extended_constant().unwrap();
+                    let size = self.get_constant(ir_context, cur_size, &IRExprContext::Value(Some(usize_type)))?.llvm_value.into_int_value().get_zero_extended_constant().unwrap();
                     (context_type, size)
                 };
                 let arr_type = self.get_type(ir_context, expr, ctx_t)?;

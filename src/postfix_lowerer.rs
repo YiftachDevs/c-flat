@@ -176,7 +176,6 @@ impl<'ctx> CodeLowerer<'ctx> {
 
     pub fn lower_postfix_opr_invoke(&mut self, ir_context: &mut IRContext<'ctx>, left_expr_result: IRExprResult<'ctx>, right_expr: &Box<ExprNode>, span: Span) -> Result<IRExprValueResult<'ctx>, CompilerError> {
         if let IRExprResult::Function(fun_id, opt_self_value) = left_expr_result {
-            let prev_vars_len = ir_context.into_fun_context().vars.len();
             let mut args_context_types = self.ir_function(fun_id).args.iter().map(|arg| IRExprContext::Value(Some(arg.type_id))).collect::<Vec<IRExprContext<'ctx>>>();
             let llvm_args = if let Some(self_value) = opt_self_value {
                 let mut res = if let IRExprContext::Value(Some(ctx_self)) = args_context_types.remove(0) {
@@ -193,7 +192,6 @@ impl<'ctx> CodeLowerer<'ctx> {
                 return Err(self.error(SemanticError::FunctionMissingBody { fun_str: self.format_scope_path(self.ir_function(fun_id).scope) }, Some(span)));
             }
             let fun_call = self.builder.build_call(self.ir_function(fun_id).llvm_value, &llvm_args, "fun_call_tmp").unwrap();
-            // self.drop_vars(ir_context, prev_vars_len, span)?;
             let ret_value = fun_call.try_as_basic_value().unwrap_basic();
             Ok(IRExprValueResult { type_id: self.ir_function(fun_id).return_type, llvm_value: ret_value })
         } else {

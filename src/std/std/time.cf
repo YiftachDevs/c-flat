@@ -1,0 +1,9 @@
+extern fun c_usleep(microseconds: u32) -> i32;
+
+fun sleep(seconds: f64) {
+    c_usleep((seconds * 1000000.0) as u32);
+}
+
+fun sleep_ms(miliseconds: u32) {
+    c_usleep(miliseconds * 1000);
+}

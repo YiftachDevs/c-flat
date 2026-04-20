@@ -551,6 +551,6 @@ impl<'ctx> CodeLowerer<'ctx> {
 
     pub fn export_ir_to_file(&self, file_path: &Path) {
         self.module.print_to_file(file_path).expect("Failed to write IR");
-        self.module.print_to_stderr();
+        // self.module.print_to_stderr();
     }
 }

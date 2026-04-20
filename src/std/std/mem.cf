@@ -1,0 +1,32 @@
+extern fun c_memcpy(dest_ptr: &(), src_ptr: &(), size: usize);
+extern fun c_malloc(size: usize) -> &();
+extern fun c_free(ptr: &());
+
+mod mem {
+    struct Manually_Drop<T> {
+        value: T
+    }
+
+    fun copy<T>(dest_ptr: &T, src_ptr: &T) {
+        c_memcpy(dest_ptr as &(), src_ptr as &(), T:mem_size());
+    }
+
+    fun copy_range<T>(dest_ptr: &T, src_ptr: &T, len: usize) {
+        c_memcpy(dest_ptr as &(), src_ptr as &(), len * T:mem_size());
+    }
+
+    fun alloc<T>(len: usize) -> &T {
+        *heap_count() += 1;
+        c_malloc(len * T:mem_size()) as &T
+    }
+
+    fun free<T>(ptr: &T) {
+        *heap_count() -= 1;
+        c_free(ptr as &())
+    }
+
+    fun heap_count() -> &mut usize {
+        static mut count: usize = 0;
+        &mut count
+    }
+}

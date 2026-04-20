@@ -2,233 +2,255 @@
 source_filename = "main_module"
 
 %"Vec<T = char>" = type { ptr, i64, i64 }
-%"SliceIter<T = Vec_2<T = i32>>" = type { ptr, ptr }
 %"Vec_2<T = i32>" = type { i32, i32 }
 %"Range<T = i32>" = type { i32, i32 }
 %"Vec<T = Vec_2<T = i32>>" = type { ptr, i64, i64 }
+%"SliceIter<T = Vec_2<T = i32>>" = type { ptr, ptr }
 
 @count = internal global i64 0
-@global_string = private unnamed_addr constant [19 x i8] c"stty -icanon -echo\00", align 1
-@global_string.1 = private unnamed_addr constant [6 x i8] c"clear\00", align 1
+@global_string = private unnamed_addr constant [23 x i8] c"\1B[31mHello in red!\1B[0m\00", align 1
+@global_string.1 = private unnamed_addr constant [8 x i8] c"\1B[2J\1B[H\00", align 1
 @global_string.2 = private unnamed_addr constant [2 x i8] c"0\00", align 1
 
 define i64 @main() {
 entry:
-  %tmp5 = alloca %"Vec<T = char>", align 8
-  %tmp4 = alloca i64, align 8
-  %dot = alloca ptr, align 8
-  %tmp_iter9 = alloca %"SliceIter<T = Vec_2<T = i32>>", align 8
+  %fun_call_tmp = call {} @paint()
+  %fun_call_tmp1 = call ptr @"mem:heap_count"()
+  %tmp = load i64, ptr %fun_call_tmp1, align 4
+  ret i64 %tmp
+}
+
+define {} @paint() {
+entry:
+  %tmp4 = alloca %"Vec<T = char>", align 8
+  %tmp3 = alloca i64, align 8
   %stamp = alloca i1, align 1
   %cur_pos = alloca %"Vec_2<T = i32>", align 8
   %x = alloca i32, align 4
-  %tmp_iter5 = alloca %"Range<T = i32>", align 8
+  %tmp_iter4 = alloca %"Range<T = i32>", align 8
   %y = alloca i32, align 4
-  %tmp_iter3 = alloca %"Range<T = i32>", align 8
+  %tmp_iter2 = alloca %"Range<T = i32>", align 8
   %input = alloca i8, align 1
   %pos = alloca %"Vec_2<T = i32>", align 8
   %dots = alloca %"Vec<T = Vec_2<T = i32>>", align 8
-  %fun_call_tmp = call i32 @exec_cmd({ ptr, i64 } { ptr @global_string, i64 18 })
-  %fun_call_tmp1 = call %"Vec<T = Vec_2<T = i32>>" @"Vec<T = Vec_2<T = i32>>:new"()
-  %fun_call_tmp1.elt = extractvalue %"Vec<T = Vec_2<T = i32>>" %fun_call_tmp1, 0
-  store ptr %fun_call_tmp1.elt, ptr %dots, align 8
-  %dots.repack142 = getelementptr inbounds nuw i8, ptr %dots, i64 8
-  %fun_call_tmp1.elt143 = extractvalue %"Vec<T = Vec_2<T = i32>>" %fun_call_tmp1, 1
-  store i64 %fun_call_tmp1.elt143, ptr %dots.repack142, align 8
-  %dots.repack144 = getelementptr inbounds nuw i8, ptr %dots, i64 16
-  %fun_call_tmp1.elt145 = extractvalue %"Vec<T = Vec_2<T = i32>>" %fun_call_tmp1, 2
-  store i64 %fun_call_tmp1.elt145, ptr %dots.repack144, align 8
+  %fun_call_tmp = call %"Vec<T = Vec_2<T = i32>>" @"Vec<T = Vec_2<T = i32>>:new"()
+  %fun_call_tmp.elt = extractvalue %"Vec<T = Vec_2<T = i32>>" %fun_call_tmp, 0
+  store ptr %fun_call_tmp.elt, ptr %dots, align 8
+  %dots.repack134 = getelementptr inbounds nuw i8, ptr %dots, i64 8
+  %fun_call_tmp.elt135 = extractvalue %"Vec<T = Vec_2<T = i32>>" %fun_call_tmp, 1
+  store i64 %fun_call_tmp.elt135, ptr %dots.repack134, align 8
+  %dots.repack136 = getelementptr inbounds nuw i8, ptr %dots, i64 16
+  %fun_call_tmp.elt137 = extractvalue %"Vec<T = Vec_2<T = i32>>" %fun_call_tmp, 2
+  store i64 %fun_call_tmp.elt137, ptr %dots.repack136, align 8
   store i32 12, ptr %pos, align 4
-  %pos.repack146 = getelementptr inbounds nuw i8, ptr %pos, i64 4
-  store i32 10, ptr %pos.repack146, align 4
+  %pos.repack138 = getelementptr inbounds nuw i8, ptr %pos, i64 4
+  store i32 10, ptr %pos.repack138, align 4
   br label %then
 
-then:                                             ; preds = %else58, %entry
-  %fun_call_tmp2 = call i8 @getchar()
-  store i8 %fun_call_tmp2, ptr %input, align 1
+then:                                             ; preds = %else64, %entry
+  %fun_call_tmp1 = call {} @print({ ptr, i64 } { ptr @global_string, i64 22 })
+  br label %cond
+
+then3:                                            ; preds = %cond
+  %fun_call_tmp5 = call i8 @c_getch()
+  store i8 %fun_call_tmp5, ptr %input, align 1
   %tmp = load i8, ptr %input, align 1
-  %tmp.i129 = icmp eq i8 %tmp, 113
-  br i1 %tmp.i129, label %then4, label %cond8
+  %tmp.i120 = icmp eq i8 %tmp, 113
+  br i1 %tmp.i120, label %then7, label %cond13
 
-then4:                                            ; preds = %then
-  %fun_call_tmp122 = call {} @"Vec<T = Vec_2<T = i32>>:drop"(ptr nonnull %dots)
-  %fun_call_tmp123 = call ptr @"mem:heap_count"()
-  %tmp124 = load i64, ptr %fun_call_tmp123, align 4
-  ret i64 %tmp124
+cond:                                             ; preds = %merge11, %then
+  %fun_call_tmp4 = call i1 @c_kbhit()
+  br i1 %fun_call_tmp4, label %then3, label %else
 
-merge6:                                           ; preds = %cond8, %then7
-  %tmp19 = load i32, ptr %pos, align 4
-  %tmp24 = load i8, ptr %input, align 1
-  %tmp.i127 = icmp eq i8 %tmp24, 100
+else:                                             ; preds = %cond
+  %fun_call_tmp59 = call {} @write({ ptr, i64 } { ptr @global_string.1, i64 7 })
+  store i32 0, ptr %tmp_iter2, align 4
+  %tmp_iter2.repack139 = getelementptr inbounds nuw i8, ptr %tmp_iter2, i64 4
+  store i32 32, ptr %tmp_iter2.repack139, align 4
+  br label %cond63
+
+then7:                                            ; preds = %then3
+  %fun_call_tmp115 = call {} @"Vec<T = Vec_2<T = i32>>:drop"(ptr nonnull %dots)
+  ret {} zeroinitializer
+
+merge11:                                          ; preds = %cond13, %then12
+  %tmp24 = load i32, ptr %pos, align 4
   %tmp29 = load i8, ptr %input, align 1
-  %tmp.i126 = icmp eq i8 %tmp29, 97
-  %spec.select = select i1 %tmp.i126, i32 -1, i32 0
-  %result33 = select i1 %tmp.i127, i32 1, i32 %spec.select
-  %tmp.i137 = add i32 %tmp19, %result33
-  store i32 %tmp.i137, ptr %pos, align 4
+  %tmp.i118 = icmp eq i8 %tmp29, 100
+  %tmp34 = load i8, ptr %input, align 1
+  %tmp.i117 = icmp eq i8 %tmp34, 97
+  %spec.select = select i1 %tmp.i117, i32 -1, i32 0
+  %result38 = select i1 %tmp.i118, i32 1, i32 %spec.select
+  %tmp.i129 = add i32 %tmp24, %result38
+  store i32 %tmp.i129, ptr %pos, align 4
   %pos.y = getelementptr inbounds nuw i8, ptr %pos, i64 4
-  %tmp36 = load i32, ptr %pos.y, align 4
-  %tmp41 = load i8, ptr %input, align 1
-  %tmp.i125 = icmp eq i8 %tmp41, 115
+  %tmp41 = load i32, ptr %pos.y, align 4
   %tmp46 = load i8, ptr %input, align 1
-  %tmp.i = icmp eq i8 %tmp46, 119
-  %spec.select175 = select i1 %tmp.i, i32 -1, i32 0
-  %result50 = select i1 %tmp.i125, i32 1, i32 %spec.select175
-  %tmp.i136 = add i32 %tmp36, %result50
-  %pos.y52 = getelementptr inbounds nuw i8, ptr %pos, i64 4
-  store i32 %tmp.i136, ptr %pos.y52, align 4
-  %fun_call_tmp53 = call i32 @exec_cmd({ ptr, i64 } { ptr @global_string.1, i64 5 })
-  store i32 0, ptr %tmp_iter3, align 4
-  %tmp_iter3.repack153 = getelementptr inbounds nuw i8, ptr %tmp_iter3, i64 4
-  store i32 32, ptr %tmp_iter3.repack153, align 4
-  br label %cond57
+  %tmp.i116 = icmp eq i8 %tmp46, 115
+  %tmp51 = load i8, ptr %input, align 1
+  %tmp.i = icmp eq i8 %tmp51, 119
+  %spec.select162 = select i1 %tmp.i, i32 -1, i32 0
+  %result55 = select i1 %tmp.i116, i32 1, i32 %spec.select162
+  %tmp.i128 = add i32 %tmp41, %result55
+  %pos.y57 = getelementptr inbounds nuw i8, ptr %pos, i64 4
+  store i32 %tmp.i128, ptr %pos.y57, align 4
+  br label %cond
 
-then7:                                            ; preds = %cond8
-  %tmp16.unpack = load i32, ptr %pos, align 4
-  %0 = insertvalue %"Vec_2<T = i32>" poison, i32 %tmp16.unpack, 0
-  %tmp16.elt150 = getelementptr inbounds nuw i8, ptr %pos, i64 4
-  %tmp16.unpack151 = load i32, ptr %tmp16.elt150, align 4
-  %tmp16152 = insertvalue %"Vec_2<T = i32>" %0, i32 %tmp16.unpack151, 1
-  %fun_call_tmp17 = call {} @"Vec<T = Vec_2<T = i32>>:push"(ptr nonnull %dots, %"Vec_2<T = i32>" %tmp16152)
-  br label %merge6
+then12:                                           ; preds = %cond13
+  %tmp21.unpack = load i32, ptr %pos, align 4
+  %0 = insertvalue %"Vec_2<T = i32>" poison, i32 %tmp21.unpack, 0
+  %tmp21.elt159 = getelementptr inbounds nuw i8, ptr %pos, i64 4
+  %tmp21.unpack160 = load i32, ptr %tmp21.elt159, align 4
+  %tmp21161 = insertvalue %"Vec_2<T = i32>" %0, i32 %tmp21.unpack160, 1
+  %fun_call_tmp22 = call {} @"Vec<T = Vec_2<T = i32>>:push"(ptr nonnull %dots, %"Vec_2<T = i32>" %tmp21161)
+  br label %merge11
 
-cond8:                                            ; preds = %then
-  %tmp10 = load i8, ptr %input, align 1
-  %tmp.i128 = icmp ne i8 %tmp10, 112
-  %tmp12.unpack = load i32, ptr %pos, align 4
-  %1 = insertvalue %"Vec_2<T = i32>" poison, i32 %tmp12.unpack, 0
-  %tmp12.elt147 = getelementptr inbounds nuw i8, ptr %pos, i64 4
-  %tmp12.unpack148 = load i32, ptr %tmp12.elt147, align 4
-  %tmp12149 = insertvalue %"Vec_2<T = i32>" %1, i32 %tmp12.unpack148, 1
-  %fun_call_tmp13 = call i1 @"Vec<T = Vec_2<T = i32>>:has"(ptr nonnull %dots, %"Vec_2<T = i32>" %tmp12149)
-  %tmp.i135.not = or i1 %tmp.i128, %fun_call_tmp13
-  br i1 %tmp.i135.not, label %merge6, label %then7
+cond13:                                           ; preds = %then3
+  %tmp15 = load i8, ptr %input, align 1
+  %tmp.i119 = icmp ne i8 %tmp15, 112
+  %tmp17.unpack = load i32, ptr %pos, align 4
+  %1 = insertvalue %"Vec_2<T = i32>" poison, i32 %tmp17.unpack, 0
+  %tmp17.elt156 = getelementptr inbounds nuw i8, ptr %pos, i64 4
+  %tmp17.unpack157 = load i32, ptr %tmp17.elt156, align 4
+  %tmp17158 = insertvalue %"Vec_2<T = i32>" %1, i32 %tmp17.unpack157, 1
+  %fun_call_tmp18 = call i1 @"Vec<T = Vec_2<T = i32>>:has"(ptr nonnull %dots, %"Vec_2<T = i32>" %tmp17158)
+  %tmp.i127.not = or i1 %tmp.i119, %fun_call_tmp18
+  br i1 %tmp.i127.not, label %merge11, label %then12
 
-then56:                                           ; preds = %cond57
-  %fun_call_tmp60 = call i32 @"Range<T = i32>:next"(ptr nonnull %tmp_iter3)
-  store i32 %fun_call_tmp60, ptr %y, align 4
-  store i32 0, ptr %tmp_iter5, align 4
-  %tmp_iter5.repack158 = getelementptr inbounds nuw i8, ptr %tmp_iter5, i64 4
-  store i32 32, ptr %tmp_iter5.repack158, align 4
-  br label %cond64
+then62:                                           ; preds = %cond63
+  %fun_call_tmp66 = call i32 @"Range<T = i32>:next"(ptr nonnull %tmp_iter2)
+  store i32 %fun_call_tmp66, ptr %y, align 4
+  store i32 0, ptr %tmp_iter4, align 4
+  %tmp_iter4.repack144 = getelementptr inbounds nuw i8, ptr %tmp_iter4, i64 4
+  store i32 32, ptr %tmp_iter4.repack144, align 4
+  br label %cond70
 
-cond57:                                           ; preds = %else65, %merge6
-  %fun_call_tmp59 = call i1 @"Range<T = i32>:has_next"(ptr nonnull %tmp_iter3)
-  br i1 %fun_call_tmp59, label %then56, label %else58
+cond63:                                           ; preds = %else71, %else
+  %fun_call_tmp65 = call i1 @"Range<T = i32>:has_next"(ptr nonnull %tmp_iter2)
+  br i1 %fun_call_tmp65, label %then62, label %else64
 
-else58:                                           ; preds = %cond57
-  %fun_call_tmp115 = call { ptr, i64 } @"Vec<T = Vec_2<T = i32>>:deref_mut"(ptr nonnull %dots)
-  %len.i = extractvalue { ptr, i64 } %fun_call_tmp115, 1
-  store i64 %len.i, ptr %tmp4, align 4
-  %fun_call_tmp117 = call %"Vec<T = char>" @"u64:to_string"(ptr nonnull %tmp4)
-  %fun_call_tmp117.elt = extractvalue %"Vec<T = char>" %fun_call_tmp117, 0
-  store ptr %fun_call_tmp117.elt, ptr %tmp5, align 8
-  %tmp5.repack154 = getelementptr inbounds nuw i8, ptr %tmp5, i64 8
-  %fun_call_tmp117.elt155 = extractvalue %"Vec<T = char>" %fun_call_tmp117, 1
-  store i64 %fun_call_tmp117.elt155, ptr %tmp5.repack154, align 8
-  %tmp5.repack156 = getelementptr inbounds nuw i8, ptr %tmp5, i64 16
-  %fun_call_tmp117.elt157 = extractvalue %"Vec<T = char>" %fun_call_tmp117, 2
-  store i64 %fun_call_tmp117.elt157, ptr %tmp5.repack156, align 8
-  %fun_call_tmp118 = call { ptr, i64 } @"Vec<T = char>:deref_mut"(ptr nonnull %tmp5)
-  %fun_call_tmp119 = call {} @print({ ptr, i64 } %fun_call_tmp118)
-  %fun_call_tmp120 = call {} @"Vec<T = char>:drop"(ptr nonnull %tmp5)
+else64:                                           ; preds = %cond63
+  %fun_call_tmp106 = call { ptr, i64 } @"Vec<T = Vec_2<T = i32>>:deref_mut"(ptr nonnull %dots)
+  %len.i = extractvalue { ptr, i64 } %fun_call_tmp106, 1
+  store i64 %len.i, ptr %tmp3, align 4
+  %fun_call_tmp108 = call %"Vec<T = char>" @"u64:to_string"(ptr nonnull %tmp3)
+  %fun_call_tmp108.elt = extractvalue %"Vec<T = char>" %fun_call_tmp108, 0
+  store ptr %fun_call_tmp108.elt, ptr %tmp4, align 8
+  %tmp4.repack140 = getelementptr inbounds nuw i8, ptr %tmp4, i64 8
+  %fun_call_tmp108.elt141 = extractvalue %"Vec<T = char>" %fun_call_tmp108, 1
+  store i64 %fun_call_tmp108.elt141, ptr %tmp4.repack140, align 8
+  %tmp4.repack142 = getelementptr inbounds nuw i8, ptr %tmp4, i64 16
+  %fun_call_tmp108.elt143 = extractvalue %"Vec<T = char>" %fun_call_tmp108, 2
+  store i64 %fun_call_tmp108.elt143, ptr %tmp4.repack142, align 8
+  %fun_call_tmp109 = call { ptr, i64 } @"Vec<T = char>:deref_mut"(ptr nonnull %tmp4)
+  %fun_call_tmp110 = call {} @print({ ptr, i64 } %fun_call_tmp109)
+  %fun_call_tmp112 = call {} @sleep(double 5.000000e-01)
+  %fun_call_tmp113 = call {} @"Vec<T = char>:drop"(ptr nonnull %tmp4)
   br label %then
 
-then63:                                           ; preds = %cond64
-  %fun_call_tmp67 = call i32 @"Range<T = i32>:next"(ptr nonnull %tmp_iter5)
-  store i32 %fun_call_tmp67, ptr %x, align 4
-  %tmp69 = load i32, ptr %y, align 4
-  store i32 %fun_call_tmp67, ptr %cur_pos, align 4
-  %cur_pos.repack159 = getelementptr inbounds nuw i8, ptr %cur_pos, i64 4
-  store i32 %tmp69, ptr %cur_pos.repack159, align 4
-  %tmp.i141 = icmp eq i32 %fun_call_tmp67, 0
-  %tmp.i140 = icmp eq i32 %tmp69, 0
-  %tmp.i134 = or i1 %tmp.i141, %tmp.i140
-  %tmp75 = load i32, ptr %x, align 4
-  %tmp.i139 = icmp eq i32 %tmp75, 31
-  %tmp.i133 = or i1 %tmp.i134, %tmp.i139
-  %tmp78 = load i32, ptr %y, align 4
-  %tmp.i138 = icmp eq i32 %tmp78, 31
-  %tmp.i132 = or i1 %tmp.i133, %tmp.i138
-  %tmp81.unpack = load i32, ptr %pos, align 4
-  %2 = insertvalue %"Vec_2<T = i32>" poison, i32 %tmp81.unpack, 0
-  %tmp81.elt161 = getelementptr inbounds nuw i8, ptr %pos, i64 4
-  %tmp81.unpack162 = load i32, ptr %tmp81.elt161, align 4
-  %tmp81163 = insertvalue %"Vec_2<T = i32>" %2, i32 %tmp81.unpack162, 1
-  %tmp82.unpack = load i32, ptr %cur_pos, align 4
-  %3 = insertvalue %"Vec_2<T = i32>" poison, i32 %tmp82.unpack, 0
-  %tmp82.elt164 = getelementptr inbounds nuw i8, ptr %cur_pos, i64 4
-  %tmp82.unpack165 = load i32, ptr %tmp82.elt164, align 4
-  %tmp82166 = insertvalue %"Vec_2<T = i32>" %3, i32 %tmp82.unpack165, 1
-  %fun_call_tmp83 = call i1 @"Vec_2<T = i32>:eq"(%"Vec_2<T = i32>" %tmp81163, %"Vec_2<T = i32>" %tmp82166)
-  %tmp.i131 = or i1 %tmp.i132, %fun_call_tmp83
-  store i1 %tmp.i131, ptr %stamp, align 1
-  %fun_call_tmp86 = call { ptr, i64 } @"Vec<T = Vec_2<T = i32>>:deref_mut"(ptr nonnull %dots)
-  %fun_call_tmp87 = call %"SliceIter<T = Vec_2<T = i32>>" @"[Vec_2<T = i32>]:iter"({ ptr, i64 } %fun_call_tmp86)
-  %fun_call_tmp87.elt = extractvalue %"SliceIter<T = Vec_2<T = i32>>" %fun_call_tmp87, 0
-  store ptr %fun_call_tmp87.elt, ptr %tmp_iter9, align 8
-  %tmp_iter9.repack167 = getelementptr inbounds nuw i8, ptr %tmp_iter9, i64 8
-  %fun_call_tmp87.elt168 = extractvalue %"SliceIter<T = Vec_2<T = i32>>" %fun_call_tmp87, 1
-  store ptr %fun_call_tmp87.elt168, ptr %tmp_iter9.repack167, align 8
-  br label %cond89
+then69:                                           ; preds = %cond70
+  %fun_call_tmp73 = call i32 @"Range<T = i32>:next"(ptr nonnull %tmp_iter4)
+  store i32 %fun_call_tmp73, ptr %x, align 4
+  %tmp75 = load i32, ptr %y, align 4
+  store i32 %fun_call_tmp73, ptr %cur_pos, align 4
+  %cur_pos.repack145 = getelementptr inbounds nuw i8, ptr %cur_pos, i64 4
+  store i32 %tmp75, ptr %cur_pos.repack145, align 4
+  %tmp.i133 = icmp eq i32 %fun_call_tmp73, 0
+  %tmp.i132 = icmp eq i32 %tmp75, 0
+  %tmp.i126 = or i1 %tmp.i133, %tmp.i132
+  %tmp81 = load i32, ptr %x, align 4
+  %tmp.i131 = icmp eq i32 %tmp81, 31
+  %tmp.i125 = or i1 %tmp.i126, %tmp.i131
+  %tmp84 = load i32, ptr %y, align 4
+  %tmp.i130 = icmp eq i32 %tmp84, 31
+  %tmp.i124 = or i1 %tmp.i125, %tmp.i130
+  %tmp87.unpack = load i32, ptr %pos, align 4
+  %2 = insertvalue %"Vec_2<T = i32>" poison, i32 %tmp87.unpack, 0
+  %tmp87.elt147 = getelementptr inbounds nuw i8, ptr %pos, i64 4
+  %tmp87.unpack148 = load i32, ptr %tmp87.elt147, align 4
+  %tmp87149 = insertvalue %"Vec_2<T = i32>" %2, i32 %tmp87.unpack148, 1
+  %tmp88.unpack = load i32, ptr %cur_pos, align 4
+  %3 = insertvalue %"Vec_2<T = i32>" poison, i32 %tmp88.unpack, 0
+  %tmp88.elt150 = getelementptr inbounds nuw i8, ptr %cur_pos, i64 4
+  %tmp88.unpack151 = load i32, ptr %tmp88.elt150, align 4
+  %tmp88152 = insertvalue %"Vec_2<T = i32>" %3, i32 %tmp88.unpack151, 1
+  %fun_call_tmp89 = call i1 @"Vec_2<T = i32>:eq"(%"Vec_2<T = i32>" %tmp87149, %"Vec_2<T = i32>" %tmp88152)
+  %tmp.i123 = or i1 %tmp.i124, %fun_call_tmp89
+  %tmp91.unpack = load i32, ptr %cur_pos, align 4
+  %4 = insertvalue %"Vec_2<T = i32>" poison, i32 %tmp91.unpack, 0
+  %tmp91.elt153 = getelementptr inbounds nuw i8, ptr %cur_pos, i64 4
+  %tmp91.unpack154 = load i32, ptr %tmp91.elt153, align 4
+  %tmp91155 = insertvalue %"Vec_2<T = i32>" %4, i32 %tmp91.unpack154, 1
+  %fun_call_tmp92 = call i1 @"Vec<T = Vec_2<T = i32>>:has"(ptr nonnull %dots, %"Vec_2<T = i32>" %tmp91155)
+  %tmp.i122 = or i1 %tmp.i123, %fun_call_tmp92
+  store i1 %tmp.i122, ptr %stamp, align 1
+  %tmp98 = load i1, ptr %stamp, align 1
+  %spec.select163 = select i1 %tmp98, i8 64, i8 32
+  %fun_call_tmp102 = call i8 @c_putchar(i8 %spec.select163)
+  br label %cond70
 
-cond64:                                           ; preds = %cond105, %then56
-  %fun_call_tmp66 = call i1 @"Range<T = i32>:has_next"(ptr nonnull %tmp_iter5)
-  br i1 %fun_call_tmp66, label %then63, label %else65
+cond70:                                           ; preds = %then69, %then62
+  %fun_call_tmp72 = call i1 @"Range<T = i32>:has_next"(ptr nonnull %tmp_iter4)
+  br i1 %fun_call_tmp72, label %then69, label %else71
 
-else65:                                           ; preds = %cond64
-  %fun_call_tmp113 = call i8 @putchar(i8 10)
-  br label %cond57
-
-then88:                                           ; preds = %cond89
-  %fun_call_tmp92 = call ptr @"SliceIter<T = Vec_2<T = i32>>:next"(ptr nonnull %tmp_iter9)
-  store ptr %fun_call_tmp92, ptr %dot, align 8
-  %tmp97 = load ptr, ptr %dot, align 8
-  %tmp98.unpack = load i32, ptr %tmp97, align 4
-  %4 = insertvalue %"Vec_2<T = i32>" poison, i32 %tmp98.unpack, 0
-  %tmp98.elt169 = getelementptr inbounds nuw i8, ptr %tmp97, i64 4
-  %tmp98.unpack170 = load i32, ptr %tmp98.elt169, align 4
-  %tmp98171 = insertvalue %"Vec_2<T = i32>" %4, i32 %tmp98.unpack170, 1
-  %tmp99.unpack = load i32, ptr %cur_pos, align 4
-  %5 = insertvalue %"Vec_2<T = i32>" poison, i32 %tmp99.unpack, 0
-  %tmp99.elt172 = getelementptr inbounds nuw i8, ptr %cur_pos, i64 4
-  %tmp99.unpack173 = load i32, ptr %tmp99.elt172, align 4
-  %tmp99174 = insertvalue %"Vec_2<T = i32>" %5, i32 %tmp99.unpack173, 1
-  %fun_call_tmp100 = call i1 @"Vec_2<T = i32>:eq"(%"Vec_2<T = i32>" %tmp98171, %"Vec_2<T = i32>" %tmp99174)
-  br i1 %fun_call_tmp100, label %then94, label %cond89
-
-cond89:                                           ; preds = %then88, %then63
-  %fun_call_tmp91 = call i1 @"SliceIter<T = Vec_2<T = i32>>:has_next"(ptr nonnull %tmp_iter9)
-  br i1 %fun_call_tmp91, label %then88, label %cond105
-
-then94:                                           ; preds = %then88
-  store i1 true, ptr %stamp, align 1
-  br label %cond105
-
-cond105:                                          ; preds = %cond89, %then94
-  %tmp107 = load i1, ptr %stamp, align 1
-  %result109 = select i1 %tmp107, i8 64, i8 32
-  %fun_call_tmp111 = call i8 @putchar(i8 %result109)
-  br label %cond64
+else71:                                           ; preds = %cond70
+  %fun_call_tmp104 = call i8 @c_putchar(i8 10)
+  br label %cond63
 }
 
-define i32 @exec_cmd({ ptr, i64 } %0) {
+define %"Vec<T = Vec_2<T = i32>>" @"Vec<T = Vec_2<T = i32>>:new"() {
+entry:
+  %fun_call_tmp = call %"Vec<T = Vec_2<T = i32>>" @"Vec<T = Vec_2<T = i32>>:with_capacity"(i64 4)
+  ret %"Vec<T = Vec_2<T = i32>>" %fun_call_tmp
+}
+
+define %"Vec<T = Vec_2<T = i32>>" @"Vec<T = Vec_2<T = i32>>:with_capacity"(i64 %0) {
+entry:
+  %fun_call_tmp = call ptr @"mem:alloc<T = Vec_2<T = i32>>"(i64 %0)
+  %tmp_agg = insertvalue %"Vec<T = Vec_2<T = i32>>" undef, ptr %fun_call_tmp, 0
+  %tmp_agg2 = insertvalue %"Vec<T = Vec_2<T = i32>>" %tmp_agg, i64 0, 1
+  %tmp_constructor = insertvalue %"Vec<T = Vec_2<T = i32>>" %tmp_agg2, i64 %0, 2
+  ret %"Vec<T = Vec_2<T = i32>>" %tmp_constructor
+}
+
+define ptr @"mem:alloc<T = Vec_2<T = i32>>"(i64 %0) {
+entry:
+  %fun_call_tmp = call ptr @"mem:heap_count"()
+  %tmp = load i64, ptr %fun_call_tmp, align 4
+  %tmp.i = add i64 %tmp, 1
+  %fun_call_tmp2 = call ptr @"mem:heap_count"()
+  store i64 %tmp.i, ptr %fun_call_tmp2, align 4
+  %tmp.i7 = shl i64 %0, 3
+  %fun_call_tmp6 = call ptr @c_malloc(i64 %tmp.i7)
+  ret ptr %fun_call_tmp6
+}
+
+define ptr @"mem:heap_count"() {
+entry:
+  ret ptr @count
+}
+
+declare ptr @c_malloc(i64)
+
+define {} @print({ ptr, i64 } %0) {
 entry:
   %tmp1 = alloca %"Vec<T = char>", align 8
   %fun_call_tmp = call %"Vec<T = char>" @"Vec<T = char>:from"({ ptr, i64 } %0)
   %fun_call_tmp.elt = extractvalue %"Vec<T = char>" %fun_call_tmp, 0
   store ptr %fun_call_tmp.elt, ptr %tmp1, align 8
-  %tmp1.repack12 = getelementptr inbounds nuw i8, ptr %tmp1, i64 8
-  %fun_call_tmp.elt13 = extractvalue %"Vec<T = char>" %fun_call_tmp, 1
-  store i64 %fun_call_tmp.elt13, ptr %tmp1.repack12, align 8
-  %tmp1.repack14 = getelementptr inbounds nuw i8, ptr %tmp1, i64 16
-  %fun_call_tmp.elt15 = extractvalue %"Vec<T = char>" %fun_call_tmp, 2
-  store i64 %fun_call_tmp.elt15, ptr %tmp1.repack14, align 8
+  %tmp1.repack13 = getelementptr inbounds nuw i8, ptr %tmp1, i64 8
+  %fun_call_tmp.elt14 = extractvalue %"Vec<T = char>" %fun_call_tmp, 1
+  store i64 %fun_call_tmp.elt14, ptr %tmp1.repack13, align 8
+  %tmp1.repack15 = getelementptr inbounds nuw i8, ptr %tmp1, i64 16
+  %fun_call_tmp.elt16 = extractvalue %"Vec<T = char>" %fun_call_tmp, 2
+  store i64 %fun_call_tmp.elt16, ptr %tmp1.repack15, align 8
   %fun_call_tmp1 = call ptr @"Vec<T = char>:null_terminate"(ptr nonnull %tmp1)
   %fun_call_tmp3 = call { ptr, i64 } @"Vec<T = char>:deref_mut"(ptr %fun_call_tmp1)
   %ref.i = extractvalue { ptr, i64 } %fun_call_tmp3, 0
-  %fun_call_tmp5 = call i32 @system(ptr %ref.i)
-  %fun_call_tmp6 = call {} @"Vec<T = char>:drop"(ptr nonnull %tmp1)
-  ret i32 %fun_call_tmp5
+  %fun_call_tmp5 = call {} @c_puts(ptr %ref.i)
+  %fun_call_tmp6 = call {} @c_flush()
+  %fun_call_tmp7 = call {} @"Vec<T = char>:drop"(ptr nonnull %tmp1)
+  ret {} zeroinitializer
 }
 
 define %"Vec<T = char>" @"Vec<T = char>:from"({ ptr, i64 } %0) {
@@ -274,30 +296,23 @@ entry:
 
 define %"Vec<T = char>" @"Vec<T = char>:with_capacity"(i64 %0) {
 entry:
-  %fun_call_tmp = call ptr @"mem:heap_alloc<T = char>"(i64 %0)
+  %fun_call_tmp = call ptr @"mem:alloc<T = char>"(i64 %0)
   %tmp_agg = insertvalue %"Vec<T = char>" undef, ptr %fun_call_tmp, 0
   %tmp_agg2 = insertvalue %"Vec<T = char>" %tmp_agg, i64 0, 1
   %tmp_constructor = insertvalue %"Vec<T = char>" %tmp_agg2, i64 %0, 2
   ret %"Vec<T = char>" %tmp_constructor
 }
 
-define ptr @"mem:heap_alloc<T = char>"(i64 %0) {
+define ptr @"mem:alloc<T = char>"(i64 %0) {
 entry:
   %fun_call_tmp = call ptr @"mem:heap_count"()
   %tmp = load i64, ptr %fun_call_tmp, align 4
   %tmp.i = add i64 %tmp, 1
   %fun_call_tmp2 = call ptr @"mem:heap_count"()
   store i64 %tmp.i, ptr %fun_call_tmp2, align 4
-  %fun_call_tmp6 = call ptr @malloc(i64 %0)
+  %fun_call_tmp6 = call ptr @c_malloc(i64 %0)
   ret ptr %fun_call_tmp6
 }
-
-define ptr @"mem:heap_count"() {
-entry:
-  ret ptr @count
-}
-
-declare ptr @malloc(i64)
 
 define {} @"Vec<T = char>:extend_from_slice"(ptr %0, { ptr, i64 } %1) {
 entry:
@@ -398,7 +413,7 @@ else10:                                           ; preds = %cond9
   %tmp19 = load ptr, ptr %self, align 8
   %tmp19.capacity = getelementptr inbounds nuw i8, ptr %tmp19, i64 16
   %tmp20 = load i64, ptr %tmp19.capacity, align 4
-  %fun_call_tmp21 = call ptr @"mem:heap_alloc<T = char>"(i64 %tmp20)
+  %fun_call_tmp21 = call ptr @"mem:alloc<T = char>"(i64 %tmp20)
   store ptr %fun_call_tmp21, ptr %new_ptr, align 8
   %tmp23.len = getelementptr inbounds nuw i8, ptr %tmp19, i64 8
   %tmp25 = load ptr, ptr %tmp19, align 8
@@ -406,7 +421,7 @@ else10:                                           ; preds = %cond9
   %fun_call_tmp27 = call {} @"mem:copy_range<T = char>"(ptr %fun_call_tmp21, ptr %tmp25, i64 %tmp26)
   %tmp28 = load ptr, ptr %self, align 8
   %tmp29 = load ptr, ptr %tmp28, align 8
-  %fun_call_tmp30 = call {} @"mem:heap_free<T = char>"(ptr %tmp29)
+  %fun_call_tmp30 = call {} @"mem:free<T = char>"(ptr %tmp29)
   %tmp32 = load ptr, ptr %new_ptr, align 8
   store ptr %tmp32, ptr %tmp28, align 8
   br label %merge
@@ -414,28 +429,28 @@ else10:                                           ; preds = %cond9
 
 define {} @"mem:copy_range<T = char>"(ptr %0, ptr %1, i64 %2) {
 entry:
-  %fun_call_tmp4 = call {} @memcpy(ptr %0, ptr %1, i64 %2)
+  %fun_call_tmp4 = call {} @c_memcpy(ptr %0, ptr %1, i64 %2)
   ret {} zeroinitializer
 }
 
-declare {} @memcpy(ptr, ptr, i64)
+declare {} @c_memcpy(ptr, ptr, i64)
 
-define {} @"mem:heap_free<T = char>"(ptr %0) {
+define {} @"mem:free<T = char>"(ptr %0) {
 entry:
   %fun_call_tmp = call ptr @"mem:heap_count"()
   %tmp = load i64, ptr %fun_call_tmp, align 4
   %tmp.i = add i64 %tmp, -1
   %fun_call_tmp2 = call ptr @"mem:heap_count"()
   store i64 %tmp.i, ptr %fun_call_tmp2, align 4
-  %fun_call_tmp4 = call {} @free(ptr %0)
+  %fun_call_tmp4 = call {} @c_free(ptr %0)
   ret {} %fun_call_tmp4
 }
 
-declare {} @free(ptr)
+declare {} @c_free(ptr)
 
 define {} @"mem:copy<T = char>"(ptr %0, ptr %1) {
 entry:
-  %fun_call_tmp2 = call {} @memcpy(ptr %0, ptr %1, i64 1)
+  %fun_call_tmp2 = call {} @c_memcpy(ptr %0, ptr %1, i64 1)
   ret {} zeroinitializer
 }
 
@@ -445,7 +460,7 @@ entry:
   ret ptr %0
 }
 
-declare i32 @system(ptr)
+declare {} @c_puts(ptr)
 
 define { ptr, i64 } @"Vec<T = char>:deref_mut"(ptr %0) {
 entry:
@@ -462,6 +477,8 @@ entry:
   %len.i = insertvalue { ptr, i64 } %ptr.i, i64 %tmp3, 1
   ret { ptr, i64 } %len.i
 }
+
+declare {} @c_flush()
 
 define {} @"Vec<T = char>:drop"(ptr %0) {
 entry:
@@ -492,7 +509,7 @@ cond:                                             ; preds = %then, %entry
 else:                                             ; preds = %cond
   %tmp11 = load ptr, ptr %self, align 8
   %tmp12 = load ptr, ptr %tmp11, align 8
-  %fun_call_tmp13 = call {} @"mem:heap_free<T = char>"(ptr %tmp12)
+  %fun_call_tmp13 = call {} @"mem:free<T = char>"(ptr %tmp12)
   ret {} zeroinitializer
 }
 
@@ -517,34 +534,9 @@ entry:
   ret {} zeroinitializer
 }
 
-define %"Vec<T = Vec_2<T = i32>>" @"Vec<T = Vec_2<T = i32>>:new"() {
-entry:
-  %fun_call_tmp = call %"Vec<T = Vec_2<T = i32>>" @"Vec<T = Vec_2<T = i32>>:with_capacity"(i64 4)
-  ret %"Vec<T = Vec_2<T = i32>>" %fun_call_tmp
-}
+declare i1 @c_kbhit()
 
-define %"Vec<T = Vec_2<T = i32>>" @"Vec<T = Vec_2<T = i32>>:with_capacity"(i64 %0) {
-entry:
-  %fun_call_tmp = call ptr @"mem:heap_alloc<T = Vec_2<T = i32>>"(i64 %0)
-  %tmp_agg = insertvalue %"Vec<T = Vec_2<T = i32>>" undef, ptr %fun_call_tmp, 0
-  %tmp_agg2 = insertvalue %"Vec<T = Vec_2<T = i32>>" %tmp_agg, i64 0, 1
-  %tmp_constructor = insertvalue %"Vec<T = Vec_2<T = i32>>" %tmp_agg2, i64 %0, 2
-  ret %"Vec<T = Vec_2<T = i32>>" %tmp_constructor
-}
-
-define ptr @"mem:heap_alloc<T = Vec_2<T = i32>>"(i64 %0) {
-entry:
-  %fun_call_tmp = call ptr @"mem:heap_count"()
-  %tmp = load i64, ptr %fun_call_tmp, align 4
-  %tmp.i = add i64 %tmp, 1
-  %fun_call_tmp2 = call ptr @"mem:heap_count"()
-  store i64 %tmp.i, ptr %fun_call_tmp2, align 4
-  %tmp.i7 = shl i64 %0, 3
-  %fun_call_tmp6 = call ptr @malloc(i64 %tmp.i7)
-  ret ptr %fun_call_tmp6
-}
-
-declare i8 @getchar()
+declare i8 @c_getch()
 
 define i1 @"Vec<T = Vec_2<T = i32>>:has"(ptr %0, %"Vec_2<T = i32>" %1) {
 entry:
@@ -744,7 +736,7 @@ else10:                                           ; preds = %cond9
   %tmp19 = load ptr, ptr %self, align 8
   %tmp19.capacity = getelementptr inbounds nuw i8, ptr %tmp19, i64 16
   %tmp20 = load i64, ptr %tmp19.capacity, align 4
-  %fun_call_tmp21 = call ptr @"mem:heap_alloc<T = Vec_2<T = i32>>"(i64 %tmp20)
+  %fun_call_tmp21 = call ptr @"mem:alloc<T = Vec_2<T = i32>>"(i64 %tmp20)
   store ptr %fun_call_tmp21, ptr %new_ptr, align 8
   %tmp23.len = getelementptr inbounds nuw i8, ptr %tmp19, i64 8
   %tmp25 = load ptr, ptr %tmp19, align 8
@@ -752,7 +744,7 @@ else10:                                           ; preds = %cond9
   %fun_call_tmp27 = call {} @"mem:copy_range<T = Vec_2<T = i32>>"(ptr %fun_call_tmp21, ptr %tmp25, i64 %tmp26)
   %tmp28 = load ptr, ptr %self, align 8
   %tmp29 = load ptr, ptr %tmp28, align 8
-  %fun_call_tmp30 = call {} @"mem:heap_free<T = Vec_2<T = i32>>"(ptr %tmp29)
+  %fun_call_tmp30 = call {} @"mem:free<T = Vec_2<T = i32>>"(ptr %tmp29)
   %tmp32 = load ptr, ptr %new_ptr, align 8
   store ptr %tmp32, ptr %tmp28, align 8
   br label %merge
@@ -761,26 +753,49 @@ else10:                                           ; preds = %cond9
 define {} @"mem:copy_range<T = Vec_2<T = i32>>"(ptr %0, ptr %1, i64 %2) {
 entry:
   %tmp.i = shl i64 %2, 3
-  %fun_call_tmp4 = call {} @memcpy(ptr %0, ptr %1, i64 %tmp.i)
+  %fun_call_tmp4 = call {} @c_memcpy(ptr %0, ptr %1, i64 %tmp.i)
   ret {} zeroinitializer
 }
 
-define {} @"mem:heap_free<T = Vec_2<T = i32>>"(ptr %0) {
+define {} @"mem:free<T = Vec_2<T = i32>>"(ptr %0) {
 entry:
   %fun_call_tmp = call ptr @"mem:heap_count"()
   %tmp = load i64, ptr %fun_call_tmp, align 4
   %tmp.i = add i64 %tmp, -1
   %fun_call_tmp2 = call ptr @"mem:heap_count"()
   store i64 %tmp.i, ptr %fun_call_tmp2, align 4
-  %fun_call_tmp4 = call {} @free(ptr %0)
+  %fun_call_tmp4 = call {} @c_free(ptr %0)
   ret {} %fun_call_tmp4
 }
 
 define {} @"mem:copy<T = Vec_2<T = i32>>"(ptr %0, ptr %1) {
 entry:
-  %fun_call_tmp2 = call {} @memcpy(ptr %0, ptr %1, i64 8)
+  %fun_call_tmp2 = call {} @c_memcpy(ptr %0, ptr %1, i64 8)
   ret {} zeroinitializer
 }
+
+define {} @write({ ptr, i64 } %0) {
+entry:
+  %tmp1 = alloca %"Vec<T = char>", align 8
+  %fun_call_tmp = call %"Vec<T = char>" @"Vec<T = char>:from"({ ptr, i64 } %0)
+  %fun_call_tmp.elt = extractvalue %"Vec<T = char>" %fun_call_tmp, 0
+  store ptr %fun_call_tmp.elt, ptr %tmp1, align 8
+  %tmp1.repack13 = getelementptr inbounds nuw i8, ptr %tmp1, i64 8
+  %fun_call_tmp.elt14 = extractvalue %"Vec<T = char>" %fun_call_tmp, 1
+  store i64 %fun_call_tmp.elt14, ptr %tmp1.repack13, align 8
+  %tmp1.repack15 = getelementptr inbounds nuw i8, ptr %tmp1, i64 16
+  %fun_call_tmp.elt16 = extractvalue %"Vec<T = char>" %fun_call_tmp, 2
+  store i64 %fun_call_tmp.elt16, ptr %tmp1.repack15, align 8
+  %fun_call_tmp1 = call ptr @"Vec<T = char>:null_terminate"(ptr nonnull %tmp1)
+  %fun_call_tmp3 = call { ptr, i64 } @"Vec<T = char>:deref_mut"(ptr %fun_call_tmp1)
+  %ref.i = extractvalue { ptr, i64 } %fun_call_tmp3, 0
+  %fun_call_tmp5 = call {} @c_printf(ptr %ref.i)
+  %fun_call_tmp6 = call {} @c_flush()
+  %fun_call_tmp7 = call {} @"Vec<T = char>:drop"(ptr nonnull %tmp1)
+  ret {} zeroinitializer
+}
+
+declare {} @c_printf(ptr)
 
 define i1 @"Range<T = i32>:has_next"(ptr %0) {
 entry:
@@ -799,29 +814,7 @@ entry:
   ret i32 %tmp1
 }
 
-declare i8 @putchar(i8)
-
-define {} @print({ ptr, i64 } %0) {
-entry:
-  %tmp1 = alloca %"Vec<T = char>", align 8
-  %fun_call_tmp = call %"Vec<T = char>" @"Vec<T = char>:from"({ ptr, i64 } %0)
-  %fun_call_tmp.elt = extractvalue %"Vec<T = char>" %fun_call_tmp, 0
-  store ptr %fun_call_tmp.elt, ptr %tmp1, align 8
-  %tmp1.repack12 = getelementptr inbounds nuw i8, ptr %tmp1, i64 8
-  %fun_call_tmp.elt13 = extractvalue %"Vec<T = char>" %fun_call_tmp, 1
-  store i64 %fun_call_tmp.elt13, ptr %tmp1.repack12, align 8
-  %tmp1.repack14 = getelementptr inbounds nuw i8, ptr %tmp1, i64 16
-  %fun_call_tmp.elt15 = extractvalue %"Vec<T = char>" %fun_call_tmp, 2
-  store i64 %fun_call_tmp.elt15, ptr %tmp1.repack14, align 8
-  %fun_call_tmp1 = call ptr @"Vec<T = char>:null_terminate"(ptr nonnull %tmp1)
-  %fun_call_tmp3 = call { ptr, i64 } @"Vec<T = char>:deref_mut"(ptr %fun_call_tmp1)
-  %ref.i = extractvalue { ptr, i64 } %fun_call_tmp3, 0
-  %fun_call_tmp5 = call {} @puts(ptr %ref.i)
-  %fun_call_tmp6 = call {} @"Vec<T = char>:drop"(ptr nonnull %tmp1)
-  ret {} zeroinitializer
-}
-
-declare {} @puts(ptr)
+declare i8 @c_putchar(i8)
 
 define %"Vec<T = char>" @"u64:to_string"(ptr %0) {
 entry:
@@ -926,6 +919,16 @@ entry:
   ret {} zeroinitializer
 }
 
+define {} @sleep(double %0) {
+entry:
+  %tmp.i = fmul double %0, 1.000000e+06
+  %cast = fptoui double %tmp.i to i32
+  %fun_call_tmp1 = call i32 @c_usleep(i32 %cast)
+  ret {} zeroinitializer
+}
+
+declare i32 @c_usleep(i32)
+
 define {} @"Vec<T = Vec_2<T = i32>>:drop"(ptr %0) {
 entry:
   %idx = alloca i64, align 8
@@ -955,7 +958,7 @@ cond:                                             ; preds = %then, %entry
 else:                                             ; preds = %cond
   %tmp11 = load ptr, ptr %self, align 8
   %tmp12 = load ptr, ptr %tmp11, align 8
-  %fun_call_tmp13 = call {} @"mem:heap_free<T = Vec_2<T = i32>>"(ptr %tmp12)
+  %fun_call_tmp13 = call {} @"mem:free<T = Vec_2<T = i32>>"(ptr %tmp12)
   ret {} zeroinitializer
 }
 

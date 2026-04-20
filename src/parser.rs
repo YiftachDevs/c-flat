@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env::var, fmt::format, fs::{self, File}};
+use std::{collections::HashMap, env::var, fmt::format, fs::{self, File}, path::{Path, PathBuf}};
 use crate::errors::*;
 
 #[derive(PartialEq, Clone)]
@@ -695,7 +695,39 @@ impl Literal {
                 'n' => 0x0A as char,
                 't' => 0x09 as char,
                 'v' => 0x0B as char,
-                '0' => 0x00 as char,
+                'e' => 0x1B as char,
+                'x' => {
+                    let mut value: u32 = 0;
+                    loop {
+                        let next = parser.cur_char()?;
+                        if next.is_ascii_hexdigit() {
+                            parser.index += 1;
+                            let digit = match next {
+                                '0'..='9' => next as u32 - '0' as u32,
+                                'a'..='f' => next as u32 - 'a' as u32 + 10,
+                                'A'..='F' => next as u32 - 'A' as u32 + 10,
+                                _ => unreachable!()
+                            };
+                            value = value * 16 + digit;
+                        } else {
+                            break;
+                        }
+                    }
+                    value as u8 as char
+                }
+                '0'..='7' => {
+                    let mut value = ch2 as u8 - b'0';
+                    loop {
+                        let next = parser.cur_char()?;
+                        if next >= '0' && next <= '7' {
+                            parser.index += 1;
+                            value = value * 8 + (next as u8 - b'0');
+                        } else {
+                            break;
+                        }
+                    }
+                    value as char
+                }
                 '\\' => '\\',
                 '\'' => '\'',
                 '\"' => '\"',
@@ -1484,17 +1516,21 @@ pub struct Parser<'fctx> {
     cur_file_id: FileId,
     index: usize,
     new_line_index: usize,
-    cur_line: usize
+    cur_line: usize,
+    parent_folder: String,
+    std_folder: String
 }
 
 impl<'fctx> Parser<'fctx> {
-    pub fn new(file_context: &'fctx mut FileContext) -> Self {
+    pub fn new(file_context: &'fctx mut FileContext, parent_folder: String, std_folder: String) -> Self {
         Parser {
             file_context,
             cur_file_id: FileId(-1),
             index: 0,
             new_line_index: 0,
-            cur_line: 0
+            cur_line: 0,
+            parent_folder,
+            std_folder
         }
     }
 
@@ -1534,36 +1570,52 @@ impl<'fctx> Parser<'fctx> {
         self.cur_line = index_data.2;
     }
 
-    pub fn parse_file(&mut self, path: String, main_scope: &mut Scope) -> Result<(), CompilerError> {
-        if self.file_context.contains_key(path.clone()) {
+    pub fn parse_file(&mut self, path: &str, main_scope: &mut Scope) -> Result<(), CompilerError> {
+        if self.file_context.contains_key(path.to_string()) {
             return Ok(());
         }
-        let contents: String = match fs::read_to_string(path.as_str()) {
+        let contents: String = match self.find_file(path) {
             Ok(text) => text,
             Err(e) => {
-                return Err(self.error(CompilerErrorType::LinkerError(LinkerError::ImportFailed(path, e.to_string()))));
+                return Err(self.error(CompilerErrorType::LinkerError(LinkerError::ImportFailed(path.to_string(), e.to_string()))));
             }
         };
-        let file_id: FileId = self.file_context.next_id(path);
+        let file_id: FileId = self.file_context.next_id(path.to_string());
         let saved_file_id: FileId = self.cur_file_id;
         let saved_index: usize = self.index;
         let saved_cur_line: usize = self.cur_line;
+        let saved_new_line: usize = self.new_line_index;
         self.cur_file_id = file_id;
         self.index = 0;
         self.cur_line = 0;
+        self.new_line_index = 0;
         self.file_context.files.insert(self.cur_file_id, contents.chars().collect());
         self.parse(main_scope)?;
         self.cur_file_id = saved_file_id;
         self.index = saved_index;
         self.cur_line = saved_cur_line;
+        self.new_line_index = saved_new_line;
         Ok(())
+    }
+
+    fn find_file(&mut self, filename: &str) -> Result<String, String> {
+        let fallback = PathBuf::from(self.std_folder.clone()).join(filename);
+        let fallback_2 = PathBuf::from(self.parent_folder.clone()).join(filename);
+
+        if fallback.exists() {
+            fs::read_to_string(&fallback).map_err(|e| e.to_string())
+        } else if fallback_2.exists() {
+            fs::read_to_string(&fallback_2).map_err(|e| e.to_string())
+        } else {
+            Err(format!("File '{}' not found in '{}' or '{}'", filename, self.parent_folder, self.std_folder))
+        }
     }
 
     pub fn parse(&mut self, main_scope: &mut Scope) -> Result<(), CompilerError> {
         self.skip_whitespace()?;
         while self.is_next("import") {
             let path: String = self.next_until(|ch| ch == ';')?;
-            self.parse_file(path, main_scope)?;
+            self.parse_file(&path, main_scope)?;
         }
         while !self.is_finished() {
             main_scope.parse_next(self)?;

@@ -22,6 +22,7 @@ use inkwell::passes::{PassBuilderOptions, PassManager};
 use inkwell::targets::{CodeModel, InitializationConfig, RelocMode, Target, TargetMachine};
 use std::collections::HashMap;
 use std::hash::Hash;
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::{env, path::Path};
 use crate::code_lowerer::{CodeLowerer, IRTemplateKey, IRTemplateValue};
@@ -31,18 +32,18 @@ use crate::parser::*;
 use inkwell::{OptimizationLevel, passes};
 
 fn main() {
-    let str_path: &str = "src/test";
-    let path: &Path = Path::new(str_path);
-    if let Err(e) = env::set_current_dir(&path) {
-        eprintln!("Failed to open working directory '{}', {}", str_path, e);
+    let std_folder = "/home/yiftach/dev/c_flat/src/std".to_string();
+
+    let mut file_context = FileContext::new();
+    let mut parser: Parser = Parser::new(&mut file_context, "/home/yiftach/dev/c_flat/src/test".to_string(), std_folder.clone());
+    let mut main_scope: Scope = Scope::new();
+
+    if let Err(err) = parser.parse_file("std/core.cf", &mut main_scope) {
+        eprintln!("{}", err);
         return;
     }
 
-    let mut file_context = FileContext::new();
-    let mut parser: Parser = Parser::new(&mut file_context);
-    let mut main_scope: Scope = Scope::new();
-
-    if let Err(err) = parser.parse_file("main.cf".to_string(), &mut main_scope) {
+    if let Err(err) = parser.parse_file("main.cf", &mut main_scope) {
         eprintln!("{}", err);
         return;
     }
@@ -65,12 +66,15 @@ fn main() {
 
     code_lowerer.export_ir_to_file(Path::new("output.ll"));
 
-    if let Err(err) = Command::new("clang").arg("output.ll").arg("-o").arg("output_exec").output() {
-        eprintln!("{}", err);
+    let helpers_file = PathBuf::from(std_folder).join("helpers.c");
+
+    let output = Command::new("clang").arg("output.ll").arg(helpers_file).arg("-o").arg("output_exec").output().expect("Failed to launch clang");
+    if !output.status.success() {
+        eprintln!("{}", String::from_utf8_lossy(&output.stderr));
         return;
     }
 
-    return;
+    // return;
 
     println!("{}", "Done! [Running Script]:".green());
 

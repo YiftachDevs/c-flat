@@ -1,5 +1,3 @@
-import std/core.cf;
-
 mod rng {
     fun next() -> usize {
         static mut seed: usize = 91237;
