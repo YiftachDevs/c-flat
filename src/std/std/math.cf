@@ -45,10 +45,4 @@ struct Vec_2<T: Numeral> {
     y: T
 }
 
-impl<T: Numeral> Eq for Vec_2<T> {
-    fun eq(self, other: Self) -> bool {
-        self.x == other.x & self.y == other.y
-    }
-}
-
 impl<T: Numeral> Copy for Vec_2<T>;

@@ -7,6 +7,10 @@ mod mem {
         value: T
     }
 
+    impl<T> Drop for Manually_Drop<T> {
+        fun drop(self) { }
+    }
+
     fun copy<T>(dest_ptr: &T, src_ptr: &T) {
         c_memcpy(dest_ptr as &(), src_ptr as &(), T:mem_size());
     }

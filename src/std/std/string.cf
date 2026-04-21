@@ -28,7 +28,7 @@ impl String {
 
 trait ToString { fun to_string(&self) -> String; }
 
-impl ToString for [char] {
+impl ToString for str {
     fun to_string(&self) -> String {
         String:from(self)
     }

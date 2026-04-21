@@ -308,8 +308,21 @@ impl<'ctx> CodeLowerer<'ctx> {
             ExprNodeEnum::Empty => IRExprResult::Empty,
             _ => todo!("lower_expr 2")
         };
-        if let IRExprContext::TypeConstraint(type_id) = expr_context && let IRExprResult::Trait(trait_id) = result && !self.type_impls_trait(*type_id, trait_id)? {
-            return Ok(IRExprResult::NoTypeConstraintMatch);
+        if let IRExprContext::TypeConstraint(type_id) = expr_context && let IRExprResult::Trait(trait_id) = result && let IRContext::ImplConstraintContext(cur_impl_id) = ir_context {
+            let mut type_impls_trait = false;
+            self.lower_impls(*type_id)?;
+            for impl_id in self.ir_type(*type_id).lowered_impls.as_ref().unwrap() {
+                if impl_id == cur_impl_id {
+                    continue;
+                }
+                if let Some(cur_trait) = self.ir_impl(*impl_id).trait_id && cur_trait == trait_id {
+                    type_impls_trait = true;
+                    break;
+                }
+            }
+            if !type_impls_trait {
+                return Ok(IRExprResult::NoTypeConstraintMatch);
+            }
         }
         Ok(result)
     }

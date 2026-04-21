@@ -117,9 +117,10 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(fun_id)
     }
 
-    fn lower_fun_scope(&mut self, fun: IRFunctionId) -> Result<(), CompilerError> {
+    fn lower_fun_scope(&mut self, fun: IRFunctionId) -> Result<(), CompilerError> { 
         let ir_fun: &IRFunction<'_> = self.ir_function(fun);
         let fun_def = ir_fun.ast_def;
+        let fun_name =  self.ir_function(fun).ast_def.name.clone();
         let return_type = ir_fun.return_type;
         let llvm_value: FunctionValue<'_> = ir_fun.llvm_value;
         let entry_block = self.llvm_context.append_basic_block(llvm_value, "entry");
@@ -138,7 +139,9 @@ impl<'ctx> CodeLowerer<'ctx> {
         let result = self.lower_scope(&mut ir_context, fun_def.scope.as_ref().unwrap(), &IRExprContext::Value(Some(return_type)))?;
 
         if result.type_id != self.primitive_type(PrimitiveType::Never)? {
-            self.drop_vars(&mut ir_context, 0, fun_def.span)?;
+            if fun_name != "drop" {
+                self.drop_vars(&mut ir_context, 0, fun_def.span)?;
+            }
             self.builder.build_return(Some(&result.llvm_value)).expect("Return build failed");
         }
         

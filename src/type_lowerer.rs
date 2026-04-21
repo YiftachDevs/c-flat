@@ -40,8 +40,6 @@ impl<'ctx> CodeLowerer<'ctx> {
             PrimitiveType::Void | PrimitiveType::Never => self.llvm_context.struct_type(&[], false).into(),
         };
         let type_id = self.type_id(IRType { type_enum: ir_type_enum, llvm_type, lowered_impls: None });
-        self.lower_impls(type_id)?;
-        
         Ok(type_id)
     }
 
@@ -114,14 +112,12 @@ impl<'ctx> CodeLowerer<'ctx> {
         let usize_type = self.llvm_context.i64_type();
         let llvm_type = self.llvm_context.struct_type(&[ptr_type.into(), usize_type.into()], false).into();
         let type_id = self.type_id(IRType { type_enum: IRTypeEnum::UnsizedRef { unsized_type, is_mut }, llvm_type, lowered_impls: None });
-        self.lower_impls(type_id)?;
         Ok(type_id)
     }
 
     pub fn slice_type(&mut self, slice_type: IRTypeId) -> Result<IRTypeId, CompilerError> {
         let llvm_type = self.ir_type(slice_type).llvm_type.array_type(0).into();
         let type_id = self.type_id(IRType { type_enum: IRTypeEnum::Slice { slice_type }, llvm_type, lowered_impls: None });
-        self.lower_impls(type_id)?;
         Ok(type_id)
     }
 
@@ -141,14 +137,20 @@ impl<'ctx> CodeLowerer<'ctx> {
 
     pub fn reference_type(&mut self, type_id: IRTypeId, is_mut: bool) -> Result<IRTypeId, CompilerError> {
         let ptr_type = self.type_id(IRType { type_enum: IRTypeEnum::Reference { ptr_type_id: type_id, is_mut }, llvm_type: self.llvm_context.ptr_type(AddressSpace::default()).into(), lowered_impls: None });
-        self.lower_impls(ptr_type)?;
         Ok(ptr_type)
+    }
+
+    pub fn dereference_type(&self, type_id: IRTypeId) -> IRTypeId {
+        match self.ir_type(type_id).type_enum {
+            IRTypeEnum::UnsizedRef { unsized_type, is_mut } => unsized_type,
+            IRTypeEnum::Reference { ptr_type_id, is_mut } => ptr_type_id,
+            _ => panic!()
+        }
     }
 
     pub fn array_type(&mut self, arr_type: IRTypeId, size: u64) -> Result<IRTypeId, CompilerError> {
         let llvm_type = self.ir_type(arr_type).llvm_type.array_type(size as u32).into();
         let type_id = self.type_id(IRType { type_enum: IRTypeEnum::Array { arr_type, size }, llvm_type, lowered_impls: None });
-        self.lower_impls(type_id)?;
         Ok(type_id)
     }
 
@@ -200,7 +202,6 @@ impl<'ctx> CodeLowerer<'ctx> {
             _struct.args = args;
         }
         self.types_table[struct_id].llvm_type = struct_llvm_type.into();
-        self.lower_impls(struct_id)?;
 
         Ok(struct_id)
     }

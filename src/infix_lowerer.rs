@@ -2,7 +2,7 @@ use std::any::Any;
 
 use inkwell::{types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum, IntType}, values::{BasicValueEnum, IntValue}};
 
-use crate::{code_lowerer::{CodeLowerer, CoreOpr, IRContext, IRExprContext, IRFunctionId, IRScope, IRScopeId, IRScopePath, IRTemplateValue, IRTemplatesMap, IRTrait, IRTraitId, IRType, IRTypeEnum, IRTypeId, IRVariable, IRVariables, PrimitiveType}, core_lowerer::CoreTraitFun, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprPlaceResult, IRExprResult, IRExprValueResult}, parser::{ExprNode, InfixOpr, PostfixOpr, PrefixOpr, Span, Struct, Trait}};
+use crate::{code_lowerer::{CodeLowerer, CoreOpr, IRContext, IRExprContext, IRFunctionId, IRScope, IRScopeId, IRScopePath, IRTemplateValue, IRTemplatesMap, IRTrait, IRTraitId, IRType, IRTypeEnum, IRTypeId, IRVariable, IRVariables, PrimitiveType}, core_lowerer::CoreTraitFun, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprPlaceResult, IRExprResult, IRExprValueResult}, parser::{ExprNode, ExprNodeEnum, InfixOpr, PostfixOpr, PrefixOpr, Span, Struct, Trait}};
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn lower_infix_opr(&mut self, ir_context: &mut IRContext<'ctx>, opr: InfixOpr, left_expr: &Box<ExprNode>, right_expr: &Box<ExprNode>, span: Span, context_type: &IRExprContext<'ctx>) -> Result<IRExprResult<'ctx>, CompilerError> {
@@ -38,6 +38,17 @@ impl<'ctx> CodeLowerer<'ctx> {
             let value = self.get_value(ir_context, right_expr, &IRExprContext::Value(Some(place.type_id)), true)?;
             return self.lower_infix_opr_asn(ir_context, place, value, left_expr.span);
         }
+        if opr == InfixOpr::Eq || opr == InfixOpr::Neq {
+            let left_expr_2 = &Box::new(ExprNode { value: ExprNodeEnum::PrefixOpr(PrefixOpr::Addr { is_mut: false }, left_expr.clone()), span });
+            let left_expr_ptr_result = self.get_value(ir_context, left_expr_2, &context_type, false)?;
+            let left_expr_result = self.deref(ir_context, IRExprResult::Value(left_expr_ptr_result), span)?;
+            let right_expr_2 = &Box::new(ExprNode { value: ExprNodeEnum::PrefixOpr(PrefixOpr::Addr { is_mut: false }, right_expr.clone()), span });
+            let mut result = self.call_core_trait(ir_context, left_expr_result, Some(right_expr_2), &Self::trait_from_opr(CoreOpr::Infix(opr)), span)?;
+            if opr == InfixOpr::Neq {
+                result.llvm_value = self.build_core_trait_fun_body(ir_context, result.type_id, Some(result.llvm_value), None, &CoreTraitFun::Not)?;
+            }
+            return Ok(IRExprResult::Value(result));
+        }
         let context_type = if opr == InfixOpr::Range && let IRExprContext::Value(Some(range_t)) = context_type && let IRTypeEnum::Struct(ir_struct) = &self.ir_type(*range_t).type_enum && let IRTemplateValue::Type(int_t) = ir_struct.templates_map[&"T".to_string()] {
             &IRExprContext::Value(Some(int_t))
         } else {
@@ -45,12 +56,9 @@ impl<'ctx> CodeLowerer<'ctx> {
         };
         let left_expr_result = self.get_value(ir_context, left_expr, &context_type, false)?;
         let mut result = self.call_core_trait(ir_context, IRExprResult::Value(left_expr_result), Some(right_expr), &Self::trait_from_opr(CoreOpr::Infix(opr)), span)?;
-        if opr == InfixOpr::Neq {
-            result.llvm_value = self.build_core_trait_fun_body(result.type_id, Some(result.llvm_value), None, &CoreTraitFun::Not)?;
-        }
         if opr == InfixOpr::Leq || opr == InfixOpr::Geq  {
             let eq_result = self.call_core_trait(ir_context, IRExprResult::Value(left_expr_result), Some(right_expr), &Self::trait_from_opr(CoreOpr::Infix(InfixOpr::Eq)), span)?;
-            result.llvm_value = self.build_core_trait_fun_body(result.type_id, Some(result.llvm_value), Some(eq_result.llvm_value), &CoreTraitFun::Or)?;
+            result.llvm_value = self.build_core_trait_fun_body(ir_context, result.type_id, Some(result.llvm_value), Some(eq_result.llvm_value), &CoreTraitFun::Or)?;
         }
         if opr == InfixOpr::AsnAdd ||  opr == InfixOpr::AsnSub ||  opr == InfixOpr::AsnMul ||  opr == InfixOpr::AsnDiv ||  opr == InfixOpr::AsnMod {
             let place = self.get_place(ir_context, left_expr, &IRExprContext::Value(None))?;

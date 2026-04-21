@@ -154,7 +154,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             IRExprResult::Value(expr_value_result) => {
                 if let IRExprContext::Function = context_type && let Some(impl_id) = self.find_impl_of_fun(expr_value_result.type_id, name.as_str(), Some(span))? {
                     return Ok(self.lower_impl_fun_name(impl_id, name.as_str(), Some(Box::new(IRExprResult::Value(expr_value_result))), right_expr.span)?);
-                }  else if let IRExprContext::Value(_) = context_type {
+                } else if let IRExprContext::Value(_) = context_type {
                     let ir_type = self.ir_type(expr_value_result.type_id);
                     if let IRTypeEnum::Struct(_struct) = &ir_type.type_enum {
                         if let Some((i, arg)) = _struct.args.iter().enumerate().find(|(_, arg)| arg.name == name) {

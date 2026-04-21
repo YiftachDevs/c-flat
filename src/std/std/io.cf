@@ -9,20 +9,20 @@ extern fun c_printf(c_str: &char);
 extern fun c_flush();
 extern fun c_system(cmd: &char) -> i32;
 
-fun println(str: &[char]) {
-    let string = String:from(str).null_terminate();
+fun println(str_: &str) {
+    let string = String:from(str_).null_terminate();
     c_puts(string.as_ref());
     c_flush();
 }
 
-fun print(str: &[char]) {
-    let string = String:from(str).null_terminate();
+fun print(str_: &str) {
+    let string = String:from(str_).null_terminate();
     c_printf(string.as_ref());
     c_flush();
 }
 
-fun shell(str: &[char]) -> i32 {
-    let string = String:from(str).null_terminate();
+fun shell(str_: &str) -> i32 {
+    let string = String:from(str_).null_terminate();
     c_system(string.as_ref())
 }
 

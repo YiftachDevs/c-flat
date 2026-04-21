@@ -1469,12 +1469,16 @@ pub struct Span {
 }
 
 impl Span {
-    pub fn merge(&self, other: Span) -> Span {
+    pub fn merge(&self, other: Self) -> Self {
         let is_self_start: bool = if self.line_start == other.line_start { self.col_start < other.col_start } else { self.line_start < other.line_start };
         let is_self_end: bool = if self.line_end == other.line_end { self.col_end > other.col_end } else { self.line_end > other.line_end };
         let (line_start, col_start, line_index) = if is_self_start { (self.line_start, self.col_start, self.line_index) } else { (other.line_start, other.col_start, other.line_index) };
         let (line_end, col_end) = if is_self_end { (self.line_end, self.col_end) } else { (other.line_end, other.col_end) };
-        Span { file_id: self.file_id, line_start, col_start, line_end, col_end, line_index }
+        Self { file_id: self.file_id, line_start, col_start, line_end, col_end, line_index }
+    }
+
+    pub fn dummy() -> Self {
+        Self { file_id: FileId(0), line_start: 0, col_start: 0, line_end: 0, col_end: 0, line_index: 0 }
     }
 }
 

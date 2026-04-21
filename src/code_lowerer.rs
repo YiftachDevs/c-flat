@@ -49,7 +49,7 @@ pub struct IRVarDeclaration {
 pub type IRVariables<'ctx> = Vec<IRVariable<'ctx>>;
 pub type IRVarDeclarations = Vec<IRVarDeclaration>;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub enum IRTypeEnum<'ctx> {
     Primitive(PrimitiveType),
     Reference { ptr_type_id: IRTypeId, is_mut: bool },
@@ -60,7 +60,7 @@ pub enum IRTypeEnum<'ctx> {
     Struct(IRStruct<'ctx>)
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 pub struct IRStruct<'ctx> {
     pub parent_scope: IRScopeId,
     pub scope: IRScopeId,
@@ -68,7 +68,6 @@ pub struct IRStruct<'ctx> {
     pub args: IRVarDeclarations,
     pub def: &'ctx Struct
 }
-
 
 #[derive(PartialEq, Clone)]
 pub enum IRTemplateValue<'ctx> {
@@ -273,6 +272,7 @@ pub struct IRFunContext<'ctx> {
 pub enum IRContext<'ctx> {
     FunContext(IRFunContext<'ctx>),
     ScopeContext(IRScopeId),
+    ImplConstraintContext(IRImplId),
     ImplDefContext(IRScopeId, IndexMap<IRTemplateKey, IRTemplate>, IRTemplatesMap<'ctx>)
 }
 
@@ -406,6 +406,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         match ir_context {
             IRContext::FunContext(fun) => self.ir_function(fun.fun).scope,
             IRContext::ScopeContext(scope) => *scope,
+            IRContext::ImplConstraintContext(impl_id) => self.ir_impl(*impl_id).scope,
             IRContext::ImplDefContext(parent_scope, _, _) => *parent_scope
         }
     }

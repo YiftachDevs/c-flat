@@ -24,7 +24,7 @@ impl<T> Deref<T> for Box<T> {
 }
 
 impl<T> Drop for Box<T> {
-    fun drop(&self) {
+    fun drop(self) {
         self.value_ref.drop();
         mem:free<T>(self.value_ref);
     }
@@ -106,19 +106,8 @@ impl<T> Vec<T> {
     fun as_mut_slice(&mut self) -> &mut [T] { [T]:from_raw_parts(self.ptr, self.len) }
 }
 
-impl<T: Eq> Vec<T> {
-    fun has(&self, value: T) -> bool {
-        for item in self.iter() {
-            if *item == value {
-                return true;
-            }
-        }
-        false
-    }
-}
-
 impl<T> Drop for Vec<T> {
-    fun drop(&self) {
+    fun drop(self) {
         let mut idx: usize = 0;
         while idx < self.len() {
             self[idx].drop();

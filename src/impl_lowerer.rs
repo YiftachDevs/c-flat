@@ -5,6 +5,8 @@ use crate::{code_lowerer::*, errors::{CompilerError, CompilerErrorType, Semantic
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn find_impl_of_fun(&mut self, type_id: IRTypeId, fun_name: &str, call_span: Option<Span>) -> Result<Option<IRImplId>, CompilerError> {
+        self.lower_impls(type_id)?;
+
         let mut found_impls_ids = Vec::new();
         for lowered_impl_id in self.ir_type(type_id).lowered_impls.as_ref().unwrap() {
             let ir_impl = self.ir_impl(*lowered_impl_id);
@@ -41,6 +43,7 @@ impl<'ctx> CodeLowerer<'ctx> {
 
                 let ir_impl = IRImpl { scope: scope_id, type_id, trait_id: opt_trait_id, templates_map: templates_map, ast_def: impl_def };
                 self.impls_table[impl_id] = Some(ir_impl);
+
 
                 impls_ids.push(impl_id);
             }
@@ -80,9 +83,9 @@ impl<'ctx> CodeLowerer<'ctx> {
             let mut idx = None;
             let impls = self.types_table[type_id].lowered_impls.as_ref().unwrap().clone();
             for (i, impl_id) in impls.iter().enumerate() {
-                let ir_impl = self.ir_impl(*impl_id);
-                let mut ir_context = IRContext::ScopeContext(ir_impl.scope);
-                if let Err(err) = self.ensure_templates_constraints(&mut ir_context, &ir_impl.templates_map.clone(), &ir_impl.ast_def.templates, None) {
+                let mut ir_context = IRContext::ImplConstraintContext(*impl_id);
+                let res = self.ensure_templates_constraints(&mut ir_context, &self.ir_impl(*impl_id).templates_map.clone(), &self.ir_impl(*impl_id).ast_def.templates, None);
+                if let Err(err) = res {
                     if let CompilerErrorType::SemanticError(SemanticError::InvalidTemplateValue { key, type_str, templates_str }) = err.err_type {
                         idx = Some(i);
                         break;
@@ -122,9 +125,9 @@ impl<'ctx> CodeLowerer<'ctx> {
                         }
                     }
                 }
-                for sub_trait in ir_trait.sub_traits.iter() {
-                    if !self.type_impls_trait(type_id, *sub_trait)? {
-                        return Err(self.error(SemanticError::MissingTrait { type_str: self.format_type(type_id), trait_str: self.format_scope_path(self.ir_trait(*sub_trait).scope) }, None));
+                for sub_trait in ir_trait.sub_traits.clone() {
+                    if !self.type_impls_trait(type_id, sub_trait)? {
+                        return Err(self.error(SemanticError::MissingTrait { type_str: self.format_type(type_id), trait_str: self.format_scope_path(self.ir_trait(sub_trait).scope) }, None));
                     }
                 }
             }
@@ -173,7 +176,8 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(None)
     }
 
-    pub fn type_impls_trait(&self, type_id: IRTypeId, trait_id: IRTraitId) -> Result<bool, CompilerError> {
+    pub fn type_impls_trait(&mut self, type_id: IRTypeId, trait_id: IRTraitId) -> Result<bool, CompilerError> {
+        self.lower_impls(type_id)?;
         for impl_id in self.ir_type(type_id).lowered_impls.as_ref().unwrap() {
             if let Some(cur_trait) = self.ir_impl(*impl_id).trait_id && cur_trait == trait_id {
                 return Ok(true);

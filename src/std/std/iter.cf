@@ -33,3 +33,14 @@ impl<T> [T] {
         SliceIter<T>{ ptr, (ptr as usize + self.len() * T:mem_size()) as &T }
     }
 }
+
+impl<T: Eq> [T] {
+    fun has(&self, value: T) -> bool {
+        for item in self.iter() {
+            if *item == value {
+                return true;
+            }
+        }
+        false
+    }
+}
