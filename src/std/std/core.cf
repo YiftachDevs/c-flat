@@ -70,6 +70,7 @@ trait Iter<T> { fun next(&mut self) -> T; fun has_next(&self) -> bool; }
 trait Copy;
 trait Up_To<T> { fun up_to(self, other: T) -> Range<T>; }
 trait Bitshift { fun shl(self, count: Self) -> Self; fun shr(self, count: Self) -> Self; }
+trait Clone { fun clone(&self) -> Self; }
 
 impl<T: Numeral> Add<T> for T { fun add(self, other: Self) -> Self; }
 impl<T: Numeral> Sub<T> for T { fun sub(self, other: Self) -> Self; }
@@ -85,6 +86,12 @@ impl<T> Copy for &T;
 impl<T> Copy for &mut T;
 impl<T: Integer> Up_To<T> for T { fun up_to(self, other: T) -> Range<T>; }
 impl<T: Integer> Bitshift for T { fun shl(self, count: Self) -> Self; fun shr(self, count: Self) -> Self; }
+
+impl<T: Primitive> Clone for T {
+    fun clone(&self) -> Self {
+        *self
+    }
+}
 
 impl<T: Primitive> Drop for T {
     fun drop(self) { }

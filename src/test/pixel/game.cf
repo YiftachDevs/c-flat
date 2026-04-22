@@ -1,0 +1,79 @@
+import std/heap.cf;
+import std/math.cf;
+import std/io.cf;
+import std/time.cf;
+
+mod pixel {
+    struct Game {
+        frame: Frame,
+        key_presses: Vec<char>,
+        tick_speed: usize
+    }
+
+    type Color = u8;
+
+    impl Color {
+        fun ansi_code(self) -> &str {
+            static ansi_codes = ["\e[40m", "\e[41m", "\e[42m", "\e[43m", "\e[44m", "\e[45m", "\e[46m", "\e[47m"];
+            ansi_codes[self as usize]
+        }
+    }
+
+    struct Frame {
+        screen_size: Vec_2<usize>,
+        buffer: Vec<Color>
+    }
+
+    impl Frame {
+        fun new(screen_size: Vec_2<usize>) -> Self {
+            let mut buffer = Vec<Color>:with_capacity(screen_size.x * screen_size.y);
+            for y in 0..screen_size.y {
+                for x in 0..screen_size.x {
+                    buffer[y * screen_size.x + x] = if (x + y) % 2 == 0 { 0b000 } else { 0b111 };
+                }
+            }
+            Self{ screen_size, buffer }
+        }
+
+        fun render(&mut self) {
+            print("\033[2J\033[H");
+            for y in 0..self.screen_size.y {
+                for x in 0..self.screen_size.x {
+                    print(self.buffer[y * self.screen_size.x + x].ansi_code());
+                    c_putchar(' ');    
+                    c_putchar(' ');    
+                }
+                c_putchar('\n');
+            }
+            print("\033[0m");
+        }
+
+        fun paint_rect(&mut self, pos: Vec_2<usize>, size: Vec_2<usize>, color: Color) {
+            let offset = pos.y * self.screen_size.x + pos.x;
+            for y in 0..size.y {
+                for x in 0..size.x {
+                    self.buffer[offset + y * self.screen_size.x + x] = color;
+                }
+            }
+        }
+    }
+
+    impl Game {
+        fun new(screen_size: Vec_2<usize>, tick_speed: usize) -> Self {
+            Self{ Frame:new(screen_size), Vec<char>:new(), tick_speed }
+        }
+
+        fun update(&mut self) {
+            self.key_presses.clear();
+            while c_kbhit() {
+                let chr = c_getch();
+                self.key_presses.push(chr);
+            }
+        }
+
+        fun render(&mut self) {
+            self.frame.render();
+            sleep(1.0 / (self.tick_speed as f64));
+        }
+    }
+}

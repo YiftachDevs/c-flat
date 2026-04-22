@@ -2,18 +2,42 @@ import std/io.cf;
 import std/math.cf;
 import std/rng.cf;
 import std/time.cf;
+import pixel/game.cf;
 
-struct Wrapper<T> {
-    data: T
-}
 
 fun main() -> usize {
     {
-        paint();
+        let mut game = pixel:Game:new(Vec_2<usize>{ 32, 32 }, 16);
+
+        for y in 0..32 {
+            for x in 0..32 {
+                game.frame.buffer[y * 32 + x] = ((x + y) % 8) as u8;
+            }
+        }
+
+        @game_loop loop {
+            game.update();
+
+            for i in 0..32 * 32 {
+                game.frame.buffer[i] = (game.frame.buffer[i] - 1) % 8;
+            }
+
+            for key_press in game.key_presses.iter() {
+                if *key_press == 'q' {
+                    break @game_loop;
+                }
+            }
+
+            game.render();
+        }
     };
-    let heap_count = *mem:heap_count();
-    print(&heap_count.to_string());
+    println("game over");
     0
+}
+
+fun debug_heap_count() {
+    let heap_count = *mem:heap_count();
+    println(&heap_count.to_string());
 }
 
 fun paint() {

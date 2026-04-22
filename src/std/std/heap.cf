@@ -102,8 +102,26 @@ impl<T> Vec<T> {
         let man_drop = mem:Manually_Drop<T>{ value };
     }
 
+    fun clear(&mut self) {
+        for item in self.iter() {
+            item.drop();
+        }
+        self.len = 0;
+    }
+
     fun as_slice(&self) -> &[T] { [T]:from_raw_parts(self.ptr, self.len) }
     fun as_mut_slice(&mut self) -> &mut [T] { [T]:from_raw_parts(self.ptr, self.len) }
+}
+
+impl<T: Clone> Clone for Vec<T> {
+    fun clone(&self) -> Self {
+        let mut clone = Vec<T>:new();
+        clone.reserve(self.len());
+        for item in self.iter() {
+            clone.push(item.clone());
+        }
+        clone
+    }
 }
 
 impl<T> Drop for Vec<T> {
