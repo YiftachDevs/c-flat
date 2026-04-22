@@ -4,7 +4,7 @@ use std::{any::{Any, TypeId}, collections::HashMap};
 use indexmap::IndexMap;
 use inkwell::{types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum}, values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum, FunctionValue, PointerValue}};
 
-use crate::{code_lowerer::*, conditional_lowerer, core_lowerer::CoreTraitFun, errors::{CompilerError, SemanticError}, function_lowerer, parser::{ExprNode, ExprNodeEnum, Function, Literal, PostfixOpr, Scope, Span, Statement, Struct, Template, Templates, Trait}};
+use crate::{code_lowerer::*, conditional_lowerer, core_lowerer::CoreTraitFun, errors::{CompilerError, SemanticError}, function_lowerer, parser::{Const, ExprNode, ExprNodeEnum, Function, Literal, PostfixOpr, Scope, Span, Statement, Struct, Template, Templates, Trait}};
 
 #[derive(Copy, Clone, PartialEq)]
 pub struct IRExprValueResult<'ctx> {
@@ -119,7 +119,9 @@ impl<'ctx> CodeLowerer<'ctx> {
                     scope_result = self.lower_control_flow(ir_context, control_flow,)?;
                     break;
                 }
-                Statement::Const(_) => panic!()
+                Statement::Const(const_def) => {
+                    self.lower_constant(ir_context, const_def)?;
+                }
             }
         }
 
@@ -131,6 +133,23 @@ impl<'ctx> CodeLowerer<'ctx> {
             scope_result.type_id = self.ensure_type_matches(scope_result.type_id, *expected_type, Some(scope.span), true)?;
         }
         Ok(scope_result)
+    }
+
+    pub fn lower_constant(&mut self, ir_context: &mut IRContext<'ctx>, const_def: &Const) -> Result<(), CompilerError> {
+        let scope_id = self.get_context_scope(ir_context);
+
+        let const_type = self.get_type(ir_context, &const_def.var_type, &IRExprContext::Type)?;
+
+        if let None = const_def.init_expr {
+            return Err(self.error(SemanticError::MissingInitExpr, Some(const_def.span)));
+        }
+
+        let const_value = self.get_constant(ir_context, const_def.init_expr.as_ref().unwrap(), &IRExprContext::Value(Some(const_type)))?;
+        let ir_constant = IRConstant { name: const_def.name.clone(), value: const_value };
+
+        self.scopes_table[scope_id].constants.push(ir_constant);
+
+        Ok(())
     }
 
     pub fn lower_scope_constraint(&mut self, ir_context: &mut IRContext<'ctx>, scope: &Scope, expr_context: &IRExprContext<'ctx>) -> Result<IRExprResult<'ctx>, CompilerError> {
@@ -154,7 +173,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 continue;
             }
             let place = var.place.clone();
-            let core_scope = self.get_core_scope();
+            let core_scope = self.get_core_scope()?;
             let drop_trait = self.lower_trait(core_scope, "Drop", &Vec::new(), place.type_id, None)?;
             if self.type_impls_trait(place.type_id, drop_trait)? {
                 self.call_core_trait(ir_context, IRExprResult::Place(place), None, &CoreTraitFun::Drop, span)?;
@@ -390,6 +409,9 @@ impl<'ctx> CodeLowerer<'ctx> {
             }
         }
         let scope = self.get_context_scope(ir_context);
+        if let Some(ir_const) = self.find_constant_in_scope(scope, name) {
+            return Ok(IRExprResult::Value(ir_const.value));
+        }
         if let Some(result) = self.lower_struct_name(scope, name, span)? {
             return Ok(result);
         }
@@ -402,7 +424,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         if let IRExprContext::TypeConstraint(self_type) = expr_context && let Some(result) = self.lower_trait_name(scope, name, *self_type, span)? {
             return Ok(result);
         }
-        if let Some(module) = self.get_module_scope_in_scope(scope, name) {
+        if let Some(module) = self.get_module_scope_in_scope(scope, name)? {
             return Ok(IRExprResult::ModuleScope(module));
         }
         if let Some(prim_t) = self.primitive_type_from(name) {
@@ -528,6 +550,12 @@ impl<'ctx> CodeLowerer<'ctx> {
         let mut cur_expr = args_expr.clone();
         while i < args_len || any_size {
             let expr_context = expr_contexts.get(i).unwrap_or(&expr_contexts[0]);
+            let expr_context = if let IRExprContext::Template(template) = expr_context { 
+                match template {
+                    IRTemplate::Const(type_id) => &IRExprContext::Value(Some(*type_id)),
+                    IRTemplate::Type => &IRExprContext::Type
+                }
+            } else { expr_context };
             let expr_result = self.lower_expr(ir_context, cur_expr.as_ref(), expr_context)?;
             if let IRExprResult::Empty = expr_result {
                 break;
@@ -586,7 +614,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         for ast_template in ast_templates.templates.iter() {
             match ast_template {
                 Template::Const(const_value) => {
-                    let ir_context = &mut IRContext::ScopeContext(self.get_global_scope());
+                    let ir_context = &mut IRContext::ScopeContext(self.get_global_scope()?);
                     let const_type = self.get_type(ir_context, &const_value.var_type, &IRExprContext::Type)?;
                     templates.push(IRTemplate::Const(const_type));
                 },

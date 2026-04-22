@@ -2,7 +2,7 @@ use std::any::Any;
 
 use inkwell::{AddressSpace, types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum}, values::{BasicValue, BasicValueEnum, IntValue, PointerValue}};
 
-use crate::{code_lowerer::{CodeLowerer, IRContext, IRExprContext, IRScope, IRScopeId, IRScopePath, IRStruct, IRTemplateValue, IRTemplatesMap, IRType, IRTypeEnum, IRTypeId, IRVarDeclaration, IRVarDeclarations, IRVariable, IRVariables, PrimitiveType}, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprPlaceResult, IRExprResult, IRExprValueResult}, parser::{ExprNode, Span, Struct, Templates, TypeDef}};
+use crate::{code_lowerer::{CodeLowerer, IRConstant, IRContext, IRExprContext, IRScope, IRScopeId, IRScopePath, IRStruct, IRTemplateValue, IRTemplatesMap, IRType, IRTypeEnum, IRTypeId, IRVarDeclaration, IRVarDeclarations, IRVariable, IRVariables, PrimitiveType}, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprPlaceResult, IRExprResult, IRExprValueResult}, parser::{Const, ExprNode, Span, Statement, Struct, Templates, TypeDef}};
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn find_struct_def_in_scope(&self, parent_scope: IRScopeId, name: &str, opt_call_span: Option<Span>) -> Result<Option<(IRScopeId, &'ctx Struct)>, CompilerError> {
@@ -23,6 +23,19 @@ impl<'ctx> CodeLowerer<'ctx> {
             }
         }
         Ok(None)
+    }
+
+    pub fn find_constant_in_scope(&self, scope: IRScopeId, name: &str) -> Option<IRConstant<'ctx>> {
+        for constant in self.ir_scope(scope).constants.iter() {
+            if constant.name == name {
+                return Some(constant.clone());
+            }
+        }
+        if let Some(parent_scope) = self.ir_scope(scope).parent_scope {
+            self.find_constant_in_scope(parent_scope, name)
+        } else {
+            None
+        }
     }
 
     pub fn primitive_type(&mut self, prim: PrimitiveType) -> Result<IRTypeId, CompilerError> {
@@ -128,7 +141,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(llvm_value.as_basic_value_enum())
     }
 
-    pub fn range_value(&mut self, range_type: IRTypeId, start: IntValue<'ctx>, end: IntValue<'ctx>) -> Result<BasicValueEnum<'ctx>, CompilerError> {
+    pub fn range_value(&mut self, range_type: IRTypeId, start: BasicValueEnum<'ctx>, end: BasicValueEnum<'ctx>) -> Result<BasicValueEnum<'ctx>, CompilerError> {
         let mut llvm_value = self.ir_type(range_type).llvm_type.into_struct_type().get_undef().into();
         llvm_value = self.builder.build_insert_value(llvm_value, start, 0, "start").unwrap();
         llvm_value = self.builder.build_insert_value(llvm_value, end, 1, "end").unwrap();
@@ -181,7 +194,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         new_templates_map.extend(templates_map.clone());
 
         let struct_id: usize = self.types_table.len();
-        let struct_scope = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Type(struct_id), templates_map: new_templates_map, ast_def: None });
+        let struct_scope = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Type(struct_id), templates_map: new_templates_map, ast_def: None, constants: Vec::new() })?;
         let ir_type_enum = IRTypeEnum::Struct(IRStruct { parent_scope, scope: struct_scope, templates_map: templates_map.clone(), def: struct_def, args: Vec::new() });
         let mut ir_context = IRContext::ScopeContext(struct_scope);
 

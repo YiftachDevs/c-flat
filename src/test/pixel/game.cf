@@ -7,7 +7,28 @@ mod pixel {
     struct Game {
         frame: Frame,
         key_presses: Vec<char>,
-        tick_speed: usize
+        tick_speed: usize,
+        tick: usize
+    }
+
+    impl Game {
+        fun new(screen_size: Vec_2<usize>, tick_speed: usize) -> Self {
+            Self{ Frame:new(screen_size), Vec<char>:new(), tick_speed, 0 }
+        }
+
+        fun update(&mut self) {
+            self.key_presses.clear();
+            while c_kbhit() {
+                let chr = c_getch();
+                self.key_presses.push(chr);
+            }
+            self.tick += 1;
+        }
+
+        fun render(&mut self) {
+            self.frame.render();
+            sleep(1.0 / (self.tick_speed as f64));
+        }
     }
 
     type Color = u8;
@@ -29,7 +50,7 @@ mod pixel {
             let mut buffer = Vec<Color>:with_capacity(screen_size.x * screen_size.y);
             for y in 0..screen_size.y {
                 for x in 0..screen_size.x {
-                    buffer[y * screen_size.x + x] = if (x + y) % 2 == 0 { 0b000 } else { 0b111 };
+                    buffer.push(if (x + y) % 2 == 0 { 0b000 } else { 0b111 });
                 }
             }
             Self{ screen_size, buffer }
@@ -48,32 +69,22 @@ mod pixel {
             print("\033[0m");
         }
 
+        fun fill(&mut self, new_color: Color) {
+            for color in self.buffer.iter_mut() {
+                *color = new_color;
+            }
+        }
+
         fun paint_rect(&mut self, pos: Vec_2<usize>, size: Vec_2<usize>, color: Color) {
             let offset = pos.y * self.screen_size.x + pos.x;
             for y in 0..size.y {
                 for x in 0..size.x {
-                    self.buffer[offset + y * self.screen_size.x + x] = color;
+                    let idx = offset + y * self.screen_size.x + x;
+                    if idx.in_range(0..self.buffer.len()) {
+                        self.buffer[idx] = color;
+                    }
                 }
             }
-        }
-    }
-
-    impl Game {
-        fun new(screen_size: Vec_2<usize>, tick_speed: usize) -> Self {
-            Self{ Frame:new(screen_size), Vec<char>:new(), tick_speed }
-        }
-
-        fun update(&mut self) {
-            self.key_presses.clear();
-            while c_kbhit() {
-                let chr = c_getch();
-                self.key_presses.push(chr);
-            }
-        }
-
-        fun render(&mut self) {
-            self.frame.render();
-            sleep(1.0 / (self.tick_speed as f64));
         }
     }
 }

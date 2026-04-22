@@ -102,7 +102,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         };
         match left_expr_result {
             IRExprResult::ModuleScope(scope) => {
-                if let Some(new_scope) = self.get_module_scope_in_scope(scope, name.as_str()) {
+                if let Some(new_scope) = self.get_module_scope_in_scope(scope, name.as_str())? {
                     Ok(IRExprResult::ModuleScope(new_scope))
                 } else if let Some(fun_result) = self.lower_fun_name(scope, name.as_str(), right_expr.span)? {
                     return Ok(fun_result);
@@ -112,6 +112,8 @@ impl<'ctx> CodeLowerer<'ctx> {
                     return Ok(type_def_result);
                 } else if let IRExprContext::Trait(self_type) = context_type && let Some(trait_result) = self.lower_trait_name(scope, name.as_str(), *self_type, right_expr.span)? {
                     return Ok(trait_result);
+                } else if let Some(ir_const) = self.find_constant_in_scope(scope, name.as_str()) {
+                    return Ok(IRExprResult::Value(ir_const.value));
                 } else {
                     return Err(self.error(SemanticError::UnrecognizedName, Some(right_expr.span)));
                 }

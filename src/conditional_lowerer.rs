@@ -1,6 +1,6 @@
 use inkwell::{basic_block::BasicBlock, values::{BasicValue, BasicValueEnum}};
 
-use crate::{code_lowerer::{CodeLowerer, IRContext, IRExprContext, IRFunContext, IRLoop, IRPhiValues, IRVarDeclaration, PrimitiveType}, core_lowerer::CoreTraitFun, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprResult, IRExprValueResult}, parser::{Conditional, ConditionalChain, ControlFlow, Label, Span}};
+use crate::{code_lowerer::{CodeLowerer, IRContext, IRExprContext, IRFunContext, IRLoop, IRPhiValues, IRVarDeclaration, IRVariable, PrimitiveType}, core_lowerer::CoreTraitFun, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprResult, IRExprValueResult}, parser::{Conditional, ConditionalChain, ControlFlow, Label, Span}};
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn lower_conditional_chain(&mut self, ir_context: &mut IRContext<'ctx>, conditional_chain: &ConditionalChain, context_type: &IRExprContext<'ctx>) -> Result<IRExprValueResult<'ctx>, CompilerError> {
@@ -104,9 +104,10 @@ impl<'ctx> CodeLowerer<'ctx> {
             },
             Conditional::For => {
                 let prev_len = ir_context.into_fun_context().vars.len();
-                let next_value = self.call_core_trait(ir_context, IRExprResult::Place(iter_place.unwrap()), None, &CoreTraitFun::Next, conditional_chain.cond_expr.as_ref().unwrap().span)?;
-                let var_dec = IRVarDeclaration { name: conditional_chain.iter_name.as_ref().unwrap().clone(), type_id: next_value.type_id, is_mut: false, is_static: false };
-                self.alloc_var(ir_context.into_fun_context(), &var_dec, Some(next_value.llvm_value), Some(conditional_chain.span))?; 
+                let span =  conditional_chain.cond_expr.as_ref().unwrap().span;
+                let next_value = self.call_core_trait(ir_context, IRExprResult::Place(iter_place.unwrap()), None, &CoreTraitFun::Next, span)?;
+                let name = conditional_chain.iter_name.as_ref().unwrap().clone();
+                self.alloc_var(ir_context.into_fun_context(), &IRVarDeclaration { name, type_id: next_value.type_id, is_mut: false, is_static: false }, Some(next_value.llvm_value), Some(span))?;
                 let then_result: IRExprValueResult<'_> = self.lower_scope(ir_context, &conditional_chain.then_scope, &IRExprContext::Value(None))?;
                 self.drop_vars(ir_context, prev_len, conditional_chain.span)?;
                 let cur_block = self.builder.get_insert_block().unwrap();

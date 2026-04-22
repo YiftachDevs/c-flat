@@ -77,7 +77,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         let mut new_templates_map = self.ir_scope(parent_scope).templates_map.clone();
         new_templates_map.extend(templates_map.clone());
 
-        let fun_scope = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Function(fun_id), templates_map: new_templates_map, ast_def: fun_def.scope.as_ref() });
+        let fun_scope = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Function(fun_id), templates_map: new_templates_map, ast_def: fun_def.scope.as_ref(), constants: Vec::new() })?;
 
         let mut ir_context = IRContext::ScopeContext(fun_scope);
 

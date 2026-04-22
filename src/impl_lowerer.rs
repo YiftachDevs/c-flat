@@ -33,7 +33,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 new_templates_map.extend(templates_map.clone());
 
                 let impl_id = self.reserve_impl_id();
-                let scope_id = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Impl(impl_id), templates_map: new_templates_map, ast_def: impl_def.scope.as_ref() });
+                let scope_id = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Impl(impl_id), templates_map: new_templates_map, ast_def: impl_def.scope.as_ref(), constants: Vec::new() })?;
                 let mut ir_context = IRContext::ScopeContext(scope_id);
 
                 let opt_trait_id: Option<usize> = if let Some(trait_expr) = &impl_def.opt_trait {
@@ -49,7 +49,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             }
         }
         for module in self.ir_scope(parent_scope).ast_def.unwrap().modules.iter() {
-            let scope = self.get_module_scope_in_scope(parent_scope, &module.name).unwrap();
+            let scope = self.get_module_scope_in_scope(parent_scope, &module.name)?.unwrap();
             impls_ids.extend(self.find_impls(scope, type_id)?);
         }
         Ok(impls_ids)
@@ -59,7 +59,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         if let Some(_) = self.types_table[type_id].lowered_impls {
             return Ok(());
         }
-        let global_scope = self.get_global_scope();
+        let global_scope = self.get_global_scope()?;
         self.types_table[type_id].lowered_impls = Some(Vec::new());
         if type_id == self.primitive_type(PrimitiveType::Never)? {
             return Ok(());

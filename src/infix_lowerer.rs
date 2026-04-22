@@ -57,7 +57,8 @@ impl<'ctx> CodeLowerer<'ctx> {
         let left_expr_result = self.get_value(ir_context, left_expr, &context_type, false)?;
         let mut result = self.call_core_trait(ir_context, IRExprResult::Value(left_expr_result), Some(right_expr), &Self::trait_from_opr(CoreOpr::Infix(opr)), span)?;
         if opr == InfixOpr::Leq || opr == InfixOpr::Geq  {
-            let eq_result = self.call_core_trait(ir_context, IRExprResult::Value(left_expr_result), Some(right_expr), &Self::trait_from_opr(CoreOpr::Infix(InfixOpr::Eq)), span)?;
+            let right_expr_2 = &Box::new(ExprNode { value: ExprNodeEnum::PrefixOpr(PrefixOpr::Addr { is_mut: false }, right_expr.clone()), span });
+            let eq_result = self.call_core_trait(ir_context, IRExprResult::Value(left_expr_result), Some(right_expr_2), &Self::trait_from_opr(CoreOpr::Infix(InfixOpr::Eq)), span)?;
             result.llvm_value = self.build_core_trait_fun_body(ir_context, result.type_id, Some(result.llvm_value), Some(eq_result.llvm_value), &CoreTraitFun::Or)?;
         }
         if opr == InfixOpr::AsnAdd ||  opr == InfixOpr::AsnSub ||  opr == InfixOpr::AsnMul ||  opr == InfixOpr::AsnDiv ||  opr == InfixOpr::AsnMod {

@@ -3,6 +3,11 @@ struct SliceIter<T> {
     end: &T
 }
 
+struct SliceMutIter<T> {
+    start: &mut T,
+    end: &mut T
+}
+
 impl<T> Iter<&T> for SliceIter<T> {
     fun next(&mut self) -> &T {
         let result = self.start;
@@ -15,7 +20,20 @@ impl<T> Iter<&T> for SliceIter<T> {
     }
 }
 
-impl<T> Iter<T> for Range<T> {
+impl<T> Iter<&mut T> for SliceMutIter<T> {
+    fun next(&mut self) -> &mut T {
+        let result = self.start;
+        self.start = (self.start as usize + T:mem_size()) as &mut T;
+        result
+    }
+    
+    fun has_next(&self) -> bool {
+        self.start as usize < self.end as usize
+    }
+}
+
+
+impl<T: Integer> Iter<T> for Range<T> {
     fun next(&mut self) -> T {
         let result = self.start;
         self.start += 1;
@@ -31,6 +49,11 @@ impl<T> [T] {
     fun iter(&self) -> SliceIter<T> {
         let ptr = self.as_ref();
         SliceIter<T>{ ptr, (ptr as usize + self.len() * T:mem_size()) as &T }
+    }
+
+    fun iter_mut(&mut self) -> SliceMutIter<T> {
+        let ptr = self.as_mut_ref();
+        SliceMutIter<T>{ ptr, (ptr as usize + self.len() * T:mem_size()) as &mut T }
     }
 }
 

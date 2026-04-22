@@ -38,7 +38,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         new_templates_map.extend(templates_map.clone());
 
         let trait_id: usize = self.traits_table.len();
-        let trait_scope = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Trait(trait_id), templates_map: new_templates_map, ast_def: trait_def.scope.as_ref() });
+        let trait_scope = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Trait(trait_id), templates_map: new_templates_map, ast_def: trait_def.scope.as_ref(), constants: Vec::new() })?;
         let mut ir_context = IRContext::ScopeContext(trait_scope);
         self.traits_table.push(IRTrait { scope: trait_scope, parent_scope: parent_scope, templates_map: templates_map.clone(), ast_def: trait_def, self_type, sub_traits: Vec::new() });
 

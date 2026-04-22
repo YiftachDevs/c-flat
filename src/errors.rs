@@ -83,7 +83,8 @@ pub enum SemanticError {
     UninitializedStatic,
     InvalidOpr(String),
     UnresolvableTemplate(String),
-    InvalidTypeConversion(String, String)
+    InvalidTypeConversion(String, String),
+    MissingInitExpr
 }
 
 impl SemanticError {
@@ -120,7 +121,8 @@ impl SemanticError {
             Self::UninitializedStatic => ("Uninitialized Static", None),
             Self::InvalidOpr(opr) => ("Invalid Opr", Some(format!("Cannot use opr '{}' in this context", opr))),
             Self::UnresolvableTemplate(t) => ("Unresolvable Template", Some(format!("Cannot resolve template '{}'", t))),
-            Self::InvalidTypeConversion(t1, t2) => ("Invalid Type Conversion", Some(format!("Cannot convert type '{}' to '{}'", t1, t2)))
+            Self::InvalidTypeConversion(t1, t2) => ("Invalid Type Conversion", Some(format!("Cannot convert type '{}' to '{}'", t1, t2))),
+            Self::MissingInitExpr => ("Missing Init Expr", None)
         }
     }
 }

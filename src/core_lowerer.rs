@@ -23,6 +23,7 @@ pub enum CoreTraitFun {
     DerefMut,
     Drop,
     AsRef,
+    AsMutRef,
     Len,
     MemSize,
     Index,
@@ -58,6 +59,7 @@ impl CoreTraitFun {
             Self::DerefMut => "Deref",
             Self::Drop => "Drop",
             Self::AsRef => "AsRef",
+            Self::AsMutRef => "AsRef",
             Self::Index => "Index",
             Self::IndexMut => "Index",
             Self::Copy => "Copy",
@@ -90,6 +92,7 @@ impl CoreTraitFun {
             Self::DerefMut => "deref_mut",
             Self::Drop => "drop",
             Self::AsRef => "as_ref",
+            Self::AsMutRef => "as_mut_ref",
             Self::Len => "len",
             Self::MemSize => "mem_size",
             Self::MemZero => "mem_zero",
@@ -109,7 +112,7 @@ impl CoreTraitFun {
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn impl_core(&mut self, type_id: IRTypeId) -> Result<(), CompilerError> {
-        let core_scope = self.get_core_scope();
+        let core_scope = self.get_core_scope()?;
         let ir_type = self.ir_type(type_id);
         if let IRTypeEnum::Primitive(primitive_type) = ir_type.type_enum {
             if primitive_type == PrimitiveType::Never {
@@ -127,6 +130,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 self.build_core_trait_funs(type_id, &CoreTraitFun::Mod)?;
                 self.build_core_trait_funs(type_id, &CoreTraitFun::Lss)?;
                 self.build_core_trait_funs(type_id, &CoreTraitFun::Gtr)?;
+                self.build_core_trait_funs(type_id, &CoreTraitFun::UpTo)?;
             }
             if is_integer || type_id == self.primitive_type(PrimitiveType::Bool)? {
                 self.build_core_trait_funs(type_id, &CoreTraitFun::Not)?;
@@ -137,10 +141,10 @@ impl<'ctx> CodeLowerer<'ctx> {
             if is_integer {
                 self.build_core_trait_funs(type_id, &CoreTraitFun::Shl)?;
                 self.build_core_trait_funs(type_id, &CoreTraitFun::Shr)?;
-                self.build_core_trait_funs(type_id, &CoreTraitFun::UpTo)?;
             }
         } else if let IRTypeEnum::Slice { slice_type } = ir_type.type_enum {
             self.build_core_trait_funs(type_id, &CoreTraitFun::AsRef)?;
+            self.build_core_trait_funs(type_id, &CoreTraitFun::AsMutRef)?;
             self.build_core_trait_funs(type_id, &CoreTraitFun::Len)?;
             self.build_core_trait_funs(type_id, &CoreTraitFun::Index)?;
             self.build_core_trait_funs(type_id, &CoreTraitFun::IndexMut)?;
@@ -172,27 +176,17 @@ impl<'ctx> CodeLowerer<'ctx> {
             let result = self.lower_postfix_opr_invoke(ir_context, IRExprResult::Function(fun, Some(Box::new(result))), args_expr, span)?;
             Ok(result)
         } else {
-            for impl_id in self.ir_type(type_id).lowered_impls.as_ref().unwrap() {
-                if let Some(t) = self.ir_impl(*impl_id).trait_id {
-                    println!("!{}", self.format_type(self.ir_trait(t).scope));
-                }
-                println!("!{}", self.format_type(self.ir_impl(*impl_id).scope));
-            }
-            if let Some(_) = self.ir_type(type_id).lowered_impls {
-                println!("!");
-            }
             Err(self.error(SemanticError::MissingTrait { type_str: self.format_type(type_id), trait_str: core_trait.get_trait_name().to_string() }, Some(span)))
         }
     }
 
-    pub fn get_core_scope(&mut self) -> IRScopeId {
-        let global_scope = self.get_global_scope();
-        global_scope
+    pub fn get_core_scope(&mut self) -> Result<IRScopeId, CompilerError> {
+        self.get_global_scope()
     }
 
     pub fn find_impl_of_core_trait(&mut self, type_id: IRTypeId, core_trait: &CoreTraitFun) -> Result<Option<IRImplId>, CompilerError> {
         self.lower_impls(type_id)?;
-        let core_scope = self.get_core_scope();
+        let core_scope = self.get_core_scope()?;
         for lowered_impl_id in self.ir_type(type_id).lowered_impls.as_ref().unwrap() {
             if let Some(trait_id) = self.ir_impl(*lowered_impl_id).trait_id && self.ir_trait(trait_id).ast_def.name == core_trait.get_trait_name() && self.ir_trait(trait_id).parent_scope == core_scope {
                 return Ok(Some(*lowered_impl_id));
@@ -253,7 +247,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 llvm_value = self.builder.build_insert_value(llvm_value, other_value.unwrap(), 1, "len").unwrap();
                 return Ok(llvm_value.as_basic_value_enum());
             }
-            if core_trait == &CoreTraitFun::AsRef {
+            if core_trait == &CoreTraitFun::AsRef || core_trait == &CoreTraitFun::AsMutRef {
                 let ref_value = self.builder.build_extract_value(first_value.into_struct_value(), 0, "ref").unwrap();
                 return Ok(ref_value);
             }
@@ -330,9 +324,9 @@ impl<'ctx> CodeLowerer<'ctx> {
                 self.builder.build_left_shift(first_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into()
             }
             CoreTraitFun::UpTo => {
-                let global_scope = self.get_global_scope();
+                let global_scope = self.get_global_scope()?;
                 let struct_id = self.lower_struct(global_scope, "Range", &[IRTemplateValue::Type(self_type)], None)?;
-                self.range_value(struct_id, first_value.into_int_value(), other_value.unwrap().into_int_value())?
+                self.range_value(struct_id, first_value, other_value.unwrap())?
             },
             CoreTraitFun::Not => self.builder.build_not(first_value.into_int_value(), "tmp").unwrap().into(),
             CoreTraitFun::And => self.builder.build_and(first_value.into_int_value(), other_value.unwrap().into_int_value(), "tmp").unwrap().into(),

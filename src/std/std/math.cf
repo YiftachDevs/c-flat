@@ -1,3 +1,10 @@
+extern fun c_sin(num: f64) -> f64;
+extern fun c_cos(num: f64) -> f64;
+
+mod math {
+    const PI: f64 = 3.1415926535897932384;
+}
+
 impl<T: Integer> T {
     fun abs(self) -> Self {
         if self < 0 {
@@ -16,6 +23,11 @@ impl<T: Float> T {
             self
         }
     }
+}
+
+impl f64 {
+    fun sin(self) -> Self { c_sin(self) }
+    fun cos(self) -> Self { c_cos(self) }
 }
 
 impl<T: Numeral> T {
@@ -38,6 +50,10 @@ impl<T: Numeral> T {
     fun clamp(self, min: Self, max: Self) -> Self {
         self.max(min).min(max)
     }
+
+    fun in_range(self, range: Range<T>) -> bool {
+        self >= range.start & self < range.end
+    }
 }
 
 struct Vec_2<T: Numeral> {
@@ -45,4 +61,28 @@ struct Vec_2<T: Numeral> {
     y: T
 }
 
-impl<T: Numeral> Copy for Vec_2<T>;
+impl<T> Copy for Vec_2<T>;
+
+impl<T> Add<Vec_2<T>> for Vec_2<T> {
+    fun add(self, other: Self) -> Self {
+        Self{ self.x + other.x, self.y + other.y }
+    }
+}
+
+impl<T> Sub<Vec_2<T>> for Vec_2<T> {
+    fun sub(self, other: Self) -> Self {
+        Self{ self.x - other.x, self.y - other.y }
+    }
+}
+
+impl<T> Mul<T> for Vec_2<T> {
+    fun mul(self, other: T) -> Self {
+        Self{ self.x * other, self.y * other }
+    }
+}
+
+impl<T> Div<T> for Vec_2<T> {
+    fun div(self, other: T) -> Self {
+        Self{ self.x / other, self.y / other }
+    }
+}

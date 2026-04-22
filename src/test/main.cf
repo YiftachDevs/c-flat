@@ -13,6 +13,13 @@ fun main() -> usize {
     0
 }
 
+fun sum<T: Integer>(slice: &[T]) -> T {
+    let mut sum = 0;
+    for num in slice.iter() {
+        sum += *num;
+    }
+    sum
+}
 
 fun debug_heap_count() {
     let heap_count = *mem:heap_count();

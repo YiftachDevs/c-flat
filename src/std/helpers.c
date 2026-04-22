@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <termios.h>
 #include <fcntl.h>
+#include <math.h>
 
 void c_memcpy(void* dest_ptr, void* src_ptr, unsigned long long size) {
     memcpy(dest_ptr, src_ptr, size);
@@ -69,4 +70,11 @@ char c_kbhit() {
     fcntl(STDIN_FILENO, F_SETFL, oldf);
     if (ch != EOF) { ungetc(ch, stdin); return 1; }
     return 0;
+}
+
+double c_sin(double x) {
+    return sin(x);
+}
+double c_cos(double x) {
+    return cos(x);
 }

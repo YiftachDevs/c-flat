@@ -6,8 +6,8 @@ mod rng {
     }
 }
 
-impl<T: Integer> Range<T> {
+impl<T: Numeral> Range<T> {
     fun rand(&self) -> T {
-        (rng:next() % (self.end - self.start) as usize) as T + self.start
+        rng:next() as T % (self.end - self.start) + self.start
     }
 }

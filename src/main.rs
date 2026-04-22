@@ -28,55 +28,47 @@ use std::{env, path::Path};
 use crate::code_lowerer::{CodeLowerer, IRTemplateKey, IRTemplateValue};
 use crate::code_lowerer::IRScope;
 use crate::code_lowerer::IRScopePath;
+use crate::errors::CompilerError;
 use crate::parser::*;
 use inkwell::{OptimizationLevel, passes};
 
 fn main() {
+    if let Err(err) = run() {
+        eprintln!("{}", err);
+    }
+}
+
+fn run() -> Result<(), CompilerError> {
     let std_folder = "/home/yiftach/dev/c_flat/src/std".to_string();
 
     let mut file_context = FileContext::new();
     let mut parser: Parser = Parser::new(&mut file_context, "/home/yiftach/dev/c_flat/src/test".to_string(), std_folder.clone());
     let mut main_scope: Scope = Scope::new();
 
-    if let Err(err) = parser.parse_file("std/core.cf", &mut main_scope) {
-        eprintln!("{}", err);
-        return;
-    }
-
-    if let Err(err) = parser.parse_file("main.cf", &mut main_scope) {
-        eprintln!("{}", err);
-        return;
-    }
+    parser.parse_file("std/core.cf", &mut main_scope)?;
+    parser.parse_file("main.cf", &mut main_scope)?;
     
     let llvm_context: Context = Context::create();
     let mut code_lowerer = CodeLowerer::new(&main_scope, file_context, &llvm_context);
 
-
-    let global_scope = code_lowerer.get_global_scope();
+    let global_scope = code_lowerer.get_global_scope()?;
     
-    let main_fun_result = code_lowerer.lower_fun(global_scope, "main", &Vec::new(), None);
-
-    if let Err(err) = main_fun_result {
-        eprintln!("{}", err);
-        return;
-    }
+    code_lowerer.lower_fun(global_scope, "main", &Vec::new(), None)?;
 
     if let Err(err) = run_pipeline(&code_lowerer.module) {
         eprintln!("{}", err);
-        return;
+        return Ok(());
     }
 
     code_lowerer.export_ir_to_file(Path::new("output.ll"));
 
     let helpers_file = PathBuf::from(std_folder).join("helpers.c");
 
-    let output = Command::new("clang").arg("output.ll").arg(helpers_file).arg("-o").arg("output_exec").output().expect("Failed to launch clang");
+    let output = Command::new("clang").arg("output.ll").arg(helpers_file).arg("-o").arg("output_exec").arg("-lm").output().expect("Failed to launch clang");
     if !output.status.success() {
         eprintln!("{}", String::from_utf8_lossy(&output.stderr));
-        return;
+        return Ok(());
     }
-
-    // return;
 
     println!("{}", "Done! [Running Script]:".green());
 
@@ -91,6 +83,7 @@ fn main() {
 
     println!("\nScript exited with status: {}", status);
 
+    Ok(())
 }
 
 fn run_pipeline(module: &Module) -> Result<(), String> {

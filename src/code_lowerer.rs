@@ -21,7 +21,7 @@ use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
 
 use crate::errors::{CompilerError, CompilerErrorType, SemanticError};
 use crate::expr_lowerer::{IRExprPlaceResult, IRExprResult, IRExprValueResult};
-use crate::parser::{ConditionalChain, ExprNode, ExprNodeEnum, FileContext, Function, Implementation, InfixOpr, Label, Literal, PrefixOpr, Scope, Span, Struct, Template, Templates, Trait, Variable};
+use crate::parser::{ConditionalChain, ExprNode, ExprNodeEnum, FileContext, Function, Implementation, InfixOpr, Label, Literal, PrefixOpr, Scope, Span, Statement, Struct, Template, Templates, Trait, Variable};
 
 pub type IRTypeId = usize;
 pub type IRFunctionId = usize;
@@ -37,6 +37,13 @@ pub struct IRVariable<'ctx> {
     pub moved: bool,
     pub is_mut: bool
 }
+
+#[derive(PartialEq, Clone)]
+pub struct IRConstant<'ctx> {
+    pub name: String,
+    pub value: IRExprValueResult<'ctx>
+}
+
 
 #[derive(PartialEq, Clone)]
 pub struct IRVarDeclaration {
@@ -247,7 +254,8 @@ pub struct IRScope<'ctx> {
     pub parent_scope: Option<IRScopeId>,
     pub path: IRScopePath,
     pub templates_map: IRTemplatesMap<'ctx>,
-    pub ast_def: Option<&'ctx Scope>
+    pub ast_def: Option<&'ctx Scope>,
+    pub constants: Vec<IRConstant<'ctx>>
 }
 
 
@@ -323,13 +331,23 @@ impl<'ctx> CodeLowerer<'ctx> {
     pub fn ir_impl(&self, impl_id: IRImplId) -> &IRImpl<'ctx> { &self.impls_table[impl_id].as_ref().unwrap() }
     pub fn ir_trait(&self, trait_id: IRTraitId) -> &IRTrait<'ctx> { &self.traits_table[trait_id] }
 
-    pub fn scope_id(&mut self, ir_scope: IRScope<'ctx>) -> IRScopeId {
-        if let Some((i, _)) = self.scopes_table.iter().enumerate().find(|(_, cur_ir)| **cur_ir == ir_scope) {
-            return i;
+    pub fn scope_id(&mut self, ir_scope: IRScope<'ctx>) -> Result<IRScopeId, CompilerError> {
+        if let Some((i, _)) = self.scopes_table.iter().enumerate().find(|(_, cur_ir)| cur_ir.ast_def == ir_scope.ast_def && cur_ir.templates_map == ir_scope.templates_map && cur_ir.parent_scope == ir_scope.parent_scope) {
+            return Ok(i);
         }
         let id = self.scopes_table.len();
         self.scopes_table.push(ir_scope);
-        id
+
+        if let Some(ast_def) = self.ir_scope(id).ast_def {
+            let mut ir_context = IRContext::ScopeContext(id);
+            for statement in ast_def.statements.iter() {
+                if let Statement::Const(const_def) = statement {
+                    self.lower_constant(&mut ir_context, const_def)?;
+                }
+            }
+        }
+
+        Ok(id)
     }
 
     pub fn trait_id(&mut self, ir_trait: IRTrait<'ctx>) -> IRTraitId {
@@ -417,7 +435,8 @@ impl<'ctx> CodeLowerer<'ctx> {
         let structs_results_len = if let Some(ast_def) = ir_scope.ast_def { ast_def.structs.iter().filter(|def| def.name == name).count() } else { 0 };
         let traits_results_len = if let Some(ast_def) = ir_scope.ast_def { ast_def.traits.iter().filter(|def| def.name == name).count() } else { 0 };
         let type_def_results_len = if let Some(ast_def) = ir_scope.ast_def { ast_def.type_defs.iter().filter(|def| def.name == name).count() } else { 0 };
-        let total_len = fun_results_len + structs_results_len + traits_results_len + type_def_results_len;
+        let constants_results_len = if let Some(ast_def) = ir_scope.ast_def { ast_def.statements.iter().filter(|def| if let Statement::Const(const_def) = def { const_def.name == name } else { false }).count() } else { 0 };
+        let total_len = fun_results_len + structs_results_len + traits_results_len + type_def_results_len + constants_results_len;
 
         if total_len > 1 {
             return Err(self.error(SemanticError::CollidingNames { parent_scope: self.format_scope_path(parent_scope), name: name.to_string() }, opt_call_span));
@@ -433,27 +452,27 @@ impl<'ctx> CodeLowerer<'ctx> {
             Ok(if total_len == 0 { None } else { Some(parent_scope) })
         }
     }
-    pub fn get_module_scope_in_scope(&mut self, parent_scope: IRScopeId, name: &str) -> Option<IRScopeId> {
+    pub fn get_module_scope_in_scope(&mut self, parent_scope: IRScopeId, name: &str) -> Result<Option<IRScopeId>, CompilerError> {
         let ir_parent_scope: &IRScope<'_> = self.ir_scope(parent_scope);
         if let Some(ast_def) = ir_parent_scope.ast_def {
             for module in ast_def.modules.iter() {
                 if module.name == name {
                     let mut new_parent_path = if let IRScopePath::ModulePath(path) = ir_parent_scope.path.clone() { path } else { panic!("CodeLowerer::get_module_scope_in_scope") };
                     new_parent_path.push(name.to_string());
-                    let ir_scope = IRScope { parent_scope: Some(parent_scope), path: IRScopePath::ModulePath(new_parent_path), templates_map: IndexMap::new(), ast_def: Some(&module.scope) };
-                    return Some(self.scope_id(ir_scope));
+                    let ir_scope = IRScope { parent_scope: Some(parent_scope), path: IRScopePath::ModulePath(new_parent_path), templates_map: IndexMap::new(), ast_def: Some(&module.scope), constants: Vec::new() };
+                    return Ok(Some(self.scope_id(ir_scope)?));
                 }
             }
         }
         if let Some(grand_parent_scope) = ir_parent_scope.parent_scope {
             self.get_module_scope_in_scope(grand_parent_scope, name)
         } else {
-            None
+            Ok(None)
         }
     }
     
-    pub fn get_global_scope(&mut self) -> IRScopeId {
-        self.scope_id(IRScope{ parent_scope: None, path: IRScopePath::ModulePath(vec![]), templates_map: IndexMap::new(), ast_def: Some(&self.ast_scope)})
+    pub fn get_global_scope(&mut self) -> Result<IRScopeId, CompilerError> {
+        self.scope_id(IRScope{ parent_scope: None, path: IRScopePath::ModulePath(vec![]), templates_map: IndexMap::new(), ast_def: Some(&self.ast_scope), constants: Vec::new() })
     }
 
     pub fn format_scope_path(&self, scope: IRScopeId) -> String {
