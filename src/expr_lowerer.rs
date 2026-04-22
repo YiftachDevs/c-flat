@@ -133,6 +133,20 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(scope_result)
     }
 
+    pub fn lower_scope_constraint(&mut self, ir_context: &mut IRContext<'ctx>, scope: &Scope, expr_context: &IRExprContext<'ctx>) -> Result<IRExprResult<'ctx>, CompilerError> {
+        if let IRExprContext::TypeConstraint(type_id) = expr_context {
+            let inner_expr = match &scope.statements[0] { Statement::Expression { expr, is_final_value } => expr, _ => panic!() };
+            if let IRTypeEnum::Struct(ir_struct) = self.ir_type(*type_id).type_enum.clone() {
+                for arg_dec in ir_struct.args.iter() {
+                    if let IRExprResult::NoTypeConstraintMatch = self.lower_expr(ir_context, inner_expr, &IRExprContext::TypeConstraint(arg_dec.type_id))? {
+                        return Ok(IRExprResult::NoTypeConstraintMatch);
+                    }
+                }
+                return Ok(IRExprResult::Type(*type_id));
+            } else { return Ok(IRExprResult::NoTypeConstraintMatch); }
+        } else { panic!() }
+    }
+
     pub fn drop_vars(&mut self, ir_context: &mut IRContext<'ctx>, prev_len: usize, span: Span) -> Result<(), CompilerError> {
         for i in (prev_len..ir_context.into_fun_context().vars.len()).rev() {
             let var = &ir_context.into_fun_context().vars[i];
@@ -276,7 +290,11 @@ impl<'ctx> CodeLowerer<'ctx> {
                 IRExprResult::Value(self.lower_expr_literal(literal, expr_context)?)
             },
             ExprNodeEnum::Scope(scope) => {
-                IRExprResult::Value(self.lower_scope(ir_context, scope, expr_context)?)
+                if let IRContext::ImplConstraintContext(cur_impl_id) = ir_context {
+                    self.lower_scope_constraint(ir_context, scope, expr_context)?
+                } else {
+                    IRExprResult::Value(self.lower_scope(ir_context, scope, expr_context)?)
+                }
             },
             ExprNodeEnum::Array(arr_expr, opt_size) => {
                 self.lower_array(ir_context, arr_expr, opt_size, expr.span, expr_context)?

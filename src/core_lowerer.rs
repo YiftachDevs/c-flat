@@ -33,7 +33,9 @@ pub enum CoreTraitFun {
     HasNext,
     UpTo,
     Shl,
-    Shr
+    Shr,
+    Clone,
+    MemZero
 }
 
 impl CoreTraitFun {
@@ -64,6 +66,7 @@ impl CoreTraitFun {
             Self::UpTo => "Up_To",
             Self::Shl => "Bitshift",
             Self::Shr => "Bitshift",
+            Self::Clone => "Clone",
             _ => panic!()
         }
     }
@@ -89,6 +92,7 @@ impl CoreTraitFun {
             Self::AsRef => "as_ref",
             Self::Len => "len",
             Self::MemSize => "mem_size",
+            Self::MemZero => "mem_zero",
             Self::Index => "index",
             Self::IndexMut => "index_mut",
             Self::FromRawParts => "from_raw_parts",
@@ -97,6 +101,7 @@ impl CoreTraitFun {
             Self::UpTo => "up_to",
             Self::Shl => "shl",
             Self::Shr => "shr",
+            Self::Clone => "clone",
             _ => panic!()
         }
     }
@@ -146,12 +151,14 @@ impl<'ctx> CodeLowerer<'ctx> {
             self.build_core_trait_funs(type_id, &CoreTraitFun::Deref)?;
             self.build_core_trait_funs(type_id, &CoreTraitFun::DerefMut)?;
         } else if let IRTypeEnum::Struct(_) = ir_type.type_enum {
-            // self.build_core_trait_funs(type_id, &CoreTraitFun::Drop)?;
+            self.build_core_trait_funs(type_id, &CoreTraitFun::Clone)?;
         }
         self.build_core_trait_funs(type_id, &CoreTraitFun::Drop)?;
         self.build_core_trait_funs(type_id, &CoreTraitFun::Eq)?;
+        // self.build_core_trait_funs(type_id, &CoreTraitFun::Clone)?;
         if !self.is_type_unsized(type_id)? {
             self.build_core_trait_funs(type_id, &CoreTraitFun::MemSize)?;
+            self.build_core_trait_funs(type_id, &CoreTraitFun::MemZero)?;
         }
         Ok(())
     }
@@ -234,6 +241,9 @@ impl<'ctx> CodeLowerer<'ctx> {
             let size = self.get_type_mem_size(self_type);
             return Ok(self.llvm_context.i64_type().const_int(size as u64, false).into());
         }
+        if core_trait == &CoreTraitFun::MemZero {
+            return Ok(self.ir_type(self_type).llvm_type.const_zero());
+        }
         let first_value = first_value.unwrap();
         if let IRTypeEnum::Slice { slice_type } = self.ir_type(self_type).type_enum {
             if core_trait == &CoreTraitFun::FromRawParts {
@@ -276,16 +286,25 @@ impl<'ctx> CodeLowerer<'ctx> {
                     self.call_core_trait(ir_context, IRExprResult::Value(IRExprValueResult { type_id: var_dec.type_id, llvm_value: arg }),None, &CoreTraitFun::Drop, Span::dummy())?;
                 }
             }
+            if core_trait == &CoreTraitFun::Clone {
+                let mut llvm_value: inkwell::values::AggregateValueEnum<'_> = self.ir_type(self_type).llvm_type.into_struct_type().get_undef().into();
+                for (i, var_dec) in ir_struct.args.iter().enumerate() {
+                    let arg_ptr_value = self.builder.build_struct_gep(self.ir_type(self_type).llvm_type, first_value.into_pointer_value(), i as u32, "tmp").unwrap().into();
+                    let cloned_arg = self.call_core_trait(ir_context, IRExprResult::Place(IRExprPlaceResult { type_id: var_dec.type_id, ptr_value: arg_ptr_value, is_mut: false, owner: None }), None, &CoreTraitFun::Clone, Span::dummy())?;
+                    llvm_value = self.builder.build_insert_value(llvm_value, cloned_arg.llvm_value, i as u32, "tmp").unwrap();
+                }
+                return Ok(llvm_value.as_basic_value_enum());
+            }
             if core_trait == &CoreTraitFun::Eq {
                 let bool_type = self.primitive_type(PrimitiveType::Bool)?;
                 let mut result = self.ir_type(bool_type).llvm_type.into_int_type().const_all_ones().as_basic_value_enum();
-                for (i, var_dec) in ir_struct.args.iter().enumerate().rev() {
+                for (i, var_dec) in ir_struct.args.iter().enumerate() {
                     let arg_ptr_value = self.builder.build_struct_gep(self.ir_type(self_type).llvm_type, first_value.into_pointer_value(), i as u32, "tmp").unwrap().into();
                     let other_expr_node = &Box::new(ExprNode { span: Span::dummy(), value: ExprNodeEnum::PrefixOpr(PrefixOpr::Addr { is_mut: false },
                         Box::new(ExprNode { span: Span::dummy(), value: ExprNodeEnum::PostfixOpr(PostfixOpr::Mem,
-                            Box::new(ExprNode{ value: ExprNodeEnum::Name("other".to_string()), span: Span::dummy()}),
-                            Box::new(ExprNode{ value: ExprNodeEnum::Name(var_dec.name.clone()), span: Span::dummy()}))}))});
-                    let eq_res = self.call_core_trait(ir_context, IRExprResult::Place(IRExprPlaceResult { type_id: var_dec.type_id, ptr_value: arg_ptr_value, is_mut: false, owner: None }),Some(other_expr_node), &CoreTraitFun::Eq, Span::dummy())?;
+                        Box::new(ExprNode{ value: ExprNodeEnum::Name("other".to_string()), span: Span::dummy()}),
+                        Box::new(ExprNode{ value: ExprNodeEnum::Name(var_dec.name.clone()), span: Span::dummy()}))}))});
+                    let eq_res = self.call_core_trait(ir_context, IRExprResult::Place(IRExprPlaceResult { type_id: var_dec.type_id, ptr_value: arg_ptr_value, is_mut: false, owner: None }), Some(other_expr_node), &CoreTraitFun::Eq, Span::dummy())?;
                     result = self.builder.build_and(result.into_int_value(), eq_res.llvm_value.into_int_value(), "tmp").unwrap().into();
                 }
                 return Ok(result);

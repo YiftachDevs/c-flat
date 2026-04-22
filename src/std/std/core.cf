@@ -87,12 +87,6 @@ impl<T> Copy for &mut T;
 impl<T: Integer> Up_To<T> for T { fun up_to(self, other: T) -> Range<T>; }
 impl<T: Integer> Bitshift for T { fun shl(self, count: Self) -> Self; fun shr(self, count: Self) -> Self; }
 
-impl<T: Primitive> Clone for T {
-    fun clone(&self) -> Self {
-        *self
-    }
-}
-
 impl<T: Primitive> Drop for T {
     fun drop(self) { }
 }
@@ -163,6 +157,44 @@ impl<T: !Eq> Eq for T {
     fun eq(&self, other: &Self) -> bool;
 }
 
+impl<T: Primitive> Clone for T {
+    fun clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T: Clone> Clone for &T {
+    fun clone(&self) -> Self { *self }
+}
+
+impl<T: Clone> Clone for &mut T {
+    fun clone(&self) -> Self { *self }
+}
+
+impl<T: Clone> Clone for &[T] {
+    fun clone(&self) -> Self { *self }
+}
+
+impl<T: Clone> Clone for &mut [T] {
+    fun clone(&self) -> Self { *self }
+}
+
+impl<T: Clone, const S: usize> Clone for [T; S] {
+    fun clone(&self) -> Self {
+        let mut res = Self:mem_zero();
+        let mut idx: usize = 0;
+        while idx < S {
+            res[idx] = self[idx].clone();
+            idx += 1;
+        }
+        res
+    }
+}
+
+impl<T: (!Clone & {Clone})> Clone for T {
+    fun clone(&self) -> Self;
+}
+
 impl<T> AsRef<T> for [T] {
     fun as_ref(&self) -> &T;
 }
@@ -193,6 +225,7 @@ impl<T> [T] {
 
 impl<T> T {
     fun mem_size() -> usize;
+    fun mem_zero() -> Self;
 }
 
 impl<T> [T] {

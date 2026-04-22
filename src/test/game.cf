@@ -1,0 +1,28 @@
+import pixel/game.cf;
+
+fun game() {
+    static screen_size = Vec_2<usize>{ 96, 54 };
+    let mut game = pixel:Game:new(screen_size, 12);
+
+    for y in 0..screen_size.y {
+        for x in 0..screen_size.x {
+            game.frame.buffer[y * screen_size.x + x] = ((x + y) % 8) as u8;
+        }
+    }
+
+    @game_loop loop {
+        game.update();
+
+        for i in 0..screen_size.x * screen_size.y {
+            game.frame.buffer[i] = (game.frame.buffer[i] - 1) % 8;
+        }
+
+        for key_press in game.key_presses.iter() {
+            if *key_press == 'q' {
+                break @game_loop;
+            }
+        }
+
+        game.render();
+    }
+}
