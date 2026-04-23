@@ -21,7 +21,7 @@ fun print(str_: &str) {
     c_flush();
 }
 
-fun shell(str_: &str) -> i32 {
+fun system(str_: &str) -> i32 {
     let string = String:from(str_).null_terminate();
     c_system(string.as_ref())
 }

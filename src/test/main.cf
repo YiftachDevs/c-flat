@@ -2,11 +2,11 @@ import std/io.cf;
 import std/math.cf;
 import std/rng.cf;
 import std/time.cf;
-import game.cf;
+import pixel/pixel.cf;
 
 fun main() -> usize {
     {
-        game();
+        gaming();
     };
     println("game over");
     debug_heap_count();

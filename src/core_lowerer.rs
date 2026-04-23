@@ -309,7 +309,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             return Ok(self.get_type_zero(void_type).llvm_value)
         }
 
-        let primitive_type = match self.ir_type(self_type).type_enum { IRTypeEnum::Primitive(prim) => prim, _ => panic!() };
+        let primitive_type = match self.ir_type(self_type).type_enum { IRTypeEnum::Primitive(prim) => prim, IRTypeEnum::Enum(_) => PrimitiveType::U8, _ => panic!() };
         Ok(match core_trait {
             CoreTraitFun::Shr => {
                 if primitive_type.is_int() {

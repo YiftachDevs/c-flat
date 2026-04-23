@@ -8,3 +8,5 @@ inkwell = { version = "0.7.1", features = ["llvm21-1"] }
 llvm-sys = { version = "211.0.0", features = ["prefer-dynamic"] }
 colored = "3.0"
 indexmap = "2.13.0"
+toml = "0.8"
+serde = { version = "1", features = ["derive"] }

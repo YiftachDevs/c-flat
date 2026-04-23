@@ -31,6 +31,7 @@ use crate::code_lowerer::IRScopePath;
 use crate::errors::CompilerError;
 use crate::parser::*;
 use inkwell::{OptimizationLevel, passes};
+use serde::Deserialize;
 
 fn main() {
     if let Err(err) = run() {
@@ -64,7 +65,16 @@ fn run() -> Result<(), CompilerError> {
 
     let helpers_file = PathBuf::from(std_folder).join("helpers.c");
 
-    let output = Command::new("clang").arg("output.ll").arg(helpers_file).arg("-o").arg("output_exec").arg("-lm").output().expect("Failed to launch clang");
+    let output = Command::new("clang")
+        .arg("output.ll")
+        .arg(helpers_file)
+        .arg("-lraylib")
+        .arg("-lm")
+        .arg("-ldl")            
+        .arg("-lpthread")
+        .arg("-o")
+        .arg("output_exec")
+        .arg("-lm").output().expect("Failed to launch clang");
     if !output.status.success() {
         eprintln!("{}", String::from_utf8_lossy(&output.stderr));
         return Ok(());

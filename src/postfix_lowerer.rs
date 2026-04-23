@@ -103,24 +103,39 @@ impl<'ctx> CodeLowerer<'ctx> {
         match left_expr_result {
             IRExprResult::ModuleScope(scope) => {
                 if let Some(new_scope) = self.get_module_scope_in_scope(scope, name.as_str())? {
-                    Ok(IRExprResult::ModuleScope(new_scope))
-                } else if let Some(fun_result) = self.lower_fun_name(scope, name.as_str(), right_expr.span)? {
-                    return Ok(fun_result);
-                } else if let Some(struct_result) = self.lower_struct_name(scope, name.as_str(), right_expr.span)? {
-                    return Ok(struct_result);
-                } else if let Some(type_def_result) = self.lower_type_def_name(scope, name.as_str(), right_expr.span)? {
-                    return Ok(type_def_result);
-                } else if let IRExprContext::Trait(self_type) = context_type && let Some(trait_result) = self.lower_trait_name(scope, name.as_str(), *self_type, right_expr.span)? {
-                    return Ok(trait_result);
-                } else if let Some(ir_const) = self.find_constant_in_scope(scope, name.as_str()) {
-                    return Ok(IRExprResult::Value(ir_const.value));
-                } else {
-                    return Err(self.error(SemanticError::UnrecognizedName, Some(right_expr.span)));
+                    return Ok(IRExprResult::ModuleScope(new_scope));
                 }
+                if let Some(fun_result) = self.lower_fun_name(scope, name.as_str(), right_expr.span)? {
+                    return Ok(fun_result);
+                }
+                if let Some(struct_result) = self.lower_struct_name(scope, name.as_str(), right_expr.span)? {
+                    return Ok(struct_result);
+                }
+                if let Some(result) = self.lower_enum_name(scope, name.as_str(), span)? {
+                    return Ok(result);
+                }
+                if let Some(type_def_result) = self.lower_type_def_name(scope, name.as_str(), right_expr.span)? {
+                    return Ok(type_def_result);
+                }
+                if let IRExprContext::Trait(self_type) = context_type && let Some(trait_result) = self.lower_trait_name(scope, name.as_str(), *self_type, right_expr.span)? {
+                    return Ok(trait_result);
+                }
+                if let Some(ir_const) = self.find_constant_in_scope(scope, name.as_str()) {
+                    return Ok(IRExprResult::Value(ir_const.value));
+                }
+                Err(self.error(SemanticError::UnrecognizedName, Some(right_expr.span)))
             },
             IRExprResult::Type(type_id) => {
                 if let Some(impl_id) = self.find_impl_of_fun(type_id, name.as_str(), None)? {
                     return Ok(self.lower_impl_fun_name(impl_id, name.as_str(), None, right_expr.span)?);
+                }
+                if let IRTypeEnum::Enum(ir_enum) = &self.ir_type(type_id).type_enum {
+                    for (i, type_name) in ir_enum.def.types.iter().enumerate() {
+                        if type_name == &name {
+                            let llvm_value = self.llvm_context.i8_type().const_int(i as u64, false);
+                            return Ok(IRExprResult::Value(IRExprValueResult { type_id, llvm_value: llvm_value.into() }));
+                        }
+                    }
                 }
                 return Err(self.error(SemanticError::ExpectedFunction, Some(right_expr.span)));
             },

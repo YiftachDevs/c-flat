@@ -14,7 +14,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
         let result: usize = ir_fun_context.vars.len();
         let ptr_value = if var_dec.is_static {
-            let global = self.module.add_global(self.ir_type(var_dec.type_id).llvm_type, Some(AddressSpace::default()), &var_dec.name);
+            let global = self.module.add_global(self.ir_type(var_dec.type_id).llvm_type, Some(AddressSpace::default()), format!("[c-flat]:{}", var_dec.name).as_str());
             global.set_constant(!var_dec.is_mut);
             global.set_linkage(Linkage::Internal);
             if let Some(init_value) = opt_init_value {
@@ -95,7 +95,8 @@ impl<'ctx> CodeLowerer<'ctx> {
 
         let has_body = if let Some(_) = &fun_def.scope { true } else { fun_def.external };
 
-        let fun_llvm_value = self.module.add_function(fun_path_string.as_str(), fun_llvm_type, None);
+        let llvm_fun_name = if fun_def.external || name == "main" { fun_path_string } else { format!("[c-flat]:{}", fun_path_string) };
+        let fun_llvm_value = self.module.add_function(llvm_fun_name.as_str(), fun_llvm_type, None);
 
         let ir_fun = IRFunction {
             parent_scope: parent_scope,

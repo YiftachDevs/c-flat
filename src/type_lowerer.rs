@@ -1,8 +1,9 @@
 use std::any::Any;
 
+use indexmap::IndexMap;
 use inkwell::{AddressSpace, types::{BasicMetadataTypeEnum, BasicType, BasicTypeEnum}, values::{BasicValue, BasicValueEnum, IntValue, PointerValue}};
 
-use crate::{code_lowerer::{CodeLowerer, IRConstant, IRContext, IRExprContext, IRScope, IRScopeId, IRScopePath, IRStruct, IRTemplateValue, IRTemplatesMap, IRType, IRTypeEnum, IRTypeId, IRVarDeclaration, IRVarDeclarations, IRVariable, IRVariables, PrimitiveType}, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprPlaceResult, IRExprResult, IRExprValueResult}, parser::{Const, ExprNode, Span, Statement, Struct, Templates, TypeDef}};
+use crate::{code_lowerer::{CodeLowerer, IRConstant, IRContext, IREnum, IRExprContext, IRScope, IRScopeId, IRScopePath, IRStruct, IRTemplateValue, IRTemplatesMap, IRType, IRTypeEnum, IRTypeId, IRVarDeclaration, IRVarDeclarations, IRVariable, IRVariables, PrimitiveType}, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprPlaceResult, IRExprResult, IRExprValueResult}, parser::{Const, Enum, ExprNode, Span, Statement, Struct, Templates, TypeDef}};
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn find_struct_def_in_scope(&self, parent_scope: IRScopeId, name: &str, opt_call_span: Option<Span>) -> Result<Option<(IRScopeId, &'ctx Struct)>, CompilerError> {
@@ -36,6 +37,16 @@ impl<'ctx> CodeLowerer<'ctx> {
         } else {
             None
         }
+    }
+
+    pub fn find_enum_in_scope(&self, parent_scope: IRScopeId, name: &str, opt_call_span: Option<Span>) -> Result<Option<(IRScopeId, &'ctx Enum)>, CompilerError> {
+        if let Some(actual_scope) = self.get_name_parent_scope(parent_scope, name, opt_call_span)? {
+            let ir_scope = self.ir_scope(actual_scope);
+            if let Some(def) = ir_scope.ast_def.unwrap().enums.iter().find(|def| def.name == name) {
+                return Ok(Some((actual_scope, def)));
+            }
+        }
+        Ok(None)
     }
 
     pub fn primitive_type(&mut self, prim: PrimitiveType) -> Result<IRTypeId, CompilerError> {
@@ -81,6 +92,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             IRTypeEnum::Reference { ptr_type_id, is_mut } => 8,
             IRTypeEnum::Struct(ir_struct) => ir_struct.args.iter().map(|arg| self.get_type_mem_size(arg.type_id)).sum(),
             IRTypeEnum::UnsizedRef { unsized_type, is_mut } => 16,
+            IRTypeEnum::Enum(_) => 1,
             _ => panic!()
         }
     }
@@ -153,14 +165,6 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(ptr_type)
     }
 
-    pub fn dereference_type(&self, type_id: IRTypeId) -> IRTypeId {
-        match self.ir_type(type_id).type_enum {
-            IRTypeEnum::UnsizedRef { unsized_type, is_mut } => unsized_type,
-            IRTypeEnum::Reference { ptr_type_id, is_mut } => ptr_type_id,
-            _ => panic!()
-        }
-    }
-
     pub fn array_type(&mut self, arr_type: IRTypeId, size: u64) -> Result<IRTypeId, CompilerError> {
         let llvm_type = self.ir_type(arr_type).llvm_type.array_type(size as u32).into();
         let type_id = self.type_id(IRType { type_enum: IRTypeEnum::Array { arr_type, size }, llvm_type, lowered_impls: None });
@@ -181,6 +185,32 @@ impl<'ctx> CodeLowerer<'ctx> {
         None
     }
 
+    fn find_existing_enum(&mut self, parent_scope: IRScopeId, name: &str) -> Option<IRTypeId> {
+        for (i, ir_type) in self.types_table.iter().enumerate() {
+            match &ir_type.type_enum {
+                IRTypeEnum::Enum(_enum) => {
+                    if _enum.parent_scope == parent_scope && _enum.def.name == name {
+                        return Some(i);
+                    }
+                },
+                _ => {}
+            }
+        }
+        None
+    }
+
+    pub fn lower_enum(&mut self, parent_scope: IRScopeId, name: &str, call_span: Option<Span>) -> Result<IRTypeId, CompilerError> {
+        let enum_def = self.find_enum_in_scope(parent_scope, name, call_span)?.unwrap().1;
+        if let Some(id) = self.find_existing_enum(parent_scope, name) {
+            return Ok(id);
+        }
+        let enum_id: usize = self.types_table.len();
+        let enum_scope = self.scope_id(IRScope { parent_scope: Some(parent_scope), path: IRScopePath::Type(enum_id), templates_map: IndexMap::new(), ast_def: None, constants: Vec::new() })?;
+        let ir_type_enum = IRTypeEnum::Enum(IREnum { parent_scope, scope: enum_scope, def: enum_def });
+        self.types_table.push(IRType { type_enum: ir_type_enum, llvm_type: self.llvm_context.i8_type().into(), lowered_impls: None });
+        Ok(enum_id)
+    }
+
     pub fn lower_struct(&mut self, parent_scope: IRScopeId, name: &str, templates_values: &[IRTemplateValue<'ctx>], call_span: Option<Span>) -> Result<IRTypeId, CompilerError> {
         let struct_def = self.find_struct_def_in_scope(parent_scope, name, call_span)?.unwrap().1;
         let templates_keys = self.get_templates_keys_from(&struct_def.templates)?;
@@ -198,7 +228,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         let ir_type_enum = IRTypeEnum::Struct(IRStruct { parent_scope, scope: struct_scope, templates_map: templates_map.clone(), def: struct_def, args: Vec::new() });
         let mut ir_context = IRContext::ScopeContext(struct_scope);
 
-        let struct_llvm_type = self.llvm_context.opaque_struct_type(struct_path_string.as_str());
+        let struct_llvm_type = self.llvm_context.opaque_struct_type(format!("[c-flat]:{}", struct_path_string).as_str());
         self.types_table.push(IRType { type_enum: ir_type_enum, llvm_type: struct_llvm_type.into(), lowered_impls: None });
 
         self.ensure_templates_constraints(&mut ir_context, &templates_map, &struct_def.templates, call_span)?;

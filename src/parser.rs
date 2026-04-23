@@ -331,8 +331,7 @@ pub struct Struct {
 #[derive(PartialEq, Clone)]
 pub struct Enum {
     pub name: String,
-    pub templates: Templates,
-    pub structs: Structs
+    pub types: Vec<String>
 }
 
 #[derive(PartialEq, Clone)]
@@ -1209,18 +1208,26 @@ impl Enum {
             return Ok(None);
         }
         let name: String = parser.next_name()?;
-        let templates: Templates = Templates::is_from_def(parser)?;
-        let structs: Structs = Structs::from_def(parser)?;
-        Ok(Some(Self { name, templates, structs }))
+        let mut types = Vec::new();
+        parser.ensure_next("{")?;
+        parser.skip_whitespace()?;
+        while parser.is_name_start()? {
+            types.push(parser.next_name()?);
+            if !parser.is_next(",") {
+                break;
+            }
+            parser.skip_whitespace()?;
+        }
+        parser.ensure_next("}")?;
+        Ok(Some(Self { name, types }))
     }
 }
 
 impl ToString for Enum {
     fn to_string(&self) -> String {
-        return format!("enum {}{}{};",
+        return format!("enum {} {{\n{}\n}}",
             self.name,
-            self.templates.to_string(),
-            self.structs.to_string()
+            self.types.join(",\n")
         )
     }
 }

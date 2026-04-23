@@ -21,7 +21,7 @@ use inkwell::values::{BasicValueEnum, FunctionValue, PointerValue};
 
 use crate::errors::{CompilerError, CompilerErrorType, SemanticError};
 use crate::expr_lowerer::{IRExprPlaceResult, IRExprResult, IRExprValueResult};
-use crate::parser::{ConditionalChain, ExprNode, ExprNodeEnum, FileContext, Function, Implementation, InfixOpr, Label, Literal, PrefixOpr, Scope, Span, Statement, Struct, Template, Templates, Trait, Variable};
+use crate::parser::{ConditionalChain, Enum, ExprNode, ExprNodeEnum, FileContext, Function, Implementation, InfixOpr, Label, Literal, PrefixOpr, Scope, Span, Statement, Struct, Template, Templates, Trait, Variable};
 
 pub type IRTypeId = usize;
 pub type IRFunctionId = usize;
@@ -44,7 +44,6 @@ pub struct IRConstant<'ctx> {
     pub value: IRExprValueResult<'ctx>
 }
 
-
 #[derive(PartialEq, Clone)]
 pub struct IRVarDeclaration {
     pub name: String,
@@ -64,7 +63,8 @@ pub enum IRTypeEnum<'ctx> {
     Callback { args: IRVariables<'ctx>, return_type: IRTypeId },
     Slice { slice_type: IRTypeId },
     UnsizedRef { unsized_type: IRTypeId, is_mut: bool },
-    Struct(IRStruct<'ctx>)
+    Struct(IRStruct<'ctx>),
+    Enum(IREnum<'ctx>)
 }
 
 #[derive(PartialEq, Clone)]
@@ -74,6 +74,13 @@ pub struct IRStruct<'ctx> {
     pub templates_map: IRTemplatesMap<'ctx>,
     pub args: IRVarDeclarations,
     pub def: &'ctx Struct
+}
+
+#[derive(PartialEq, Clone)]
+pub struct IREnum<'ctx> {
+    pub parent_scope: IRScopeId,
+    pub scope: IRScopeId,
+    pub def: &'ctx Enum
 }
 
 #[derive(PartialEq, Clone)]
@@ -433,10 +440,11 @@ impl<'ctx> CodeLowerer<'ctx> {
         let ir_scope = self.ir_scope(parent_scope);
         let fun_results_len = if let Some(ast_def) = ir_scope.ast_def { ast_def.functions.iter().filter(|def| def.name == name).count() } else { 0 };
         let structs_results_len = if let Some(ast_def) = ir_scope.ast_def { ast_def.structs.iter().filter(|def| def.name == name).count() } else { 0 };
+        let enums_results_len = if let Some(ast_def) = ir_scope.ast_def { ast_def.enums.iter().filter(|def| def.name == name).count() } else { 0 };
         let traits_results_len = if let Some(ast_def) = ir_scope.ast_def { ast_def.traits.iter().filter(|def| def.name == name).count() } else { 0 };
         let type_def_results_len = if let Some(ast_def) = ir_scope.ast_def { ast_def.type_defs.iter().filter(|def| def.name == name).count() } else { 0 };
         let constants_results_len = if let Some(ast_def) = ir_scope.ast_def { ast_def.statements.iter().filter(|def| if let Statement::Const(const_def) = def { const_def.name == name } else { false }).count() } else { 0 };
-        let total_len = fun_results_len + structs_results_len + traits_results_len + type_def_results_len + constants_results_len;
+        let total_len = fun_results_len + structs_results_len + enums_results_len + traits_results_len + type_def_results_len + constants_results_len;
 
         if total_len > 1 {
             return Err(self.error(SemanticError::CollidingNames { parent_scope: self.format_scope_path(parent_scope), name: name.to_string() }, opt_call_span));
@@ -505,6 +513,9 @@ impl<'ctx> CodeLowerer<'ctx> {
                     IRTypeEnum::Struct(_struct) => {
                         self.format_child_scope_path(_struct.parent_scope, &_struct.def.name, &_struct.templates_map)
                     },
+                    IRTypeEnum::Enum(_enum) => {
+                        self.format_child_scope_path(_enum.parent_scope, &_enum.def.name, &IRTemplatesMap::new())
+                    },
                     _ => todo!("format_scope_path")
                 }
             }
@@ -552,6 +563,9 @@ impl<'ctx> CodeLowerer<'ctx> {
             },
             IRTypeEnum::Slice { slice_type } => {
                 format!("[{}]", self.format_type(*slice_type))
+            }
+            IRTypeEnum::Enum(ir_enum) => {
+                self.format_scope_path(ir_enum.scope)
             }
             _ => todo!("format_type")
         }

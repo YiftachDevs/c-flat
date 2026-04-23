@@ -418,6 +418,9 @@ impl<'ctx> CodeLowerer<'ctx> {
         if let Some(result) = self.lower_type_def_name(scope, name, span)? {
             return Ok(result);
         }
+        if let Some(result) = self.lower_enum_name(scope, name, span)? {
+            return Ok(result);
+        }
         if let IRExprContext::Trait(self_type) = expr_context && let Some(result) = self.lower_trait_name(scope, name, *self_type, span)? {
             return Ok(result);
         }
@@ -469,6 +472,14 @@ impl<'ctx> CodeLowerer<'ctx> {
             }
         }
         Ok(None)
+    }
+
+    pub fn lower_enum_name(&mut self, search_scope: IRScopeId, enum_name: &str, span: Span) -> Result<Option<IRExprResult<'ctx>>, CompilerError> {
+        if let Some((enum_scope, enum_def)) = self.find_enum_in_scope(search_scope, enum_name, Some(span))? {
+            Ok(Some(IRExprResult::Type(self.lower_enum(enum_scope, enum_name, Some(span))?)))
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn lower_type_def_name(&mut self, search_scope: IRScopeId, type_def_name: &str, span: Span) -> Result<Option<IRExprResult<'ctx>>, CompilerError> {

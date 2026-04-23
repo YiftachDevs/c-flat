@@ -1,0 +1,46 @@
+import std/heap.cf;
+import std/math.cf;
+import std/io.cf;
+import std/time.cf;
+import std/rng.cf;
+
+extern fun InitWindow(width: i32, height: i32, title: &char);
+extern fun SetConfigFlags(flags: u32);
+extern fun WindowShouldClose() -> bool;
+extern fun GetFrameTime() -> f32;
+extern fun CloseWindow();
+extern fun IsKeyDown(key: char) -> bool;
+extern fun ClearBackground(color: u32);
+extern fun DrawRectangle(x: i32, y: i32, w: i32, h: i32, color: u32);
+
+extern fun load_texture(path: &char) -> i32;
+extern fun draw_texture(handle: i32, x: i32, y: i32, tint: u32) -> i32;
+extern fun unload_texture(handle: i32);
+
+extern fun init_canvas(width: i32, height: i32);
+extern fun begin_canvas();
+extern fun end_canvas(screen_width: i32, screen_height: i32);
+
+fun gaming() {
+    let pixel_viewport = Vec_2<i32>{ 320, 180 };
+    let pixel_factor: i32 = 6;
+    let screen_viewport = pixel_viewport * pixel_factor;
+
+    SetConfigFlags(64); // V-Sync
+    InitWindow(screen_viewport.x, screen_viewport.y, "square\0".as_ref());
+
+    init_canvas(pixel_viewport.x, pixel_viewport.y);
+
+    let texture = load_texture("image.png\0".as_ref());
+
+    while (!WindowShouldClose()) {
+        let dt = GetFrameTime();
+
+        begin_canvas();
+        ClearBackground(0xFF000000);
+        draw_texture(texture, (-10..11).rand() as i32, (-10..11).rand() as i32, 0xFFFFFFFF);
+        end_canvas(screen_viewport.x, screen_viewport.y);
+    }
+
+    CloseWindow();
+}

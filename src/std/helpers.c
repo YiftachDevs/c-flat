@@ -5,6 +5,49 @@
 #include <termios.h>
 #include <fcntl.h>
 #include <math.h>
+#include "raylib.h"
+
+static Texture2D textures[256];
+static int texture_count = 0;
+
+int load_texture(const char* path) {
+    textures[texture_count] = LoadTexture(path);
+    return texture_count++;
+}
+
+void draw_texture(int handle, int x, int y, unsigned int tint) {
+    Color c = *(Color*)&tint;
+    DrawTexture(textures[handle], x, y, c);
+}
+
+void unload_texture(int handle) {
+    UnloadTexture(textures[handle]);
+}
+
+static RenderTexture2D canvas;
+
+void init_canvas(int width, int height) {
+    canvas = LoadRenderTexture(width, height);
+    SetTextureFilter(canvas.texture, TEXTURE_FILTER_POINT);
+}
+
+void begin_canvas() {
+    BeginTextureMode(canvas);
+}
+
+void end_canvas(int screen_width, int screen_height) {
+    EndTextureMode();
+    BeginDrawing();
+    DrawTexturePro(
+        canvas.texture,
+        (Rectangle){ 0, 0, canvas.texture.width, -canvas.texture.height },
+        (Rectangle){ 0, 0, screen_width, screen_height },
+        (Vector2){ 0, 0 },
+        0.0f,
+        WHITE
+    );
+    EndDrawing();
+}
 
 void c_memcpy(void* dest_ptr, void* src_ptr, unsigned long long size) {
     memcpy(dest_ptr, src_ptr, size);

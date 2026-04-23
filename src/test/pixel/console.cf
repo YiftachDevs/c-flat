@@ -31,6 +31,12 @@ mod pixel {
         }
     }
 
+    enum State {
+        True,
+        False,
+        Maybe
+    }
+
     type Color = u8;
 
     impl Color {
