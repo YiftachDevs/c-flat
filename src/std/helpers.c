@@ -10,32 +10,54 @@
 static Texture2D textures[256];
 static int texture_count = 0;
 
-int load_texture(const char* path) {
+void crl_init_window(int w, int h, char* title) {  InitWindow(w, h, title); }
+void crl_set_config_flags(unsigned int flags) { SetConfigFlags(flags); }
+int crl_window_should_close() { return WindowShouldClose(); }
+float crl_get_frame_time() { return GetFrameTime(); }
+void crl_close_window() { CloseWindow(); }
+int crl_is_key_down(int key) { return IsKeyDown(key); }
+void crl_clear_background(unsigned int color) { ClearBackground(*(Color*)&color); }
+void crl_draw_rectangle(int x, int y, int w, int h, unsigned int color) { DrawRectangle(x, y, w, h, *(Color*)&color); }
+void crl_begin_drawing() { BeginDrawing(); }
+void crl_end_drawing() { EndDrawing(); }
+
+void crl_draw_text(char* text, int x, int y, int font_size, unsigned int color) {
+    DrawText(text, x, y, font_size, *(Color*)&color);
+}
+
+int crl_load_texture(const char* path) {
     textures[texture_count] = LoadTexture(path);
     return texture_count++;
 }
 
-void draw_texture(int handle, int x, int y, unsigned int tint) {
+void crl_draw_texture(int handle, int x, int y, unsigned int tint) {
     Color c = *(Color*)&tint;
     DrawTexture(textures[handle], x, y, c);
 }
 
-void unload_texture(int handle) {
+void crl_draw_texture_rec(int handle, int src_x, int src_y, int src_w, int src_h, int dst_x, int dst_y, unsigned int tint) {
+    Color c = *(Color*)&tint;
+    Rectangle src = { src_x, src_y, src_w, src_h };
+    Vector2 pos = { dst_x, dst_y };
+    DrawTextureRec(textures[handle], src, pos, c);
+}
+
+void crl_unload_texture(int handle) {
     UnloadTexture(textures[handle]);
 }
 
 static RenderTexture2D canvas;
 
-void init_canvas(int width, int height) {
+void crl_init_canvas(int width, int height) {
     canvas = LoadRenderTexture(width, height);
     SetTextureFilter(canvas.texture, TEXTURE_FILTER_POINT);
 }
 
-void begin_canvas() {
+void crl_begin_canvas() {
     BeginTextureMode(canvas);
 }
 
-void end_canvas(int screen_width, int screen_height) {
+void crl_end_canvas(int screen_width, int screen_height) {
     EndTextureMode();
     BeginDrawing();
     DrawTexturePro(

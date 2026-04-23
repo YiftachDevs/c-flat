@@ -4,43 +4,75 @@ import std/io.cf;
 import std/time.cf;
 import std/rng.cf;
 
-extern fun InitWindow(width: i32, height: i32, title: &char);
-extern fun SetConfigFlags(flags: u32);
-extern fun WindowShouldClose() -> bool;
-extern fun GetFrameTime() -> f32;
-extern fun CloseWindow();
-extern fun IsKeyDown(key: char) -> bool;
-extern fun ClearBackground(color: u32);
-extern fun DrawRectangle(x: i32, y: i32, w: i32, h: i32, color: u32);
+extern fun crl_init_window(width: i32, height: i32, title: &char);
+extern fun crl_set_config_flags(flags: u32);
+extern fun crl_window_should_close() -> bool;
+extern fun crl_get_frame_time() -> f32;
+extern fun crl_close_window();
+extern fun crl_is_key_down(key: char) -> bool;
+extern fun crl_clear_background(color: u32);
+extern fun crl_draw_rectangle(x: i32, y: i32, w: i32, h: i32, color: u32);
+extern fun crl_begin_drawing();
+extern fun crl_end_drawing();
+extern fun crl_load_texture(path: &char) -> i32;
+extern fun crl_draw_texture(handle: i32, x: i32, y: i32, tint: u32) -> i32;
+extern fun crl_unload_texture(handle: i32);
+extern fun crl_init_canvas(width: i32, height: i32);
+extern fun crl_begin_canvas();
+extern fun crl_end_canvas(screen_width: i32, screen_height: i32);
+extern fun crl_draw_texture_rec(handle: i32, src_x: i32, src_y: i32, src_w: i32, src_h: i32, dst_x: i32, dst_y: i32, tint: u32);
+extern fun crl_draw_text(text: &char, x: i32, y: i32, font_size: i32, color: u32);
 
-extern fun load_texture(path: &char) -> i32;
-extern fun draw_texture(handle: i32, x: i32, y: i32, tint: u32) -> i32;
-extern fun unload_texture(handle: i32);
+mod pixel {
+    type Texture = i32;
+    type Color = u32;
 
-extern fun init_canvas(width: i32, height: i32);
-extern fun begin_canvas();
-extern fun end_canvas(screen_width: i32, screen_height: i32);
-
-fun gaming() {
-    let pixel_viewport = Vec_2<i32>{ 320, 180 };
-    let pixel_factor: i32 = 6;
-    let screen_viewport = pixel_viewport * pixel_factor;
-
-    SetConfigFlags(64); // V-Sync
-    InitWindow(screen_viewport.x, screen_viewport.y, "square\0".as_ref());
-
-    init_canvas(pixel_viewport.x, pixel_viewport.y);
-
-    let texture = load_texture("image.png\0".as_ref());
-
-    while (!WindowShouldClose()) {
-        let dt = GetFrameTime();
-
-        begin_canvas();
-        ClearBackground(0xFF000000);
-        draw_texture(texture, (-10..11).rand() as i32, (-10..11).rand() as i32, 0xFFFFFFFF);
-        end_canvas(screen_viewport.x, screen_viewport.y);
+    struct Game {
+        title: String,
+        pixel_frame_size: Vec_2<usize>,
+        pixel_size_factor: usize,
+        frame_size: Vec_2<usize>,
+        loaded_textures: Vec<String>
     }
 
-    CloseWindow();
+    impl Game {
+        fun new(mut title: &str, pixel_frame_size: Vec_2<usize>, pixel_size_factor: usize) -> Self {
+            let result = Self{ title.to_string().null_terminate(), pixel_frame_size, pixel_size_factor, pixel_frame_size * pixel_size_factor, Vec<String>:new() };
+            crl_set_config_flags(64); // V-Sync
+            crl_init_window(result.frame_size.x as i32, result.frame_size.y as i32, result.title.as_ref());
+            crl_init_canvas(pixel_frame_size.x as i32, pixel_frame_size.y as i32);
+            result
+        }
+
+        fun load_texture(&mut self, path: &str) -> Texture {
+            let idx = self.loaded_textures.len();
+            self.loaded_textures.push(path.to_string().null_terminate());
+            crl_load_texture(self.loaded_textures[idx].as_ref())
+        }
+
+        fun draw_texture(&self, texture: Texture, pos: Vec_2<i32>) {
+            crl_draw_texture(texture, pos.x, pos.y, 0xFFFFFFFF);
+        }
+
+        fun draw_animation_texture(&self, texture: Texture, pos: Vec_2<i32>, index: Vec_2<usize>, size: Vec_2<usize>) {
+
+        }
+
+        fun draw_rect(&self, pos: Vec_2<i32>, size: Vec_2<usize>, color: Color) {
+            crl_draw_rectangle(pos.x, pos.y, size.x as i32, size.y as i32, color);
+        }
+
+        fun draw_text(&self, text: &str, pos: Vec_2<i32>, font_size: usize, color: Color) {
+            let s = text.to_string().null_terminate();
+            crl_draw_text(s.as_ref(), pos.x, pos.y, font_size as i32, color);
+        }
+
+        fun should_close(&self) -> bool { crl_window_should_close() }
+
+        fun begin_draw(&self) { crl_begin_canvas(); }
+        fun clear_background(&self) { crl_clear_background(0xFF000000); }
+        fun end_draw(&self) { crl_end_canvas(self.frame_size.x as i32, self.frame_size.y as i32); }
+
+        fun close(&self) { crl_close_window(); }
+    }
 }

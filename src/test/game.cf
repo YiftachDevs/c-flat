@@ -1,31 +1,8 @@
-import pixel/game.cf;
+import std/io.cf;
+import std/math.cf;
 import std/rng.cf;
-
-const Tile_Size: usize = 4;
-const Tile_Map_Width: usize = 16;
-const Tile_Map_Height: usize = 9;
-
-struct TileMap<const W: usize, const H: usize> {
-    tiles: [[u8; H]; W]
-}
-
-impl<const W: usize, const H: usize> TileMap<W, H> {
-    fun new() -> Self {
-        Self{ [[0; H]; W] }
-    }
-
-    fun render(&self, frame: &mut pixel:Frame) {
-        for y in 0..H {
-            for x in 0..W {
-                let tile = self.tiles[x][y];
-                if tile > 0 {
-                    frame.paint_rect(Vec_2<usize>{ x * Tile_Size, y * Tile_Size }, Vec_2<usize>{ Tile_Size, Tile_Size }, tile);
-                    frame.paint_rect(Vec_2<usize>{ x * Tile_Size + 1, y * Tile_Size + 1 }, Vec_2<usize>{ 2, 2 }, 0);
-                }
-            }
-        }
-    }
-}
+import std/time.cf;
+import pixel/pixel.cf;
 
 struct Particle {
     pos: Vec_2<f64>,
@@ -37,14 +14,13 @@ struct Particle {
 
 impl Particle {
     fun spawn(screen_size: Vec_2<usize>) -> Self {
-        let color = if (0..3).rand() == 0 { (1..8).rand() } else { 0b111 } as pixel:Color;
-        Self{ Vec_2<f64>{ (0.0..screen_size.x as f64).rand(), (0.0..screen_size.y as f64).rand() }, (1.0..2.4).rand(), 0.25 + (0.0..5.0).rand(), (0.0..1.0).rand(), color }
+        Self{ Vec_2<f64>{ (0.0..screen_size.x as f64).rand(), (0.0..screen_size.y as f64).rand() }, (1.0..2.4).rand(), 0.25 + (0.0..5.0).rand(), (0.0..1.0).rand(), 0xFFFFFFFF }
     }
 
     fun update(&mut self, screen_size: Vec_2<usize>) {
         self.pos.x += self.speed;
         self.pos.y += self.offset.sin();
-        self.offset += 0.05.min(self.speed / 32.0);
+        self.offset += 0.05.min(self.speed / 46.0);
         if self.pos.x > screen_size.x as f64 + 4.0 {
             self.pos.x = -4.0;
             self.pos.y = (0.0..screen_size.y as f64).rand();
@@ -52,101 +28,34 @@ impl Particle {
 
     }
 
-    fun render(&self, frame: &mut pixel:Frame) {
-        frame.paint_rect(Vec_2<usize>{ self.pos.x as usize, self.pos.y as usize }, Vec_2<usize>{ self.size as usize, self.size as usize }, self.color );
-    }
-}
-
-struct Player {
-    pos: Vec_2<f64>,
-    velocity: Vec_2<f64>
-}
-
-impl Player {
-    fun new() -> Self {
-        Self{ Vec_2<f64>{ ((0..Tile_Map_Width).rand() * Tile_Size) as f64, (Tile_Map_Height * Tile_Size / 2) as f64 }, Vec_2<f64>{ 0.0, 0.0 }}
-    }
-
-    fun update(&mut self, key_presses: &Vec<char>) {
-        let floor_height = ((Tile_Map_Height - 2) * Tile_Size) as f64;
-
-        self.velocity.y += 0.07;
-        self.velocity.x *= 0.8;
-
-        for key_press in key_presses.iter() {
-            if *key_press == 'w' & self.pos.y == floor_height {
-                self.velocity.y = -1.2;
-            }
-            if *key_press == 'a' {
-                self.velocity.x -= 2.0;
-            } else if *key_press == 'd' {
-                self.velocity.x += 2.0;
-            }
-        }
-        self.velocity.x = self.velocity.x.clamp(-2.0, 2.0);
-
-        let mut new_pos = self.pos + self.velocity;
-        new_pos.y = new_pos.y.min(floor_height);
-        self.pos = new_pos;
-    }
-
-    fun render(&self, frame: &mut pixel:Frame) {
-        frame.paint_rect(Vec_2<usize>{ self.pos.x as usize, self.pos.y as usize }, Vec_2<usize>{ 2, 1 }, 0b001);
-        frame.paint_rect(Vec_2<usize>{ self.pos.x as usize, self.pos.y as usize + 1 }, Vec_2<usize>{ 2, 1 }, 0b011);
-        frame.paint_rect(Vec_2<usize>{ self.pos.x as usize, self.pos.y as usize + 2 }, Vec_2<usize>{ 2, 2 }, 0b0100);
+    fun render(&self, game: &mut pixel:Game) {
+        game.draw_rect(Vec_2<i32>{ self.pos.x as i32, self.pos.y as i32 }, Vec_2<usize>{ self.size as usize, self.size as usize }, self.color );
     }
 }
 
 fun game() {
-    let screen_size = Vec_2<usize>{ Tile_Map_Width * Tile_Size, Tile_Map_Height * Tile_Size };
+    let mut game = pixel:Game:new("My First Game", Vec_2<usize>{ 320, 180 }, 6);
 
-    let mut game = pixel:Game:new(screen_size, 20);
-    
-    let mut tile_map = TileMap<Tile_Map_Width, Tile_Map_Height>:new();
-
-    for x in 0..Tile_Map_Width {
-        tile_map.tiles[x][Tile_Map_Height - 1] = if x % 2 == 0 { 0b100 } else { 0b111 };
-    }
-
+    // let texture = game.load_texture("res/image.png");
     let mut particles = Vec<Particle>:new();
-
-    for i in 0..40 {
-        particles.push(Particle:spawn(screen_size));
+    for i in 0..20 {
+        particles.push(Particle:spawn(game.pixel_frame_size));
     }
 
-    let mut player = Player:new();
-
-    @game_loop loop {
-        game.update();
-
-        for key_press in game.key_presses.iter() {
-            if *key_press == 'q' {
-                break @game_loop;
-            }
-        }
-
+    while !game.should_close() {
         for particle in particles.iter_mut() {
-            particle.update(screen_size);
+            particle.update(game.pixel_frame_size);
         }
 
-        if game.tick % 3 == 0 {
-            for x in 0..Tile_Map_Width {
-                tile_map.tiles[x][Tile_Map_Height - 1] = if (x + game.tick) % 2 == 0 { 0b100 } else { 0b111 };
-            }
-        }
-
-        player.update(&game.key_presses);
-
-        game.frame.fill(0);
+        game.begin_draw();
+        game.clear_background();
         for particle in particles.iter_mut() {
-            particle.render(&mut game.frame);
+            particle.render(&mut game);
         }
-        tile_map.render(&mut game.frame);
-
-        player.render(&mut game.frame);
-
-        game.render();
+        // game.draw_text("Loading...", Vec_2<i32>{ 10, 10 }, 1, 0xFFFFFFFF);
+        // game.draw_texture(texture, Vec_2<i32>{ 0, 0 });
+        game.end_draw();
     }
 
-    println(&game.key_presses.len().to_string());
+    game.close();
 }

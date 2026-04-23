@@ -20,7 +20,7 @@ impl<T: ToString> ToString for [T] {
 }
 
 impl String {
-    fun null_terminate(&mut self) -> &mut Self {
+    fun null_terminate(mut self) -> Self {
         self.push('\0');
         self
     }

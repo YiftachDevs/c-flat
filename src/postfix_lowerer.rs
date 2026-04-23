@@ -197,8 +197,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             let llvm_args = if let Some(self_value) = opt_self_value {
                 let mut res = if let IRExprContext::Value(Some(ctx_self)) = args_context_types.remove(0) {
                     let auto_ref_result = self.auto_reference(ir_context, *self_value, ctx_self, span)?;
-                    let e = vec![self.load_if_place(ir_context, auto_ref_result, span)?];
-                    e
+                    vec![self.load_if_place(ir_context, auto_ref_result, span)?]
                 } else { panic!() };
                 res.extend(self.lower_args_values(ir_context, right_expr, &args_context_types, false)?);
                 res

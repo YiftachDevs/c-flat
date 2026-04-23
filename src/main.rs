@@ -41,9 +41,10 @@ fn main() {
 
 fn run() -> Result<(), CompilerError> {
     let std_folder = "/home/yiftach/dev/c_flat/src/std".to_string();
+    let code_folder = "/home/yiftach/dev/c_flat/src/test".to_string();
 
     let mut file_context = FileContext::new();
-    let mut parser: Parser = Parser::new(&mut file_context, "/home/yiftach/dev/c_flat/src/test".to_string(), std_folder.clone());
+    let mut parser: Parser = Parser::new(&mut file_context, code_folder.clone(), std_folder.clone());
     let mut main_scope: Scope = Scope::new();
 
     parser.parse_file("std/core.cf", &mut main_scope)?;
@@ -60,6 +61,8 @@ fn run() -> Result<(), CompilerError> {
         eprintln!("{}", err);
         return Ok(());
     }
+
+    std::env::set_current_dir(std::path::Path::new(&code_folder)).unwrap();
 
     code_lowerer.export_ir_to_file(Path::new("output.ll"));
 
