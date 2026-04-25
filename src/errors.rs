@@ -12,13 +12,19 @@ pub enum CompilerErrorType {
 
 #[derive(Debug)]
 pub enum LinkerError {
-    ImportFailed(String, String)
+    ImportFailed(String, String),
+    FileCollision(String, String, String),
+    FileNotFound(String),
+    UnsupportedFileExt(String)
 }
 
 impl LinkerError {
     fn to_string(&self) -> (&'static str, Option<String>) {
         match self {
-            Self::ImportFailed(file_path, err) => ("Import Failed", Some(format!("Failed to import file '{}': {}", file_path, err))) 
+            Self::ImportFailed(file_path, err) => ("Import Failed", Some(format!("Failed to import file '{}': {}", file_path, err))),
+            Self::FileCollision(file, f1, f2) => ("File Collision", Some(format!("File Collision - File '{}' exists in both '{}' and '{}'", file, f1, f2))),
+            Self::FileNotFound(file) => ("File Not Found", Some(format!("File '{}' not found", file))),
+            Self::UnsupportedFileExt(ext) => ("Unsupported File Extension", Some(format!("Unsupported File Extension '{}', can only support '.cf' and '.c' files", ext)))
         }
     }
 }

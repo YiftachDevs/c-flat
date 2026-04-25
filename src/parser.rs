@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env::var, fmt::format, fs::{self, File}, path::{Path, PathBuf}};
+use std::{collections::{HashMap, HashSet}, env::var, fmt::format, fs::{self, File}, path::{Path, PathBuf}};
 use crate::errors::*;
 
 #[derive(PartialEq, Clone)]
@@ -1528,21 +1528,25 @@ pub struct Parser<'fctx> {
     index: usize,
     new_line_index: usize,
     cur_line: usize,
-    parent_folder: String,
-    std_folder: String
+    pub workspaces: HashSet<PathBuf>,
+    pub c_helpers: HashSet<PathBuf>
 }
 
 impl<'fctx> Parser<'fctx> {
-    pub fn new(file_context: &'fctx mut FileContext, parent_folder: String, std_folder: String) -> Self {
+    pub fn new(file_context: &'fctx mut FileContext) -> Self {
         Parser {
             file_context,
             cur_file_id: FileId(-1),
             index: 0,
             new_line_index: 0,
             cur_line: 0,
-            parent_folder,
-            std_folder
+            workspaces: HashSet::new(),
+            c_helpers: HashSet::new()
         }
+    }
+
+    pub fn add_workspace(&mut self, workspace: PathBuf) {
+        self.workspaces.insert(workspace.clone());
     }
 
     pub fn error(&mut self, err_type: CompilerErrorType) -> CompilerError {
@@ -1585,7 +1589,7 @@ impl<'fctx> Parser<'fctx> {
         if self.file_context.contains_key(path.to_string()) {
             return Ok(());
         }
-        let contents: String = match self.find_file(path) {
+        let contents: String = match fs::read_to_string(&self.find_file_full_path(path)?) {
             Ok(text) => text,
             Err(e) => {
                 return Err(self.error(CompilerErrorType::LinkerError(LinkerError::ImportFailed(path.to_string(), e.to_string()))));
@@ -1609,16 +1613,21 @@ impl<'fctx> Parser<'fctx> {
         Ok(())
     }
 
-    fn find_file(&mut self, filename: &str) -> Result<String, String> {
-        let fallback = PathBuf::from(self.std_folder.clone()).join(filename);
-        let fallback_2 = PathBuf::from(self.parent_folder.clone()).join(filename);
-
-        if fallback.exists() {
-            fs::read_to_string(&fallback).map_err(|e| e.to_string())
-        } else if fallback_2.exists() {
-            fs::read_to_string(&fallback_2).map_err(|e| e.to_string())
+    fn find_file_full_path(&mut self, filename: &str) -> Result<PathBuf, CompilerError> {
+        let mut opt_found_path: Option<PathBuf> = None;
+        for workspace in self.workspaces.iter() {
+            let fallback = workspace.join(filename);
+            if fallback.exists() {
+                if let Some(found_path) = opt_found_path {
+                    return Err(self.error(CompilerErrorType::LinkerError(LinkerError::FileCollision(filename.to_string(), found_path.display().to_string(), workspace.display().to_string()))));
+                }
+                opt_found_path = Some(fallback);
+            }
+        }
+        if let Some(found_path) = opt_found_path {
+            Ok(found_path)
         } else {
-            Err(format!("File '{}' not found in '{}' or '{}'", filename, self.parent_folder, self.std_folder))
+            Err(self.error(CompilerErrorType::LinkerError(LinkerError::FileNotFound(filename.to_string()))))
         }
     }
 
@@ -1626,7 +1635,15 @@ impl<'fctx> Parser<'fctx> {
         self.skip_whitespace()?;
         while self.is_next("import") {
             let path: String = self.next_until(|ch| ch == ';')?;
-            self.parse_file(&path, main_scope)?;
+            let full_path = self.find_file_full_path(&path)?;
+            let file_ext = full_path.extension().and_then(|e| e.to_str());
+            if file_ext == Some("c") {
+                self.c_helpers.insert(full_path);
+            } else if file_ext == Some("cf") {
+                self.parse_file(&path, main_scope)?;
+            } else {
+                return Err(self.error(CompilerErrorType::LinkerError(LinkerError::UnsupportedFileExt(file_ext.unwrap_or("").to_string()))));
+            }
         }
         while !self.is_finished() {
             main_scope.parse_next(self)?;

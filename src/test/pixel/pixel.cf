@@ -3,6 +3,7 @@ import std/math.cf;
 import std/io.cf;
 import std/time.cf;
 import std/rng.cf;
+import pixel/helpers.c;
 
 extern fun crl_init_window(width: i32, height: i32, title: &char);
 extern fun crl_set_config_flags(flags: u32);
@@ -22,6 +23,12 @@ extern fun crl_begin_canvas();
 extern fun crl_end_canvas(screen_width: i32, screen_height: i32);
 extern fun crl_draw_texture_rec(handle: i32, src_x: i32, src_y: i32, src_w: i32, src_h: i32, dst_x: i32, dst_y: i32, tint: u32);
 extern fun crl_draw_text(text: &char, x: i32, y: i32, font_size: i32, color: u32);
+
+extern fun crl_is_mouse_button_down(button: i32) -> bool;
+extern fun crl_is_mouse_button_pressed(button: i32) -> bool;
+extern fun crl_get_mouse_x() -> i32;
+extern fun crl_get_mouse_y() -> i32;
+
 
 mod pixel {
     type Texture = i32;
@@ -43,6 +50,10 @@ mod pixel {
             crl_init_canvas(pixel_frame_size.x as i32, pixel_frame_size.y as i32);
             result
         }
+
+        fun is_mouse_down(&self, button: i32) -> bool { crl_is_mouse_button_down(button) }
+        fun is_mouse_pressed(&self, button: i32) -> bool { crl_is_mouse_button_pressed(button) }
+        fun mouse_pos(&self) -> Vec_2<i32> { Vec_2<i32>{ crl_get_mouse_x() / self.pixel_size_factor as i32, crl_get_mouse_y() / self.pixel_size_factor as i32 } }
 
         fun load_texture(&mut self, path: &str) -> Texture {
             let idx = self.loaded_textures.len();

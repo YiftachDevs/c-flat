@@ -1,4 +1,5 @@
 import std/string.cf;
+import std/helpers.c;
 
 extern fun c_getchar() -> char;
 extern fun c_getch() -> char;
@@ -7,7 +8,6 @@ extern fun c_putchar(chr: char) -> char;
 extern fun c_puts(c_str: &char);
 extern fun c_printf(c_str: &char);
 extern fun c_flush();
-extern fun c_system(cmd: &char) -> i32;
 
 fun println(str_: &str) {
     let string = String:from(str_).null_terminate();
@@ -19,11 +19,6 @@ fun print(str_: &str) {
     let string = String:from(str_).null_terminate();
     c_printf(string.as_ref());
     c_flush();
-}
-
-fun system(str_: &str) -> i32 {
-    let string = String:from(str_).null_terminate();
-    c_system(string.as_ref())
 }
 
 fun read() -> String {

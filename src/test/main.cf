@@ -2,6 +2,7 @@ import std/io.cf;
 import std/math.cf;
 import std/rng.cf;
 import std/time.cf;
+import std/system.cf;
 import game.cf;
 
 fun main() -> usize {

@@ -1,3 +1,5 @@
+import std/helpers.c;
+
 extern fun c_sin(num: f64) -> f64;
 extern fun c_cos(num: f64) -> f64;
 
@@ -22,6 +24,10 @@ impl<T: Float> T {
         } else {
             self
         }
+    }
+
+    fun lerp(self, other: Self, t: Self) -> Self {
+        other * t + self * (1.0 - t)
     }
 }
 
@@ -62,6 +68,18 @@ struct Vec_2<T: Numeral> {
 }
 
 impl<T> Copy for Vec_2<T>;
+
+impl<T> Vec_2<T> {
+    fun as<T2>(self) -> Vec_2<T2> {
+        Vec_2<T2>{ self.x as T2, self.y as T2 }
+    }
+}
+
+impl<T: Float> Vec_2<T> {
+    fun lerp(self, other: Self, t: T) -> Self {
+        other * t + self * (1.0 - t)
+    }
+}
 
 impl<T> Add<Vec_2<T>> for Vec_2<T> {
     fun add(self, other: Self) -> Self {

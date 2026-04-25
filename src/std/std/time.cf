@@ -1,3 +1,5 @@
+import std/helpers.c;
+
 extern fun c_usleep(microseconds: u32) -> i32;
 
 fun sleep(seconds: f64) {

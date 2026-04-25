@@ -1,3 +1,5 @@
+import std/helpers.c;
+
 extern fun c_memcpy(dest_ptr: &(), src_ptr: &(), size: usize);
 extern fun c_malloc(size: usize) -> &();
 extern fun c_free(ptr: &());

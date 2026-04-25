@@ -1,220 +1,275 @@
 ; ModuleID = 'main_module'
 source_filename = "main_module"
 
-%"[c-flat]:SliceMutIter<T = Particle>" = type { ptr, ptr }
+%"[c-flat]:SliceMutIter<T = File>" = type { ptr, ptr }
 %"[c-flat]:Range<T = u64>" = type { i64, i64 }
-%"[c-flat]:Vec<T = Particle>" = type { ptr, i64, i64 }
+%"[c-flat]:Vec<T = File>" = type { ptr, i64, i64 }
 %"[c-flat]:pixel:Game" = type { %"[c-flat]:Vec<T = char>", %"[c-flat]:Vec_2<T = u64>", i64, %"[c-flat]:Vec_2<T = u64>", %"[c-flat]:Vec<T = Vec<T = char>>" }
 %"[c-flat]:Vec<T = char>" = type { ptr, i64, i64 }
 %"[c-flat]:Vec_2<T = u64>" = type { i64, i64 }
 %"[c-flat]:Vec<T = Vec<T = char>>" = type { ptr, i64, i64 }
-%"[c-flat]:Particle" = type { %"[c-flat]:Vec_2<T = f64>", double, double, double, i32 }
+%"[c-flat]:Particle" = type { %"[c-flat]:Vec_2<T = f64>", double, double, double, double, i32 }
 %"[c-flat]:Vec_2<T = f64>" = type { double, double }
+%"[c-flat]:Vec_2<T = i32>" = type { i32, i32 }
 %"[c-flat]:SliceIter<T = char>" = type { ptr, ptr }
 %"[c-flat]:mem:Manually_Drop<T = char>" = type { i8 }
 %"[c-flat]:SliceIter<T = Vec<T = char>>" = type { ptr, ptr }
 %"[c-flat]:mem:Manually_Drop<T = Vec<T = char>>" = type { %"[c-flat]:Vec<T = char>" }
-%"[c-flat]:mem:Manually_Drop<T = Particle>" = type { %"[c-flat]:Particle" }
+%"[c-flat]:mem:Manually_Drop<T = File>" = type { %"[c-flat]:Particle" }
 %"[c-flat]:Range<T = f64>" = type { double, double }
-%"[c-flat]:Vec_2<T = i32>" = type { i32, i32 }
 
 @"[c-flat]:count" = internal global i64 0
 @global_string = private unnamed_addr constant [14 x i8] c"My First Game\00", align 1
+@global_string.33 = private unnamed_addr constant [14 x i8] c"res/image.png\00", align 1
 @"[c-flat]:seed" = internal global i64 91237
-@global_string.71 = private unnamed_addr constant [10 x i8] c"game over\00", align 1
-@global_string.72 = private unnamed_addr constant [2 x i8] c"0\00", align 1
+@global_string.70 = private unnamed_addr constant [11 x i8] c"Mouse Down\00", align 1
+@global_string.73 = private unnamed_addr constant [10 x i8] c"game over\00", align 1
+@global_string.74 = private unnamed_addr constant [2 x i8] c"0\00", align 1
 
 define i64 @main() {
 entry:
   %fun_call_tmp = call {} @"[c-flat]:game"()
-  %fun_call_tmp1 = call {} @"[c-flat]:println"({ ptr, i64 } { ptr @global_string.71, i64 9 })
+  %fun_call_tmp1 = call {} @"[c-flat]:println"({ ptr, i64 } { ptr @global_string.73, i64 9 })
   %fun_call_tmp2 = call {} @"[c-flat]:debug_heap_count"()
   ret i64 0
 }
 
 define {} @"[c-flat]:game"() {
 entry:
-  %tmp_iter4 = alloca %"[c-flat]:SliceMutIter<T = Particle>", align 8
-  %tmp_iter3 = alloca %"[c-flat]:SliceMutIter<T = Particle>", align 8
+  %tmp_iter5 = alloca %"[c-flat]:SliceMutIter<T = File>", align 8
+  %tmp_iter453 = alloca %"[c-flat]:SliceMutIter<T = File>", align 8
+  %tmp_iter4 = alloca %"[c-flat]:SliceMutIter<T = File>", align 8
   %i = alloca i64, align 8
-  %tmp_iter2 = alloca %"[c-flat]:Range<T = u64>", align 8
-  %particles = alloca %"[c-flat]:Vec<T = Particle>", align 8
+  %tmp_iter3 = alloca %"[c-flat]:Range<T = u64>", align 8
+  %particles = alloca %"[c-flat]:Vec<T = File>", align 8
+  %texture = alloca i32, align 4
   %game = alloca %"[c-flat]:pixel:Game", align 8
   %fun_call_tmp = call %"[c-flat]:pixel:Game" @"[c-flat]:pixel:Game:new"({ ptr, i64 } { ptr @global_string, i64 13 }, %"[c-flat]:Vec_2<T = u64>" { i64 320, i64 180 }, i64 6)
   %fun_call_tmp.elt = extractvalue %"[c-flat]:pixel:Game" %fun_call_tmp, 0
   %fun_call_tmp.elt.elt = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp.elt, 0
   store ptr %fun_call_tmp.elt.elt, ptr %game, align 8
-  %game.repack85 = getelementptr inbounds nuw i8, ptr %game, i64 8
-  %fun_call_tmp.elt.elt86 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp.elt, 1
-  store i64 %fun_call_tmp.elt.elt86, ptr %game.repack85, align 8
-  %game.repack87 = getelementptr inbounds nuw i8, ptr %game, i64 16
-  %fun_call_tmp.elt.elt88 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp.elt, 2
-  store i64 %fun_call_tmp.elt.elt88, ptr %game.repack87, align 8
-  %game.repack77 = getelementptr inbounds nuw i8, ptr %game, i64 24
-  %fun_call_tmp.elt78 = extractvalue %"[c-flat]:pixel:Game" %fun_call_tmp, 1
-  %fun_call_tmp.elt78.elt = extractvalue %"[c-flat]:Vec_2<T = u64>" %fun_call_tmp.elt78, 0
-  store i64 %fun_call_tmp.elt78.elt, ptr %game.repack77, align 8
-  %game.repack77.repack89 = getelementptr inbounds nuw i8, ptr %game, i64 32
-  %fun_call_tmp.elt78.elt90 = extractvalue %"[c-flat]:Vec_2<T = u64>" %fun_call_tmp.elt78, 1
-  store i64 %fun_call_tmp.elt78.elt90, ptr %game.repack77.repack89, align 8
-  %game.repack79 = getelementptr inbounds nuw i8, ptr %game, i64 40
-  %fun_call_tmp.elt80 = extractvalue %"[c-flat]:pixel:Game" %fun_call_tmp, 2
-  store i64 %fun_call_tmp.elt80, ptr %game.repack79, align 8
-  %game.repack81 = getelementptr inbounds nuw i8, ptr %game, i64 48
-  %fun_call_tmp.elt82 = extractvalue %"[c-flat]:pixel:Game" %fun_call_tmp, 3
-  %fun_call_tmp.elt82.elt = extractvalue %"[c-flat]:Vec_2<T = u64>" %fun_call_tmp.elt82, 0
-  store i64 %fun_call_tmp.elt82.elt, ptr %game.repack81, align 8
-  %game.repack81.repack91 = getelementptr inbounds nuw i8, ptr %game, i64 56
-  %fun_call_tmp.elt82.elt92 = extractvalue %"[c-flat]:Vec_2<T = u64>" %fun_call_tmp.elt82, 1
-  store i64 %fun_call_tmp.elt82.elt92, ptr %game.repack81.repack91, align 8
-  %game.repack83 = getelementptr inbounds nuw i8, ptr %game, i64 64
-  %fun_call_tmp.elt84 = extractvalue %"[c-flat]:pixel:Game" %fun_call_tmp, 4
-  %fun_call_tmp.elt84.elt = extractvalue %"[c-flat]:Vec<T = Vec<T = char>>" %fun_call_tmp.elt84, 0
-  store ptr %fun_call_tmp.elt84.elt, ptr %game.repack83, align 8
-  %game.repack83.repack93 = getelementptr inbounds nuw i8, ptr %game, i64 72
-  %fun_call_tmp.elt84.elt94 = extractvalue %"[c-flat]:Vec<T = Vec<T = char>>" %fun_call_tmp.elt84, 1
-  store i64 %fun_call_tmp.elt84.elt94, ptr %game.repack83.repack93, align 8
-  %game.repack83.repack95 = getelementptr inbounds nuw i8, ptr %game, i64 80
-  %fun_call_tmp.elt84.elt96 = extractvalue %"[c-flat]:Vec<T = Vec<T = char>>" %fun_call_tmp.elt84, 2
-  store i64 %fun_call_tmp.elt84.elt96, ptr %game.repack83.repack95, align 8
-  %fun_call_tmp1 = call %"[c-flat]:Vec<T = Particle>" @"[c-flat]:Vec<T = Particle>:new"()
-  %fun_call_tmp1.elt = extractvalue %"[c-flat]:Vec<T = Particle>" %fun_call_tmp1, 0
-  store ptr %fun_call_tmp1.elt, ptr %particles, align 8
-  %particles.repack97 = getelementptr inbounds nuw i8, ptr %particles, i64 8
-  %fun_call_tmp1.elt98 = extractvalue %"[c-flat]:Vec<T = Particle>" %fun_call_tmp1, 1
-  store i64 %fun_call_tmp1.elt98, ptr %particles.repack97, align 8
-  %particles.repack99 = getelementptr inbounds nuw i8, ptr %particles, i64 16
-  %fun_call_tmp1.elt100 = extractvalue %"[c-flat]:Vec<T = Particle>" %fun_call_tmp1, 2
-  store i64 %fun_call_tmp1.elt100, ptr %particles.repack99, align 8
-  store i64 0, ptr %tmp_iter2, align 4
-  %tmp_iter2.repack101 = getelementptr inbounds nuw i8, ptr %tmp_iter2, i64 8
-  store i64 20, ptr %tmp_iter2.repack101, align 4
+  %game.repack139 = getelementptr inbounds nuw i8, ptr %game, i64 8
+  %fun_call_tmp.elt.elt140 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp.elt, 1
+  store i64 %fun_call_tmp.elt.elt140, ptr %game.repack139, align 8
+  %game.repack141 = getelementptr inbounds nuw i8, ptr %game, i64 16
+  %fun_call_tmp.elt.elt142 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp.elt, 2
+  store i64 %fun_call_tmp.elt.elt142, ptr %game.repack141, align 8
+  %game.repack131 = getelementptr inbounds nuw i8, ptr %game, i64 24
+  %fun_call_tmp.elt132 = extractvalue %"[c-flat]:pixel:Game" %fun_call_tmp, 1
+  %fun_call_tmp.elt132.elt = extractvalue %"[c-flat]:Vec_2<T = u64>" %fun_call_tmp.elt132, 0
+  store i64 %fun_call_tmp.elt132.elt, ptr %game.repack131, align 8
+  %game.repack131.repack143 = getelementptr inbounds nuw i8, ptr %game, i64 32
+  %fun_call_tmp.elt132.elt144 = extractvalue %"[c-flat]:Vec_2<T = u64>" %fun_call_tmp.elt132, 1
+  store i64 %fun_call_tmp.elt132.elt144, ptr %game.repack131.repack143, align 8
+  %game.repack133 = getelementptr inbounds nuw i8, ptr %game, i64 40
+  %fun_call_tmp.elt134 = extractvalue %"[c-flat]:pixel:Game" %fun_call_tmp, 2
+  store i64 %fun_call_tmp.elt134, ptr %game.repack133, align 8
+  %game.repack135 = getelementptr inbounds nuw i8, ptr %game, i64 48
+  %fun_call_tmp.elt136 = extractvalue %"[c-flat]:pixel:Game" %fun_call_tmp, 3
+  %fun_call_tmp.elt136.elt = extractvalue %"[c-flat]:Vec_2<T = u64>" %fun_call_tmp.elt136, 0
+  store i64 %fun_call_tmp.elt136.elt, ptr %game.repack135, align 8
+  %game.repack135.repack145 = getelementptr inbounds nuw i8, ptr %game, i64 56
+  %fun_call_tmp.elt136.elt146 = extractvalue %"[c-flat]:Vec_2<T = u64>" %fun_call_tmp.elt136, 1
+  store i64 %fun_call_tmp.elt136.elt146, ptr %game.repack135.repack145, align 8
+  %game.repack137 = getelementptr inbounds nuw i8, ptr %game, i64 64
+  %fun_call_tmp.elt138 = extractvalue %"[c-flat]:pixel:Game" %fun_call_tmp, 4
+  %fun_call_tmp.elt138.elt = extractvalue %"[c-flat]:Vec<T = Vec<T = char>>" %fun_call_tmp.elt138, 0
+  store ptr %fun_call_tmp.elt138.elt, ptr %game.repack137, align 8
+  %game.repack137.repack147 = getelementptr inbounds nuw i8, ptr %game, i64 72
+  %fun_call_tmp.elt138.elt148 = extractvalue %"[c-flat]:Vec<T = Vec<T = char>>" %fun_call_tmp.elt138, 1
+  store i64 %fun_call_tmp.elt138.elt148, ptr %game.repack137.repack147, align 8
+  %game.repack137.repack149 = getelementptr inbounds nuw i8, ptr %game, i64 80
+  %fun_call_tmp.elt138.elt150 = extractvalue %"[c-flat]:Vec<T = Vec<T = char>>" %fun_call_tmp.elt138, 2
+  store i64 %fun_call_tmp.elt138.elt150, ptr %game.repack137.repack149, align 8
+  %fun_call_tmp1 = call i32 @"[c-flat]:pixel:Game:load_texture"(ptr nonnull %game, { ptr, i64 } { ptr @global_string.33, i64 13 })
+  store i32 %fun_call_tmp1, ptr %texture, align 4
+  %fun_call_tmp2 = call %"[c-flat]:Vec<T = File>" @"[c-flat]:Vec<T = File>:new"()
+  %fun_call_tmp2.elt = extractvalue %"[c-flat]:Vec<T = File>" %fun_call_tmp2, 0
+  store ptr %fun_call_tmp2.elt, ptr %particles, align 8
+  %particles.repack151 = getelementptr inbounds nuw i8, ptr %particles, i64 8
+  %fun_call_tmp2.elt152 = extractvalue %"[c-flat]:Vec<T = File>" %fun_call_tmp2, 1
+  store i64 %fun_call_tmp2.elt152, ptr %particles.repack151, align 8
+  %particles.repack153 = getelementptr inbounds nuw i8, ptr %particles, i64 16
+  %fun_call_tmp2.elt154 = extractvalue %"[c-flat]:Vec<T = File>" %fun_call_tmp2, 2
+  store i64 %fun_call_tmp2.elt154, ptr %particles.repack153, align 8
+  store i64 0, ptr %tmp_iter3, align 4
+  %tmp_iter3.repack155 = getelementptr inbounds nuw i8, ptr %tmp_iter3, i64 8
+  store i64 50, ptr %tmp_iter3.repack155, align 4
   br label %cond
 
 then:                                             ; preds = %cond
-  %fun_call_tmp4 = call i64 @"[c-flat]:Vec_2<T = u64>:next"(ptr nonnull %tmp_iter2)
-  store i64 %fun_call_tmp4, ptr %i, align 4
+  %fun_call_tmp5 = call i64 @"[c-flat]:Vec_2<T = u64>:next"(ptr nonnull %tmp_iter3)
+  store i64 %fun_call_tmp5, ptr %i, align 4
   %game.pixel_frame_size = getelementptr inbounds nuw i8, ptr %game, i64 24
   %tmp.unpack = load i64, ptr %game.pixel_frame_size, align 4
   %0 = insertvalue %"[c-flat]:Vec_2<T = u64>" poison, i64 %tmp.unpack, 0
-  %tmp.elt142 = getelementptr inbounds nuw i8, ptr %game, i64 32
-  %tmp.unpack143 = load i64, ptr %tmp.elt142, align 4
-  %tmp144 = insertvalue %"[c-flat]:Vec_2<T = u64>" %0, i64 %tmp.unpack143, 1
-  %fun_call_tmp5 = call %"[c-flat]:Particle" @"[c-flat]:Particle:spawn"(%"[c-flat]:Vec_2<T = u64>" %tmp144)
-  %fun_call_tmp6 = call {} @"[c-flat]:Vec<T = Particle>:push"(ptr nonnull %particles, %"[c-flat]:Particle" %fun_call_tmp5)
-  %tmp7 = load i64, ptr %i, align 4
-  %fun_call_tmp8 = call {} @"[c-flat]:u64:drop"(i64 %tmp7)
+  %tmp.elt198 = getelementptr inbounds nuw i8, ptr %game, i64 32
+  %tmp.unpack199 = load i64, ptr %tmp.elt198, align 4
+  %tmp200 = insertvalue %"[c-flat]:Vec_2<T = u64>" %0, i64 %tmp.unpack199, 1
+  %fun_call_tmp6 = call %"[c-flat]:Particle" @"[c-flat]:File:spawn"(%"[c-flat]:Vec_2<T = u64>" %tmp200)
+  %fun_call_tmp7 = call {} @"[c-flat]:Vec<T = File>:push"(ptr nonnull %particles, %"[c-flat]:Particle" %fun_call_tmp6)
+  %tmp8 = load i64, ptr %i, align 4
+  %fun_call_tmp9 = call {} @"[c-flat]:u64:drop"(i64 %tmp8)
   br label %cond
 
 cond:                                             ; preds = %then, %entry
-  %fun_call_tmp3 = call i1 @"[c-flat]:Vec_2<T = u64>:has_next"(ptr nonnull %tmp_iter2)
-  br i1 %fun_call_tmp3, label %then, label %cond11
+  %fun_call_tmp4 = call i1 @"[c-flat]:Vec_2<T = u64>:has_next"(ptr nonnull %tmp_iter3)
+  br i1 %fun_call_tmp4, label %then, label %cond12
 
-then10:                                           ; preds = %cond11
-  %fun_call_tmp16 = call { ptr, i64 } @"[c-flat]:Vec<T = Particle>:deref_mut"(ptr nonnull %particles)
-  %fun_call_tmp17 = call %"[c-flat]:SliceMutIter<T = Particle>" @"[c-flat]:[Particle]:iter_mut"({ ptr, i64 } %fun_call_tmp16)
-  %fun_call_tmp17.elt = extractvalue %"[c-flat]:SliceMutIter<T = Particle>" %fun_call_tmp17, 0
-  store ptr %fun_call_tmp17.elt, ptr %tmp_iter3, align 8
-  %tmp_iter3.repack135 = getelementptr inbounds nuw i8, ptr %tmp_iter3, i64 8
-  %fun_call_tmp17.elt136 = extractvalue %"[c-flat]:SliceMutIter<T = Particle>" %fun_call_tmp17, 1
-  store ptr %fun_call_tmp17.elt136, ptr %tmp_iter3.repack135, align 8
-  br label %cond19
+cond12:                                           ; preds = %cond, %merge83
+  %fun_call_tmp14 = call i1 @"[c-flat]:pixel:Game:should_close"(ptr nonnull %game)
+  br i1 %fun_call_tmp14, label %else13, label %cond18
 
-cond11:                                           ; preds = %cond, %else37
-  %fun_call_tmp13 = call i1 @"[c-flat]:pixel:Game:should_close"(ptr nonnull %game)
-  br i1 %fun_call_tmp13, label %else12, label %then10
-
-else12:                                           ; preds = %cond11
-  %fun_call_tmp52 = call {} @"[c-flat]:pixel:Game:close"(ptr nonnull %game)
-  %tmp53.unpack = load i64, ptr %tmp_iter2, align 4
-  %tmp53.elt102 = getelementptr inbounds nuw i8, ptr %tmp_iter2, i64 8
-  %tmp53.unpack103 = load i64, ptr %tmp53.elt102, align 4
-  %fun_call_tmp.i62 = call {} @"[c-flat]:u64:drop"(i64 %tmp53.unpack103)
-  %fun_call_tmp2.i = call {} @"[c-flat]:u64:drop"(i64 %tmp53.unpack)
-  %tmp55.unpack = load ptr, ptr %particles, align 8
-  %1 = insertvalue %"[c-flat]:Vec<T = Particle>" poison, ptr %tmp55.unpack, 0
-  %tmp55.elt105 = getelementptr inbounds nuw i8, ptr %particles, i64 8
-  %tmp55.unpack106 = load i64, ptr %tmp55.elt105, align 8
-  %2 = insertvalue %"[c-flat]:Vec<T = Particle>" %1, i64 %tmp55.unpack106, 1
-  %tmp55.elt107 = getelementptr inbounds nuw i8, ptr %particles, i64 16
-  %tmp55.unpack108 = load i64, ptr %tmp55.elt107, align 8
-  %tmp55109 = insertvalue %"[c-flat]:Vec<T = Particle>" %2, i64 %tmp55.unpack108, 2
-  %fun_call_tmp56 = call {} @"[c-flat]:Vec<T = Particle>:drop.69"(%"[c-flat]:Vec<T = Particle>" %tmp55109)
-  %tmp57.unpack.unpack = load ptr, ptr %game, align 8
-  %3 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp57.unpack.unpack, 0
-  %tmp57.unpack.elt119 = getelementptr inbounds nuw i8, ptr %game, i64 8
-  %tmp57.unpack.unpack120 = load i64, ptr %tmp57.unpack.elt119, align 8
-  %4 = insertvalue %"[c-flat]:Vec<T = char>" %3, i64 %tmp57.unpack.unpack120, 1
-  %tmp57.unpack.elt121 = getelementptr inbounds nuw i8, ptr %game, i64 16
-  %tmp57.unpack.unpack122 = load i64, ptr %tmp57.unpack.elt121, align 8
-  %tmp57.unpack123 = insertvalue %"[c-flat]:Vec<T = char>" %4, i64 %tmp57.unpack.unpack122, 2
-  %tmp57.elt110 = getelementptr inbounds nuw i8, ptr %game, i64 24
-  %tmp57.unpack111.unpack = load i64, ptr %tmp57.elt110, align 8
-  %tmp57.unpack111.elt124 = getelementptr inbounds nuw i8, ptr %game, i64 32
-  %tmp57.unpack111.unpack125 = load i64, ptr %tmp57.unpack111.elt124, align 8
-  %tmp57.elt112 = getelementptr inbounds nuw i8, ptr %game, i64 40
-  %tmp57.unpack113 = load i64, ptr %tmp57.elt112, align 8
-  %tmp57.elt114 = getelementptr inbounds nuw i8, ptr %game, i64 48
-  %tmp57.unpack115.unpack = load i64, ptr %tmp57.elt114, align 8
-  %tmp57.unpack115.elt127 = getelementptr inbounds nuw i8, ptr %game, i64 56
-  %tmp57.unpack115.unpack128 = load i64, ptr %tmp57.unpack115.elt127, align 8
-  %tmp57.elt116 = getelementptr inbounds nuw i8, ptr %game, i64 64
-  %tmp57.unpack117.unpack = load ptr, ptr %tmp57.elt116, align 8
-  %5 = insertvalue %"[c-flat]:Vec<T = Vec<T = char>>" poison, ptr %tmp57.unpack117.unpack, 0
-  %tmp57.unpack117.elt130 = getelementptr inbounds nuw i8, ptr %game, i64 72
-  %tmp57.unpack117.unpack131 = load i64, ptr %tmp57.unpack117.elt130, align 8
-  %6 = insertvalue %"[c-flat]:Vec<T = Vec<T = char>>" %5, i64 %tmp57.unpack117.unpack131, 1
-  %tmp57.unpack117.elt132 = getelementptr inbounds nuw i8, ptr %game, i64 80
-  %tmp57.unpack117.unpack133 = load i64, ptr %tmp57.unpack117.elt132, align 8
-  %tmp57.unpack117134 = insertvalue %"[c-flat]:Vec<T = Vec<T = char>>" %6, i64 %tmp57.unpack117.unpack133, 2
-  %fun_call_tmp.i = call {} @"[c-flat]:Vec<T = Vec<T = char>>:drop.29"(%"[c-flat]:Vec<T = Vec<T = char>>" %tmp57.unpack117134)
-  %fun_call_tmp.i11.i = call {} @"[c-flat]:u64:drop"(i64 %tmp57.unpack115.unpack128)
-  %fun_call_tmp2.i13.i = call {} @"[c-flat]:u64:drop"(i64 %tmp57.unpack115.unpack)
-  %fun_call_tmp4.i = call {} @"[c-flat]:u64:drop"(i64 %tmp57.unpack113)
-  %fun_call_tmp.i.i = call {} @"[c-flat]:u64:drop"(i64 %tmp57.unpack111.unpack125)
-  %fun_call_tmp2.i.i = call {} @"[c-flat]:u64:drop"(i64 %tmp57.unpack111.unpack)
-  %fun_call_tmp8.i = call {} @"[c-flat]:Vec<T = char>:drop.30"(%"[c-flat]:Vec<T = char>" %tmp57.unpack123)
+else13:                                           ; preds = %cond12
+  %fun_call_tmp96 = call {} @"[c-flat]:pixel:Game:close"(ptr nonnull %game)
+  %tmp97.unpack = load i64, ptr %tmp_iter3, align 4
+  %tmp97.elt156 = getelementptr inbounds nuw i8, ptr %tmp_iter3, i64 8
+  %tmp97.unpack157 = load i64, ptr %tmp97.elt156, align 4
+  %fun_call_tmp.i110 = call {} @"[c-flat]:u64:drop"(i64 %tmp97.unpack157)
+  %fun_call_tmp2.i = call {} @"[c-flat]:u64:drop"(i64 %tmp97.unpack)
+  %tmp99.unpack = load ptr, ptr %particles, align 8
+  %1 = insertvalue %"[c-flat]:Vec<T = File>" poison, ptr %tmp99.unpack, 0
+  %tmp99.elt159 = getelementptr inbounds nuw i8, ptr %particles, i64 8
+  %tmp99.unpack160 = load i64, ptr %tmp99.elt159, align 8
+  %2 = insertvalue %"[c-flat]:Vec<T = File>" %1, i64 %tmp99.unpack160, 1
+  %tmp99.elt161 = getelementptr inbounds nuw i8, ptr %particles, i64 16
+  %tmp99.unpack162 = load i64, ptr %tmp99.elt161, align 8
+  %tmp99163 = insertvalue %"[c-flat]:Vec<T = File>" %2, i64 %tmp99.unpack162, 2
+  %fun_call_tmp100 = call {} @"[c-flat]:Vec<T = File>:drop.71"(%"[c-flat]:Vec<T = File>" %tmp99163)
+  %tmp101 = load i32, ptr %texture, align 4
+  %fun_call_tmp102 = call {} @"[c-flat]:i32:drop"(i32 %tmp101)
+  %tmp103.unpack.unpack = load ptr, ptr %game, align 8
+  %3 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp103.unpack.unpack, 0
+  %tmp103.unpack.elt173 = getelementptr inbounds nuw i8, ptr %game, i64 8
+  %tmp103.unpack.unpack174 = load i64, ptr %tmp103.unpack.elt173, align 8
+  %4 = insertvalue %"[c-flat]:Vec<T = char>" %3, i64 %tmp103.unpack.unpack174, 1
+  %tmp103.unpack.elt175 = getelementptr inbounds nuw i8, ptr %game, i64 16
+  %tmp103.unpack.unpack176 = load i64, ptr %tmp103.unpack.elt175, align 8
+  %tmp103.unpack177 = insertvalue %"[c-flat]:Vec<T = char>" %4, i64 %tmp103.unpack.unpack176, 2
+  %tmp103.elt164 = getelementptr inbounds nuw i8, ptr %game, i64 24
+  %tmp103.unpack165.unpack = load i64, ptr %tmp103.elt164, align 8
+  %tmp103.unpack165.elt178 = getelementptr inbounds nuw i8, ptr %game, i64 32
+  %tmp103.unpack165.unpack179 = load i64, ptr %tmp103.unpack165.elt178, align 8
+  %tmp103.elt166 = getelementptr inbounds nuw i8, ptr %game, i64 40
+  %tmp103.unpack167 = load i64, ptr %tmp103.elt166, align 8
+  %tmp103.elt168 = getelementptr inbounds nuw i8, ptr %game, i64 48
+  %tmp103.unpack169.unpack = load i64, ptr %tmp103.elt168, align 8
+  %tmp103.unpack169.elt181 = getelementptr inbounds nuw i8, ptr %game, i64 56
+  %tmp103.unpack169.unpack182 = load i64, ptr %tmp103.unpack169.elt181, align 8
+  %tmp103.elt170 = getelementptr inbounds nuw i8, ptr %game, i64 64
+  %tmp103.unpack171.unpack = load ptr, ptr %tmp103.elt170, align 8
+  %5 = insertvalue %"[c-flat]:Vec<T = Vec<T = char>>" poison, ptr %tmp103.unpack171.unpack, 0
+  %tmp103.unpack171.elt184 = getelementptr inbounds nuw i8, ptr %game, i64 72
+  %tmp103.unpack171.unpack185 = load i64, ptr %tmp103.unpack171.elt184, align 8
+  %6 = insertvalue %"[c-flat]:Vec<T = Vec<T = char>>" %5, i64 %tmp103.unpack171.unpack185, 1
+  %tmp103.unpack171.elt186 = getelementptr inbounds nuw i8, ptr %game, i64 80
+  %tmp103.unpack171.unpack187 = load i64, ptr %tmp103.unpack171.elt186, align 8
+  %tmp103.unpack171188 = insertvalue %"[c-flat]:Vec<T = Vec<T = char>>" %6, i64 %tmp103.unpack171.unpack187, 2
+  %fun_call_tmp.i = call {} @"[c-flat]:Vec<T = Vec<T = char>>:drop.29"(%"[c-flat]:Vec<T = Vec<T = char>>" %tmp103.unpack171188)
+  %fun_call_tmp.i11.i = call {} @"[c-flat]:u64:drop"(i64 %tmp103.unpack169.unpack182)
+  %fun_call_tmp2.i13.i = call {} @"[c-flat]:u64:drop"(i64 %tmp103.unpack169.unpack)
+  %fun_call_tmp4.i = call {} @"[c-flat]:u64:drop"(i64 %tmp103.unpack167)
+  %fun_call_tmp.i.i = call {} @"[c-flat]:u64:drop"(i64 %tmp103.unpack165.unpack179)
+  %fun_call_tmp2.i.i = call {} @"[c-flat]:u64:drop"(i64 %tmp103.unpack165.unpack)
+  %fun_call_tmp8.i = call {} @"[c-flat]:Vec<T = char>:drop.30"(%"[c-flat]:Vec<T = char>" %tmp103.unpack177)
   ret {} zeroinitializer
 
-then18:                                           ; preds = %cond19
-  %fun_call_tmp22 = call ptr @"[c-flat]:Vec<T = Particle>:next"(ptr nonnull %tmp_iter3)
-  %game.pixel_frame_size24 = getelementptr inbounds nuw i8, ptr %game, i64 24
-  %tmp25.unpack = load i64, ptr %game.pixel_frame_size24, align 4
-  %7 = insertvalue %"[c-flat]:Vec_2<T = u64>" poison, i64 %tmp25.unpack, 0
-  %tmp25.elt139 = getelementptr inbounds nuw i8, ptr %game, i64 32
-  %tmp25.unpack140 = load i64, ptr %tmp25.elt139, align 4
-  %tmp25141 = insertvalue %"[c-flat]:Vec_2<T = u64>" %7, i64 %tmp25.unpack140, 1
-  %fun_call_tmp26 = call {} @"[c-flat]:Particle:update"(ptr %fun_call_tmp22, %"[c-flat]:Vec_2<T = u64>" %tmp25141)
-  br label %cond19
+then17:                                           ; preds = %cond18
+  %fun_call_tmp21 = call %"[c-flat]:Vec_2<T = i32>" @"[c-flat]:pixel:Game:mouse_pos"(ptr nonnull %game)
+  %fun_call_tmp22 = call %"[c-flat]:Vec_2<T = f64>" @"[c-flat]:Range<T = i32>:as<T2 = f64>"(%"[c-flat]:Vec_2<T = i32>" %fun_call_tmp21)
+  %fun_call_tmp23 = call i32 @"[c-flat]:rand_color"()
+  %fun_call_tmp24 = call %"[c-flat]:Particle" @"[c-flat]:File:spawn_at"(%"[c-flat]:Vec_2<T = f64>" %fun_call_tmp22, i32 %fun_call_tmp23)
+  %fun_call_tmp25 = call {} @"[c-flat]:Vec<T = File>:push"(ptr nonnull %particles, %"[c-flat]:Particle" %fun_call_tmp24)
+  br label %cond29
 
-cond19:                                           ; preds = %then18, %then10
-  %fun_call_tmp21 = call i1 @"[c-flat]:Vec<T = Particle>:has_next"(ptr nonnull %tmp_iter3)
-  br i1 %fun_call_tmp21, label %then18, label %else20
+cond18:                                           ; preds = %cond12
+  %fun_call_tmp20 = call i1 @"[c-flat]:pixel:Game:is_mouse_pressed"(ptr nonnull %game, i32 0)
+  br i1 %fun_call_tmp20, label %then17, label %cond29
 
-else20:                                           ; preds = %cond19
-  %fun_call_tmp30 = call {} @"[c-flat]:pixel:Game:begin_draw"(ptr nonnull %game)
-  %fun_call_tmp31 = call {} @"[c-flat]:pixel:Game:clear_background"(ptr nonnull %game)
-  %fun_call_tmp33 = call { ptr, i64 } @"[c-flat]:Vec<T = Particle>:deref_mut"(ptr nonnull %particles)
-  %fun_call_tmp34 = call %"[c-flat]:SliceMutIter<T = Particle>" @"[c-flat]:[Particle]:iter_mut"({ ptr, i64 } %fun_call_tmp33)
-  %fun_call_tmp34.elt = extractvalue %"[c-flat]:SliceMutIter<T = Particle>" %fun_call_tmp34, 0
+merge27:                                          ; preds = %cond36, %cond29
+  %fun_call_tmp51 = call { ptr, i64 } @"[c-flat]:Vec<T = File>:deref_mut"(ptr nonnull %particles)
+  %fun_call_tmp52 = call %"[c-flat]:SliceMutIter<T = File>" @"[c-flat]:[File]:iter_mut"({ ptr, i64 } %fun_call_tmp51)
+  %fun_call_tmp52.elt = extractvalue %"[c-flat]:SliceMutIter<T = File>" %fun_call_tmp52, 0
+  store ptr %fun_call_tmp52.elt, ptr %tmp_iter453, align 8
+  %tmp_iter453.repack191 = getelementptr inbounds nuw i8, ptr %tmp_iter453, i64 8
+  %fun_call_tmp52.elt192 = extractvalue %"[c-flat]:SliceMutIter<T = File>" %fun_call_tmp52, 1
+  store ptr %fun_call_tmp52.elt192, ptr %tmp_iter453.repack191, align 8
+  br label %cond55
+
+then28:                                           ; preds = %cond29
+  %fun_call_tmp33 = call { ptr, i64 } @"[c-flat]:Vec<T = File>:deref_mut"(ptr nonnull %particles)
+  %fun_call_tmp34 = call %"[c-flat]:SliceMutIter<T = File>" @"[c-flat]:[File]:iter_mut"({ ptr, i64 } %fun_call_tmp33)
+  %fun_call_tmp34.elt = extractvalue %"[c-flat]:SliceMutIter<T = File>" %fun_call_tmp34, 0
   store ptr %fun_call_tmp34.elt, ptr %tmp_iter4, align 8
-  %tmp_iter4.repack137 = getelementptr inbounds nuw i8, ptr %tmp_iter4, i64 8
-  %fun_call_tmp34.elt138 = extractvalue %"[c-flat]:SliceMutIter<T = Particle>" %fun_call_tmp34, 1
-  store ptr %fun_call_tmp34.elt138, ptr %tmp_iter4.repack137, align 8
+  %tmp_iter4.repack189 = getelementptr inbounds nuw i8, ptr %tmp_iter4, i64 8
+  %fun_call_tmp34.elt190 = extractvalue %"[c-flat]:SliceMutIter<T = File>" %fun_call_tmp34, 1
+  store ptr %fun_call_tmp34.elt190, ptr %tmp_iter4.repack189, align 8
   br label %cond36
+
+cond29:                                           ; preds = %cond18, %then17
+  %fun_call_tmp31 = call i1 @"[c-flat]:pixel:Game:is_mouse_pressed"(ptr nonnull %game, i32 2)
+  br i1 %fun_call_tmp31, label %then28, label %merge27
 
 then35:                                           ; preds = %cond36
-  %fun_call_tmp39 = call ptr @"[c-flat]:Vec<T = Particle>:next"(ptr nonnull %tmp_iter4)
-  %fun_call_tmp42 = call {} @"[c-flat]:Particle:render"(ptr %fun_call_tmp39, ptr nonnull %game)
+  %fun_call_tmp39 = call ptr @"[c-flat]:Vec<T = File>:next"(ptr nonnull %tmp_iter4)
+  %tmp40.new_speed = getelementptr inbounds nuw i8, ptr %fun_call_tmp39, i64 32
+  %tmp41.speed = getelementptr inbounds nuw i8, ptr %fun_call_tmp39, i64 24
+  %tmp42 = load double, ptr %tmp41.speed, align 8
+  %tmp.i107 = fneg double %tmp42
+  store double %tmp.i107, ptr %tmp40.new_speed, align 8
   br label %cond36
 
-cond36:                                           ; preds = %then35, %else20
-  %fun_call_tmp38 = call i1 @"[c-flat]:Vec<T = Particle>:has_next"(ptr nonnull %tmp_iter4)
-  br i1 %fun_call_tmp38, label %then35, label %else37
+cond36:                                           ; preds = %then35, %then28
+  %fun_call_tmp38 = call i1 @"[c-flat]:Vec<T = File>:has_next"(ptr nonnull %tmp_iter4)
+  br i1 %fun_call_tmp38, label %then35, label %merge27
 
-else37:                                           ; preds = %cond36
-  %fun_call_tmp46 = call {} @"[c-flat]:pixel:Game:end_draw"(ptr nonnull %game)
-  br label %cond11
+then54:                                           ; preds = %cond55
+  %fun_call_tmp58 = call ptr @"[c-flat]:Vec<T = File>:next"(ptr nonnull %tmp_iter453)
+  %game.pixel_frame_size61 = getelementptr inbounds nuw i8, ptr %game, i64 24
+  %tmp62.unpack = load i64, ptr %game.pixel_frame_size61, align 4
+  %7 = insertvalue %"[c-flat]:Vec_2<T = u64>" poison, i64 %tmp62.unpack, 0
+  %tmp62.elt195 = getelementptr inbounds nuw i8, ptr %game, i64 32
+  %tmp62.unpack196 = load i64, ptr %tmp62.elt195, align 4
+  %tmp62197 = insertvalue %"[c-flat]:Vec_2<T = u64>" %7, i64 %tmp62.unpack196, 1
+  %fun_call_tmp63 = call {} @"[c-flat]:File:update"(ptr %fun_call_tmp58, %"[c-flat]:Vec_2<T = u64>" %tmp62197)
+  br label %cond55
+
+cond55:                                           ; preds = %then54, %merge27
+  %fun_call_tmp57 = call i1 @"[c-flat]:Vec<T = File>:has_next"(ptr nonnull %tmp_iter453)
+  br i1 %fun_call_tmp57, label %then54, label %else56
+
+else56:                                           ; preds = %cond55
+  %fun_call_tmp67 = call {} @"[c-flat]:pixel:Game:begin_draw"(ptr nonnull %game)
+  %fun_call_tmp68 = call {} @"[c-flat]:pixel:Game:clear_background"(ptr nonnull %game)
+  %fun_call_tmp70 = call { ptr, i64 } @"[c-flat]:Vec<T = File>:deref_mut"(ptr nonnull %particles)
+  %fun_call_tmp71 = call %"[c-flat]:SliceMutIter<T = File>" @"[c-flat]:[File]:iter_mut"({ ptr, i64 } %fun_call_tmp70)
+  %fun_call_tmp71.elt = extractvalue %"[c-flat]:SliceMutIter<T = File>" %fun_call_tmp71, 0
+  store ptr %fun_call_tmp71.elt, ptr %tmp_iter5, align 8
+  %tmp_iter5.repack193 = getelementptr inbounds nuw i8, ptr %tmp_iter5, i64 8
+  %fun_call_tmp71.elt194 = extractvalue %"[c-flat]:SliceMutIter<T = File>" %fun_call_tmp71, 1
+  store ptr %fun_call_tmp71.elt194, ptr %tmp_iter5.repack193, align 8
+  br label %cond73
+
+then72:                                           ; preds = %cond73
+  %fun_call_tmp76 = call ptr @"[c-flat]:Vec<T = File>:next"(ptr nonnull %tmp_iter5)
+  %fun_call_tmp79 = call {} @"[c-flat]:File:render"(ptr %fun_call_tmp76, ptr nonnull %game)
+  br label %cond73
+
+cond73:                                           ; preds = %then72, %else56
+  %fun_call_tmp75 = call i1 @"[c-flat]:Vec<T = File>:has_next"(ptr nonnull %tmp_iter5)
+  br i1 %fun_call_tmp75, label %then72, label %cond85
+
+merge83:                                          ; preds = %cond85, %then84
+  %fun_call_tmp90 = call {} @"[c-flat]:pixel:Game:end_draw"(ptr nonnull %game)
+  br label %cond12
+
+then84:                                           ; preds = %cond85
+  %fun_call_tmp88 = call {} @"[c-flat]:pixel:Game:draw_text"(ptr nonnull %game, { ptr, i64 } { ptr @global_string.70, i64 10 }, %"[c-flat]:Vec_2<T = i32>" { i32 10, i32 10 }, i64 1, i32 -1)
+  br label %merge83
+
+cond85:                                           ; preds = %cond73
+  %fun_call_tmp87 = call i1 @"[c-flat]:pixel:Game:is_mouse_down"(ptr nonnull %game, i32 0)
+  br i1 %fun_call_tmp87, label %then84, label %merge83
 }
 
 define i1 @"[c-flat]:&char:eq"(ptr %0, ptr %1) {
@@ -1224,6 +1279,46 @@ declare {} @crl_init_window(i32, i32, ptr)
 
 declare {} @crl_init_canvas(i32, i32)
 
+define i32 @"[c-flat]:pixel:Game:load_texture"(ptr %0, { ptr, i64 } %1) {
+entry:
+  %idx = alloca i64, align 8
+  %path = alloca { ptr, i64 }, align 8
+  %self = alloca ptr, align 8
+  store ptr %0, ptr %self, align 8
+  %.elt = extractvalue { ptr, i64 } %1, 0
+  store ptr %.elt, ptr %path, align 8
+  %path.repack25 = getelementptr inbounds nuw i8, ptr %path, i64 8
+  %.elt26 = extractvalue { ptr, i64 } %1, 1
+  store i64 %.elt26, ptr %path.repack25, align 8
+  %tmp.loaded_textures = getelementptr inbounds nuw i8, ptr %0, i64 64
+  %fun_call_tmp = call { ptr, i64 } @"[c-flat]:Vec<T = Vec<T = char>>:deref_mut"(ptr nonnull %tmp.loaded_textures)
+  %len.i = extractvalue { ptr, i64 } %fun_call_tmp, 1
+  store i64 %len.i, ptr %idx, align 4
+  %tmp2 = load ptr, ptr %self, align 8
+  %tmp2.loaded_textures = getelementptr inbounds nuw i8, ptr %tmp2, i64 64
+  %tmp3.unpack = load ptr, ptr %path, align 8
+  %2 = insertvalue { ptr, i64 } poison, ptr %tmp3.unpack, 0
+  %tmp3.elt27 = getelementptr inbounds nuw i8, ptr %path, i64 8
+  %tmp3.unpack28 = load i64, ptr %tmp3.elt27, align 8
+  %tmp329 = insertvalue { ptr, i64 } %2, i64 %tmp3.unpack28, 1
+  %fun_call_tmp4 = call %"[c-flat]:Vec<T = char>" @"[c-flat]:[char]:to_string"({ ptr, i64 } %tmp329)
+  %fun_call_tmp5 = call %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:null_terminate"(%"[c-flat]:Vec<T = char>" %fun_call_tmp4)
+  %fun_call_tmp6 = call {} @"[c-flat]:Vec<T = Vec<T = char>>:push"(ptr nonnull %tmp2.loaded_textures, %"[c-flat]:Vec<T = char>" %fun_call_tmp5)
+  %tmp7 = load ptr, ptr %self, align 8
+  %tmp7.loaded_textures = getelementptr inbounds nuw i8, ptr %tmp7, i64 64
+  %fun_call_tmp8 = call { ptr, i64 } @"[c-flat]:Vec<T = Vec<T = char>>:deref_mut"(ptr nonnull %tmp7.loaded_textures)
+  %tmp9 = load i64, ptr %idx, align 4
+  %ref.i23 = extractvalue { ptr, i64 } %fun_call_tmp8, 0
+  %tmp_index.i = getelementptr %"[c-flat]:Vec<T = char>", ptr %ref.i23, i64 %tmp9
+  %fun_call_tmp11 = call { ptr, i64 } @"[c-flat]:Vec<T = char>:deref_mut"(ptr %tmp_index.i)
+  %ref.i = extractvalue { ptr, i64 } %fun_call_tmp11, 0
+  %fun_call_tmp13 = call i32 @crl_load_texture(ptr %ref.i)
+  %fun_call_tmp15 = call {} @"[c-flat]:u64:drop"(i64 %tmp9)
+  ret i32 %fun_call_tmp13
+}
+
+declare i32 @crl_load_texture(ptr)
+
 define double @"[c-flat]:f64:clone"(ptr %0) {
 entry:
   %tmp1 = load double, ptr %0, align 8
@@ -1246,7 +1341,7 @@ entry:
   ret {} zeroinitializer
 }
 
-define i1 @"[c-flat]:&Particle:eq"(ptr %0, ptr %1) {
+define i1 @"[c-flat]:&File:eq"(ptr %0, ptr %1) {
 entry:
   %other.i = alloca ptr, align 8
   %tmp1 = load ptr, ptr %0, align 8
@@ -1265,52 +1360,59 @@ entry:
   %tmp3.i = getelementptr inbounds nuw i8, ptr %tmp1, i64 16
   %tmp4.i = load ptr, ptr %other.i, align 8
   %tmp4.size.i = getelementptr inbounds nuw i8, ptr %tmp4.i, i64 16
-  %tmp.i26.i = load double, ptr %tmp3.i, align 8
-  %tmp1.i27.i = load double, ptr %tmp4.size.i, align 8
-  %tmp2.i28.i = fcmp oeq double %tmp.i26.i, %tmp1.i27.i
-  %tmp6.i = and i1 %tmp6.i.i, %tmp2.i28.i
+  %tmp.i35.i = load double, ptr %tmp3.i, align 8
+  %tmp1.i36.i = load double, ptr %tmp4.size.i, align 8
+  %tmp2.i37.i = fcmp oeq double %tmp.i35.i, %tmp1.i36.i
+  %tmp6.i = and i1 %tmp6.i.i, %tmp2.i37.i
   %tmp7.i = getelementptr inbounds nuw i8, ptr %tmp1, i64 24
   %tmp8.i = load ptr, ptr %other.i, align 8
   %tmp8.speed.i = getelementptr inbounds nuw i8, ptr %tmp8.i, i64 24
-  %tmp.i21.i = load double, ptr %tmp7.i, align 8
-  %tmp1.i22.i = load double, ptr %tmp8.speed.i, align 8
-  %tmp2.i23.i = fcmp oeq double %tmp.i21.i, %tmp1.i22.i
-  %tmp10.i = and i1 %tmp6.i, %tmp2.i23.i
+  %tmp.i30.i = load double, ptr %tmp7.i, align 8
+  %tmp1.i31.i = load double, ptr %tmp8.speed.i, align 8
+  %tmp2.i32.i = fcmp oeq double %tmp.i30.i, %tmp1.i31.i
+  %tmp10.i = and i1 %tmp6.i, %tmp2.i32.i
   %tmp11.i = getelementptr inbounds nuw i8, ptr %tmp1, i64 32
   %tmp12.i = load ptr, ptr %other.i, align 8
-  %tmp12.offset.i = getelementptr inbounds nuw i8, ptr %tmp12.i, i64 32
-  %tmp.i.i = load double, ptr %tmp11.i, align 8
-  %tmp1.i.i = load double, ptr %tmp12.offset.i, align 8
-  %tmp2.i.i = fcmp oeq double %tmp.i.i, %tmp1.i.i
-  %tmp14.i = and i1 %tmp10.i, %tmp2.i.i
+  %tmp12.new_speed.i = getelementptr inbounds nuw i8, ptr %tmp12.i, i64 32
+  %tmp.i25.i = load double, ptr %tmp11.i, align 8
+  %tmp1.i26.i = load double, ptr %tmp12.new_speed.i, align 8
+  %tmp2.i27.i = fcmp oeq double %tmp.i25.i, %tmp1.i26.i
+  %tmp14.i = and i1 %tmp10.i, %tmp2.i27.i
   %tmp15.i = getelementptr inbounds nuw i8, ptr %tmp1, i64 40
   %tmp16.i = load ptr, ptr %other.i, align 8
-  %tmp16.color.i = getelementptr inbounds nuw i8, ptr %tmp16.i, i64 40
-  %tmp.i36.i = load i32, ptr %tmp15.i, align 4
-  %tmp1.i37.i = load i32, ptr %tmp16.color.i, align 4
-  %tmp2.i38.i = icmp eq i32 %tmp.i36.i, %tmp1.i37.i
-  %tmp18.i = and i1 %tmp14.i, %tmp2.i38.i
+  %tmp16.offset.i = getelementptr inbounds nuw i8, ptr %tmp16.i, i64 40
+  %tmp.i.i = load double, ptr %tmp15.i, align 8
+  %tmp1.i.i = load double, ptr %tmp16.offset.i, align 8
+  %tmp2.i.i = fcmp oeq double %tmp.i.i, %tmp1.i.i
+  %tmp18.i = and i1 %tmp14.i, %tmp2.i.i
+  %tmp19.i = getelementptr inbounds nuw i8, ptr %tmp1, i64 48
+  %tmp20.i = load ptr, ptr %other.i, align 8
+  %tmp20.color.i = getelementptr inbounds nuw i8, ptr %tmp20.i, i64 48
+  %tmp.i45.i = load i32, ptr %tmp19.i, align 4
+  %tmp1.i46.i = load i32, ptr %tmp20.color.i, align 4
+  %tmp2.i47.i = icmp eq i32 %tmp.i45.i, %tmp1.i46.i
+  %tmp22.i = and i1 %tmp18.i, %tmp2.i47.i
   call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %other.i)
-  ret i1 %tmp18.i
+  ret i1 %tmp22.i
 }
 
-define %"[c-flat]:Vec<T = Particle>" @"[c-flat]:Vec<T = Particle>:new"() {
+define %"[c-flat]:Vec<T = File>" @"[c-flat]:Vec<T = File>:new"() {
 entry:
-  %fun_call_tmp = call %"[c-flat]:Vec<T = Particle>" @"[c-flat]:Vec<T = Particle>:with_capacity"(i64 4)
-  ret %"[c-flat]:Vec<T = Particle>" %fun_call_tmp
+  %fun_call_tmp = call %"[c-flat]:Vec<T = File>" @"[c-flat]:Vec<T = File>:with_capacity"(i64 4)
+  ret %"[c-flat]:Vec<T = File>" %fun_call_tmp
 }
 
-define %"[c-flat]:Vec<T = Particle>" @"[c-flat]:Vec<T = Particle>:with_capacity"(i64 %0) {
+define %"[c-flat]:Vec<T = File>" @"[c-flat]:Vec<T = File>:with_capacity"(i64 %0) {
 entry:
-  %fun_call_tmp = call ptr @"[c-flat]:mem:alloc<T = Particle>"(i64 %0)
-  %tmp_agg = insertvalue %"[c-flat]:Vec<T = Particle>" undef, ptr %fun_call_tmp, 0
-  %tmp_agg2 = insertvalue %"[c-flat]:Vec<T = Particle>" %tmp_agg, i64 0, 1
-  %tmp_constructor = insertvalue %"[c-flat]:Vec<T = Particle>" %tmp_agg2, i64 %0, 2
+  %fun_call_tmp = call ptr @"[c-flat]:mem:alloc<T = File>"(i64 %0)
+  %tmp_agg = insertvalue %"[c-flat]:Vec<T = File>" undef, ptr %fun_call_tmp, 0
+  %tmp_agg2 = insertvalue %"[c-flat]:Vec<T = File>" %tmp_agg, i64 0, 1
+  %tmp_constructor = insertvalue %"[c-flat]:Vec<T = File>" %tmp_agg2, i64 %0, 2
   %fun_call_tmp4 = call {} @"[c-flat]:u64:drop"(i64 %0)
-  ret %"[c-flat]:Vec<T = Particle>" %tmp_constructor
+  ret %"[c-flat]:Vec<T = File>" %tmp_constructor
 }
 
-define ptr @"[c-flat]:mem:alloc<T = Particle>"(i64 %0) {
+define ptr @"[c-flat]:mem:alloc<T = File>"(i64 %0) {
 entry:
   %len = alloca i64, align 8
   store i64 %0, ptr %len, align 4
@@ -1319,7 +1421,7 @@ entry:
   %tmp.i = add i64 %tmp, 1
   %fun_call_tmp2 = call ptr @"[c-flat]:mem:heap_count"()
   store i64 %tmp.i, ptr %fun_call_tmp2, align 4
-  %tmp.i11 = mul i64 %0, 44
+  %tmp.i11 = mul i64 %0, 52
   %fun_call_tmp6 = call ptr @c_malloc(i64 %tmp.i11)
   %tmp7 = load i64, ptr %len, align 4
   %fun_call_tmp8 = call {} @"[c-flat]:u64:drop"(i64 %tmp7)
@@ -1344,21 +1446,21 @@ entry:
   ret i64 %tmp1
 }
 
-define {} @"[c-flat]:Vec<T = Particle>:push"(ptr %0, %"[c-flat]:Particle" %1) {
+define {} @"[c-flat]:Vec<T = File>:push"(ptr %0, %"[c-flat]:Particle" %1) {
 entry:
   %value = alloca %"[c-flat]:Particle", align 8
   %self = alloca ptr, align 8
   store ptr %0, ptr %self, align 8
   store %"[c-flat]:Particle" %1, ptr %value, align 8
-  %fun_call_tmp = call {} @"[c-flat]:Vec<T = Particle>:reserve"(ptr %0, i64 1)
+  %fun_call_tmp = call {} @"[c-flat]:Vec<T = File>:reserve"(ptr %0, i64 1)
   %tmp2 = load ptr, ptr %0, align 8
   %cast = ptrtoint ptr %tmp2 to i64
   %tmp3.len = getelementptr inbounds nuw i8, ptr %0, i64 8
   %tmp4 = load i64, ptr %tmp3.len, align 4
-  %tmp.i24 = mul i64 %tmp4, 44
+  %tmp.i24 = mul i64 %tmp4, 52
   %tmp.i21 = add i64 %tmp.i24, %cast
   %cast8 = inttoptr i64 %tmp.i21 to ptr
-  %fun_call_tmp9 = call {} @"[c-flat]:mem:copy<T = Particle>"(ptr %cast8, ptr nonnull %value)
+  %fun_call_tmp9 = call {} @"[c-flat]:mem:copy<T = File>"(ptr %cast8, ptr nonnull %value)
   %tmp10 = load ptr, ptr %self, align 8
   %tmp10.len = getelementptr inbounds nuw i8, ptr %tmp10, i64 8
   %tmp11 = load i64, ptr %tmp10.len, align 4
@@ -1366,12 +1468,12 @@ entry:
   %tmp13.len = getelementptr inbounds nuw i8, ptr %tmp10, i64 8
   store i64 %tmp.i, ptr %tmp13.len, align 4
   %tmp14 = load %"[c-flat]:Particle", ptr %value, align 8
-  %tmp1526 = insertvalue %"[c-flat]:mem:Manually_Drop<T = Particle>" poison, %"[c-flat]:Particle" %tmp14, 0
-  %fun_call_tmp16 = call {} @"[c-flat]:mem:Manually_Drop<T = Particle>:drop"(%"[c-flat]:mem:Manually_Drop<T = Particle>" %tmp1526)
+  %tmp1526 = insertvalue %"[c-flat]:mem:Manually_Drop<T = File>" poison, %"[c-flat]:Particle" %tmp14, 0
+  %fun_call_tmp16 = call {} @"[c-flat]:mem:Manually_Drop<T = File>:drop"(%"[c-flat]:mem:Manually_Drop<T = File>" %tmp1526)
   ret {} zeroinitializer
 }
 
-define {} @"[c-flat]:Vec<T = Particle>:reserve"(ptr %0, i64 %1) {
+define {} @"[c-flat]:Vec<T = File>:reserve"(ptr %0, i64 %1) {
 entry:
   %new_ptr = alloca ptr, align 8
   %new_len = alloca i64, align 8
@@ -1418,29 +1520,29 @@ else10:                                           ; preds = %cond9
   %tmp19 = load ptr, ptr %self, align 8
   %tmp19.capacity = getelementptr inbounds nuw i8, ptr %tmp19, i64 16
   %tmp20 = load i64, ptr %tmp19.capacity, align 4
-  %fun_call_tmp21 = call ptr @"[c-flat]:mem:alloc<T = Particle>"(i64 %tmp20)
+  %fun_call_tmp21 = call ptr @"[c-flat]:mem:alloc<T = File>"(i64 %tmp20)
   store ptr %fun_call_tmp21, ptr %new_ptr, align 8
   %tmp23.len = getelementptr inbounds nuw i8, ptr %tmp19, i64 8
   %tmp25 = load ptr, ptr %tmp19, align 8
   %tmp26 = load i64, ptr %tmp23.len, align 4
-  %fun_call_tmp27 = call {} @"[c-flat]:mem:copy_range<T = Particle>"(ptr %fun_call_tmp21, ptr %tmp25, i64 %tmp26)
+  %fun_call_tmp27 = call {} @"[c-flat]:mem:copy_range<T = File>"(ptr %fun_call_tmp21, ptr %tmp25, i64 %tmp26)
   %tmp28 = load ptr, ptr %self, align 8
   %tmp29 = load ptr, ptr %tmp28, align 8
-  %fun_call_tmp30 = call {} @"[c-flat]:mem:free<T = Particle>"(ptr %tmp29)
+  %fun_call_tmp30 = call {} @"[c-flat]:mem:free<T = File>"(ptr %tmp29)
   %tmp32 = load ptr, ptr %new_ptr, align 8
   store ptr %tmp32, ptr %tmp28, align 8
   br label %merge
 }
 
-define {} @"[c-flat]:mem:copy_range<T = Particle>"(ptr %0, ptr %1, i64 %2) {
+define {} @"[c-flat]:mem:copy_range<T = File>"(ptr %0, ptr %1, i64 %2) {
 entry:
-  %tmp.i = mul i64 %2, 44
+  %tmp.i = mul i64 %2, 52
   %fun_call_tmp4 = call {} @c_memcpy(ptr %0, ptr %1, i64 %tmp.i)
   %fun_call_tmp6 = call {} @"[c-flat]:u64:drop"(i64 %2)
   ret {} zeroinitializer
 }
 
-define {} @"[c-flat]:mem:free<T = Particle>"(ptr %0) {
+define {} @"[c-flat]:mem:free<T = File>"(ptr %0) {
 entry:
   %fun_call_tmp = call ptr @"[c-flat]:mem:heap_count"()
   %tmp = load i64, ptr %fun_call_tmp, align 4
@@ -1451,93 +1553,101 @@ entry:
   ret {} %fun_call_tmp4
 }
 
-define {} @"[c-flat]:mem:copy<T = Particle>"(ptr %0, ptr %1) {
+define {} @"[c-flat]:mem:copy<T = File>"(ptr %0, ptr %1) {
 entry:
-  %fun_call_tmp2 = call {} @c_memcpy(ptr %0, ptr %1, i64 44)
+  %fun_call_tmp2 = call {} @c_memcpy(ptr %0, ptr %1, i64 52)
   ret {} zeroinitializer
 }
 
-define {} @"[c-flat]:mem:Manually_Drop<T = Particle>:drop"(%"[c-flat]:mem:Manually_Drop<T = Particle>" %0) {
+define {} @"[c-flat]:mem:Manually_Drop<T = File>:drop"(%"[c-flat]:mem:Manually_Drop<T = File>" %0) {
 entry:
   ret {} zeroinitializer
 }
 
-define %"[c-flat]:Particle" @"[c-flat]:Particle:spawn"(%"[c-flat]:Vec_2<T = u64>" %0) {
+define %"[c-flat]:Particle" @"[c-flat]:File:spawn"(%"[c-flat]:Vec_2<T = u64>" %0) {
 entry:
-  %tmp5 = alloca %"[c-flat]:Range<T = f64>", align 8
+  %tmp6 = alloca %"[c-flat]:Range<T = f64>", align 8
+  %tmp510 = alloca %"[c-flat]:Range<T = f64>", align 8
   %tmp4 = alloca %"[c-flat]:Range<T = f64>", align 8
   %tmp3 = alloca %"[c-flat]:Range<T = f64>", align 8
-  %tmp25 = alloca %"[c-flat]:Range<T = f64>", align 8
+  %speed = alloca double, align 8
   %tmp1 = alloca %"[c-flat]:Range<T = f64>", align 8
   %screen_size = alloca %"[c-flat]:Vec_2<T = u64>", align 8
   %.elt = extractvalue %"[c-flat]:Vec_2<T = u64>" %0, 0
   store i64 %.elt, ptr %screen_size, align 4
-  %screen_size.repack70 = getelementptr inbounds nuw i8, ptr %screen_size, i64 8
-  %.elt71 = extractvalue %"[c-flat]:Vec_2<T = u64>" %0, 1
-  store i64 %.elt71, ptr %screen_size.repack70, align 4
-  %cast = uitofp i64 %.elt to double
+  %screen_size.repack75 = getelementptr inbounds nuw i8, ptr %screen_size, i64 8
+  %.elt76 = extractvalue %"[c-flat]:Vec_2<T = u64>" %0, 1
+  store i64 %.elt76, ptr %screen_size.repack75, align 4
   store double 0.000000e+00, ptr %tmp1, align 8
-  %tmp1.repack72 = getelementptr inbounds nuw i8, ptr %tmp1, i64 8
-  store double %cast, ptr %tmp1.repack72, align 8
+  %tmp1.repack77 = getelementptr inbounds nuw i8, ptr %tmp1, i64 8
+  store double 5.000000e+00, ptr %tmp1.repack77, align 8
   %fun_call_tmp1 = call double @"[c-flat]:Vec_2<T = f64>:rand"(ptr nonnull %tmp1)
+  %tmp.i38 = fadd double %fun_call_tmp1, 2.500000e-01
+  store double %tmp.i38, ptr %speed, align 8
+  %tmp = load i64, ptr %screen_size, align 4
+  %cast = uitofp i64 %tmp to double
+  store double 0.000000e+00, ptr %tmp3, align 8
+  %tmp3.repack78 = getelementptr inbounds nuw i8, ptr %tmp3, i64 8
+  store double %cast, ptr %tmp3.repack78, align 8
+  %fun_call_tmp4 = call double @"[c-flat]:Vec_2<T = f64>:rand"(ptr nonnull %tmp3)
   %screen_size.y = getelementptr inbounds nuw i8, ptr %screen_size, i64 8
-  %tmp2 = load i64, ptr %screen_size.y, align 4
-  %cast3 = uitofp i64 %tmp2 to double
-  store double 0.000000e+00, ptr %tmp25, align 8
-  %tmp25.repack74 = getelementptr inbounds nuw i8, ptr %tmp25, i64 8
-  store double %cast3, ptr %tmp25.repack74, align 8
-  %fun_call_tmp6 = call double @"[c-flat]:Vec_2<T = f64>:rand"(ptr nonnull %tmp25)
-  %tmp_agg = insertvalue %"[c-flat]:Vec_2<T = f64>" undef, double %fun_call_tmp1, 0
-  %tmp_constructor = insertvalue %"[c-flat]:Vec_2<T = f64>" %tmp_agg, double %fun_call_tmp6, 1
-  store double 1.000000e+00, ptr %tmp3, align 8
-  %tmp3.repack76 = getelementptr inbounds nuw i8, ptr %tmp3, i64 8
-  store double 2.400000e+00, ptr %tmp3.repack76, align 8
-  %fun_call_tmp8 = call double @"[c-flat]:Vec_2<T = f64>:rand"(ptr nonnull %tmp3)
+  %tmp5 = load i64, ptr %screen_size.y, align 4
+  %cast6 = uitofp i64 %tmp5 to double
   store double 0.000000e+00, ptr %tmp4, align 8
-  %tmp4.repack77 = getelementptr inbounds nuw i8, ptr %tmp4, i64 8
-  store double 5.000000e+00, ptr %tmp4.repack77, align 8
-  %fun_call_tmp10 = call double @"[c-flat]:Vec_2<T = f64>:rand"(ptr nonnull %tmp4)
-  %tmp.i33 = fadd double %fun_call_tmp10, 2.500000e-01
-  store double 0.000000e+00, ptr %tmp5, align 8
-  %tmp5.repack78 = getelementptr inbounds nuw i8, ptr %tmp5, i64 8
-  store double 1.000000e+00, ptr %tmp5.repack78, align 8
-  %fun_call_tmp13 = call double @"[c-flat]:Vec_2<T = f64>:rand"(ptr nonnull %tmp5)
-  %tmp_agg14 = insertvalue %"[c-flat]:Particle" undef, %"[c-flat]:Vec_2<T = f64>" %tmp_constructor, 0
-  %tmp_agg15 = insertvalue %"[c-flat]:Particle" %tmp_agg14, double %fun_call_tmp8, 1
-  %tmp_agg16 = insertvalue %"[c-flat]:Particle" %tmp_agg15, double %tmp.i33, 2
-  %tmp_agg17 = insertvalue %"[c-flat]:Particle" %tmp_agg16, double %fun_call_tmp13, 3
-  %tmp_constructor18 = insertvalue %"[c-flat]:Particle" %tmp_agg17, i32 -1, 4
-  %tmp19.unpack = load double, ptr %tmp5, align 8
-  %tmp19.elt79 = getelementptr inbounds nuw i8, ptr %tmp5, i64 8
-  %tmp19.unpack80 = load double, ptr %tmp19.elt79, align 8
-  %fun_call_tmp.i67 = call {} @"[c-flat]:f64:drop"(double %tmp19.unpack80)
-  %fun_call_tmp2.i69 = call {} @"[c-flat]:f64:drop"(double %tmp19.unpack)
-  %tmp21.unpack = load double, ptr %tmp4, align 8
-  %tmp21.elt82 = getelementptr inbounds nuw i8, ptr %tmp4, i64 8
-  %tmp21.unpack83 = load double, ptr %tmp21.elt82, align 8
-  %fun_call_tmp.i62 = call {} @"[c-flat]:f64:drop"(double %tmp21.unpack83)
-  %fun_call_tmp2.i64 = call {} @"[c-flat]:f64:drop"(double %tmp21.unpack)
-  %tmp23.unpack = load double, ptr %tmp3, align 8
-  %tmp23.elt85 = getelementptr inbounds nuw i8, ptr %tmp3, i64 8
-  %tmp23.unpack86 = load double, ptr %tmp23.elt85, align 8
-  %fun_call_tmp.i57 = call {} @"[c-flat]:f64:drop"(double %tmp23.unpack86)
-  %fun_call_tmp2.i59 = call {} @"[c-flat]:f64:drop"(double %tmp23.unpack)
-  %tmp26.unpack = load double, ptr %tmp25, align 8
-  %tmp26.elt88 = getelementptr inbounds nuw i8, ptr %tmp25, i64 8
-  %tmp26.unpack89 = load double, ptr %tmp26.elt88, align 8
-  %fun_call_tmp.i52 = call {} @"[c-flat]:f64:drop"(double %tmp26.unpack89)
-  %fun_call_tmp2.i54 = call {} @"[c-flat]:f64:drop"(double %tmp26.unpack)
-  %tmp28.unpack = load double, ptr %tmp1, align 8
-  %tmp28.elt91 = getelementptr inbounds nuw i8, ptr %tmp1, i64 8
-  %tmp28.unpack92 = load double, ptr %tmp28.elt91, align 8
-  %fun_call_tmp.i47 = call {} @"[c-flat]:f64:drop"(double %tmp28.unpack92)
-  %fun_call_tmp2.i49 = call {} @"[c-flat]:f64:drop"(double %tmp28.unpack)
-  %tmp30.unpack = load i64, ptr %screen_size, align 4
-  %tmp30.elt94 = getelementptr inbounds nuw i8, ptr %screen_size, i64 8
-  %tmp30.unpack95 = load i64, ptr %tmp30.elt94, align 4
-  %fun_call_tmp.i = call {} @"[c-flat]:u64:drop"(i64 %tmp30.unpack95)
-  %fun_call_tmp2.i = call {} @"[c-flat]:u64:drop"(i64 %tmp30.unpack)
-  ret %"[c-flat]:Particle" %tmp_constructor18
+  %tmp4.repack80 = getelementptr inbounds nuw i8, ptr %tmp4, i64 8
+  store double %cast6, ptr %tmp4.repack80, align 8
+  %fun_call_tmp8 = call double @"[c-flat]:Vec_2<T = f64>:rand"(ptr nonnull %tmp4)
+  %tmp_agg = insertvalue %"[c-flat]:Vec_2<T = f64>" undef, double %fun_call_tmp4, 0
+  %tmp_constructor = insertvalue %"[c-flat]:Vec_2<T = f64>" %tmp_agg, double %fun_call_tmp8, 1
+  store double 1.000000e+00, ptr %tmp510, align 8
+  %tmp510.repack82 = getelementptr inbounds nuw i8, ptr %tmp510, i64 8
+  store double 2.400000e+00, ptr %tmp510.repack82, align 8
+  %fun_call_tmp11 = call double @"[c-flat]:Vec_2<T = f64>:rand"(ptr nonnull %tmp510)
+  store double 0.000000e+00, ptr %tmp6, align 8
+  %tmp6.repack83 = getelementptr inbounds nuw i8, ptr %tmp6, i64 8
+  store double 1.000000e+00, ptr %tmp6.repack83, align 8
+  %fun_call_tmp13 = call double @"[c-flat]:Vec_2<T = f64>:rand"(ptr nonnull %tmp6)
+  %fun_call_tmp14 = call i32 @"[c-flat]:rand_color"()
+  %tmp15 = load double, ptr %speed, align 8
+  %tmp_agg17 = insertvalue %"[c-flat]:Particle" undef, %"[c-flat]:Vec_2<T = f64>" %tmp_constructor, 0
+  %tmp_agg18 = insertvalue %"[c-flat]:Particle" %tmp_agg17, double %fun_call_tmp11, 1
+  %tmp_agg19 = insertvalue %"[c-flat]:Particle" %tmp_agg18, double %tmp15, 2
+  %tmp_agg20 = insertvalue %"[c-flat]:Particle" %tmp_agg19, double %tmp15, 3
+  %tmp_agg21 = insertvalue %"[c-flat]:Particle" %tmp_agg20, double %fun_call_tmp13, 4
+  %tmp_constructor22 = insertvalue %"[c-flat]:Particle" %tmp_agg21, i32 %fun_call_tmp14, 5
+  %tmp23.unpack = load double, ptr %tmp6, align 8
+  %tmp23.elt84 = getelementptr inbounds nuw i8, ptr %tmp6, i64 8
+  %tmp23.unpack85 = load double, ptr %tmp23.elt84, align 8
+  %fun_call_tmp.i72 = call {} @"[c-flat]:f64:drop"(double %tmp23.unpack85)
+  %fun_call_tmp2.i74 = call {} @"[c-flat]:f64:drop"(double %tmp23.unpack)
+  %tmp25.unpack = load double, ptr %tmp510, align 8
+  %tmp25.elt87 = getelementptr inbounds nuw i8, ptr %tmp510, i64 8
+  %tmp25.unpack88 = load double, ptr %tmp25.elt87, align 8
+  %fun_call_tmp.i67 = call {} @"[c-flat]:f64:drop"(double %tmp25.unpack88)
+  %fun_call_tmp2.i69 = call {} @"[c-flat]:f64:drop"(double %tmp25.unpack)
+  %tmp27.unpack = load double, ptr %tmp4, align 8
+  %tmp27.elt90 = getelementptr inbounds nuw i8, ptr %tmp4, i64 8
+  %tmp27.unpack91 = load double, ptr %tmp27.elt90, align 8
+  %fun_call_tmp.i62 = call {} @"[c-flat]:f64:drop"(double %tmp27.unpack91)
+  %fun_call_tmp2.i64 = call {} @"[c-flat]:f64:drop"(double %tmp27.unpack)
+  %tmp29.unpack = load double, ptr %tmp3, align 8
+  %tmp29.elt93 = getelementptr inbounds nuw i8, ptr %tmp3, i64 8
+  %tmp29.unpack94 = load double, ptr %tmp29.elt93, align 8
+  %fun_call_tmp.i57 = call {} @"[c-flat]:f64:drop"(double %tmp29.unpack94)
+  %fun_call_tmp2.i59 = call {} @"[c-flat]:f64:drop"(double %tmp29.unpack)
+  %tmp31 = load double, ptr %speed, align 8
+  %fun_call_tmp32 = call {} @"[c-flat]:f64:drop"(double %tmp31)
+  %tmp33.unpack = load double, ptr %tmp1, align 8
+  %tmp33.elt96 = getelementptr inbounds nuw i8, ptr %tmp1, i64 8
+  %tmp33.unpack97 = load double, ptr %tmp33.elt96, align 8
+  %fun_call_tmp.i52 = call {} @"[c-flat]:f64:drop"(double %tmp33.unpack97)
+  %fun_call_tmp2.i54 = call {} @"[c-flat]:f64:drop"(double %tmp33.unpack)
+  %tmp35.unpack = load i64, ptr %screen_size, align 4
+  %tmp35.elt99 = getelementptr inbounds nuw i8, ptr %screen_size, i64 8
+  %tmp35.unpack100 = load i64, ptr %tmp35.elt99, align 4
+  %fun_call_tmp.i = call {} @"[c-flat]:u64:drop"(i64 %tmp35.unpack100)
+  %fun_call_tmp2.i = call {} @"[c-flat]:u64:drop"(i64 %tmp35.unpack)
+  ret %"[c-flat]:Particle" %tmp_constructor22
 }
 
 define double @"[c-flat]:Vec_2<T = f64>:rand"(ptr %0) {
@@ -1568,6 +1678,63 @@ entry:
   ret i64 %tmp.i10
 }
 
+define i32 @"[c-flat]:rand_color"() {
+entry:
+  %tmp2 = alloca %"[c-flat]:Range<T = u64>", align 8
+  %tmp1 = alloca %"[c-flat]:Range<T = u64>", align 8
+  %tmp0 = alloca %"[c-flat]:Range<T = u64>", align 8
+  store i64 0, ptr %tmp0, align 4
+  %tmp0.repack48 = getelementptr inbounds nuw i8, ptr %tmp0, i64 8
+  store i64 256, ptr %tmp0.repack48, align 4
+  %fun_call_tmp1 = call i64 @"[c-flat]:Vec_2<T = u64>:rand"(ptr nonnull %tmp0)
+  store i64 0, ptr %tmp1, align 4
+  %tmp1.repack49 = getelementptr inbounds nuw i8, ptr %tmp1, i64 8
+  store i64 256, ptr %tmp1.repack49, align 4
+  %fun_call_tmp3 = call i64 @"[c-flat]:Vec_2<T = u64>:rand"(ptr nonnull %tmp1)
+  %tmp.i35 = shl i64 %fun_call_tmp3, 8
+  %tmp.i28 = or i64 %fun_call_tmp1, %tmp.i35
+  store i64 0, ptr %tmp2, align 4
+  %tmp2.repack50 = getelementptr inbounds nuw i8, ptr %tmp2, i64 8
+  store i64 256, ptr %tmp2.repack50, align 4
+  %fun_call_tmp7 = call i64 @"[c-flat]:Vec_2<T = u64>:rand"(ptr nonnull %tmp2)
+  %tmp.i32 = shl i64 %fun_call_tmp7, 16
+  %tmp.i25 = or i64 %tmp.i28, %tmp.i32
+  %0 = trunc i64 %tmp.i25 to i32
+  %cast = or i32 %0, -16777216
+  %tmp.unpack = load i64, ptr %tmp2, align 4
+  %tmp.elt51 = getelementptr inbounds nuw i8, ptr %tmp2, i64 8
+  %tmp.unpack52 = load i64, ptr %tmp.elt51, align 4
+  %fun_call_tmp.i45 = call {} @"[c-flat]:u64:drop"(i64 %tmp.unpack52)
+  %fun_call_tmp2.i47 = call {} @"[c-flat]:u64:drop"(i64 %tmp.unpack)
+  %tmp13.unpack = load i64, ptr %tmp1, align 4
+  %tmp13.elt54 = getelementptr inbounds nuw i8, ptr %tmp1, i64 8
+  %tmp13.unpack55 = load i64, ptr %tmp13.elt54, align 4
+  %fun_call_tmp.i40 = call {} @"[c-flat]:u64:drop"(i64 %tmp13.unpack55)
+  %fun_call_tmp2.i42 = call {} @"[c-flat]:u64:drop"(i64 %tmp13.unpack)
+  %tmp15.unpack = load i64, ptr %tmp0, align 4
+  %tmp15.elt57 = getelementptr inbounds nuw i8, ptr %tmp0, i64 8
+  %tmp15.unpack58 = load i64, ptr %tmp15.elt57, align 4
+  %fun_call_tmp.i = call {} @"[c-flat]:u64:drop"(i64 %tmp15.unpack58)
+  %fun_call_tmp2.i = call {} @"[c-flat]:u64:drop"(i64 %tmp15.unpack)
+  ret i32 %cast
+}
+
+define i64 @"[c-flat]:Vec_2<T = u64>:rand"(ptr %0) {
+entry:
+  %self = alloca ptr, align 8
+  store ptr %0, ptr %self, align 8
+  %fun_call_tmp = call i64 @"[c-flat]:rng:next"()
+  %tmp.end = getelementptr inbounds nuw i8, ptr %0, i64 8
+  %tmp1 = load i64, ptr %tmp.end, align 4
+  %tmp3 = load i64, ptr %0, align 4
+  %tmp.i13 = sub i64 %tmp1, %tmp3
+  %tmp.i16 = urem i64 %fun_call_tmp, %tmp.i13
+  %tmp6 = load ptr, ptr %self, align 8
+  %tmp7 = load i64, ptr %tmp6, align 4
+  %tmp.i = add i64 %tmp.i16, %tmp7
+  ret i64 %tmp.i
+}
+
 define i1 @"[c-flat]:pixel:Game:should_close"(ptr %0) {
 entry:
   %fun_call_tmp = call i1 @crl_window_should_close()
@@ -1576,13 +1743,145 @@ entry:
 
 declare i1 @crl_window_should_close()
 
-define { ptr, i64 } @"[c-flat]:Vec<T = Particle>:deref_mut"(ptr %0) {
+define i1 @"[c-flat]:pixel:Game:is_mouse_pressed"(ptr %0, i32 %1) {
 entry:
-  %fun_call_tmp = call { ptr, i64 } @"[c-flat]:Vec<T = Particle>:as_mut_slice"(ptr %0)
+  %fun_call_tmp = call i1 @crl_is_mouse_button_pressed(i32 %1)
+  %fun_call_tmp2 = call {} @"[c-flat]:i32:drop"(i32 %1)
+  ret i1 %fun_call_tmp
+}
+
+declare i1 @crl_is_mouse_button_pressed(i32)
+
+define {} @"[c-flat]:i32:drop"(i32 %0) {
+entry:
+  ret {} zeroinitializer
+}
+
+define %"[c-flat]:Particle" @"[c-flat]:File:spawn_at"(%"[c-flat]:Vec_2<T = f64>" %0, i32 %1) {
+entry:
+  %tmp5 = alloca %"[c-flat]:Range<T = f64>", align 8
+  %tmp4 = alloca %"[c-flat]:Range<T = f64>", align 8
+  %speed = alloca double, align 8
+  %tmp2 = alloca %"[c-flat]:Range<T = f64>", align 8
+  %color = alloca i32, align 4
+  %pos = alloca %"[c-flat]:Vec_2<T = f64>", align 8
+  %.elt = extractvalue %"[c-flat]:Vec_2<T = f64>" %0, 0
+  store double %.elt, ptr %pos, align 8
+  %pos.repack49 = getelementptr inbounds nuw i8, ptr %pos, i64 8
+  %.elt50 = extractvalue %"[c-flat]:Vec_2<T = f64>" %0, 1
+  store double %.elt50, ptr %pos.repack49, align 8
+  store i32 %1, ptr %color, align 4
+  store double 0.000000e+00, ptr %tmp2, align 8
+  %tmp2.repack51 = getelementptr inbounds nuw i8, ptr %tmp2, i64 8
+  store double 5.000000e+00, ptr %tmp2.repack51, align 8
+  %fun_call_tmp1 = call double @"[c-flat]:Vec_2<T = f64>:rand"(ptr nonnull %tmp2)
+  %tmp.i = fadd double %fun_call_tmp1, 2.500000e-01
+  store double %tmp.i, ptr %speed, align 8
+  store double 3.000000e+00, ptr %tmp4, align 8
+  %tmp4.repack52 = getelementptr inbounds nuw i8, ptr %tmp4, i64 8
+  store double 5.400000e+00, ptr %tmp4.repack52, align 8
+  %fun_call_tmp4 = call double @"[c-flat]:Vec_2<T = f64>:rand"(ptr nonnull %tmp4)
+  store double 0.000000e+00, ptr %tmp5, align 8
+  %tmp5.repack53 = getelementptr inbounds nuw i8, ptr %tmp5, i64 8
+  store double 1.000000e+00, ptr %tmp5.repack53, align 8
+  %fun_call_tmp6 = call double @"[c-flat]:Vec_2<T = f64>:rand"(ptr nonnull %tmp5)
+  %tmp.unpack = load double, ptr %pos, align 8
+  %2 = insertvalue %"[c-flat]:Vec_2<T = f64>" poison, double %tmp.unpack, 0
+  %tmp.elt54 = getelementptr inbounds nuw i8, ptr %pos, i64 8
+  %tmp.unpack55 = load double, ptr %tmp.elt54, align 8
+  %tmp56 = insertvalue %"[c-flat]:Vec_2<T = f64>" %2, double %tmp.unpack55, 1
+  %tmp7 = load double, ptr %speed, align 8
+  %tmp9 = load i32, ptr %color, align 4
+  %tmp_agg = insertvalue %"[c-flat]:Particle" undef, %"[c-flat]:Vec_2<T = f64>" %tmp56, 0
+  %tmp_agg10 = insertvalue %"[c-flat]:Particle" %tmp_agg, double %fun_call_tmp4, 1
+  %tmp_agg11 = insertvalue %"[c-flat]:Particle" %tmp_agg10, double %tmp7, 2
+  %tmp_agg12 = insertvalue %"[c-flat]:Particle" %tmp_agg11, double %tmp7, 3
+  %tmp_agg13 = insertvalue %"[c-flat]:Particle" %tmp_agg12, double %fun_call_tmp6, 4
+  %tmp_constructor = insertvalue %"[c-flat]:Particle" %tmp_agg13, i32 %tmp9, 5
+  %tmp14.unpack = load double, ptr %tmp5, align 8
+  %tmp14.elt57 = getelementptr inbounds nuw i8, ptr %tmp5, i64 8
+  %tmp14.unpack58 = load double, ptr %tmp14.elt57, align 8
+  %fun_call_tmp.i46 = call {} @"[c-flat]:f64:drop"(double %tmp14.unpack58)
+  %fun_call_tmp2.i48 = call {} @"[c-flat]:f64:drop"(double %tmp14.unpack)
+  %tmp16.unpack = load double, ptr %tmp4, align 8
+  %tmp16.elt60 = getelementptr inbounds nuw i8, ptr %tmp4, i64 8
+  %tmp16.unpack61 = load double, ptr %tmp16.elt60, align 8
+  %fun_call_tmp.i41 = call {} @"[c-flat]:f64:drop"(double %tmp16.unpack61)
+  %fun_call_tmp2.i43 = call {} @"[c-flat]:f64:drop"(double %tmp16.unpack)
+  %tmp18 = load double, ptr %speed, align 8
+  %fun_call_tmp19 = call {} @"[c-flat]:f64:drop"(double %tmp18)
+  %tmp20.unpack = load double, ptr %tmp2, align 8
+  %tmp20.elt63 = getelementptr inbounds nuw i8, ptr %tmp2, i64 8
+  %tmp20.unpack64 = load double, ptr %tmp20.elt63, align 8
+  %fun_call_tmp.i36 = call {} @"[c-flat]:f64:drop"(double %tmp20.unpack64)
+  %fun_call_tmp2.i38 = call {} @"[c-flat]:f64:drop"(double %tmp20.unpack)
+  %tmp22 = load i32, ptr %color, align 4
+  %fun_call_tmp23 = call {} @"[c-flat]:u32:drop"(i32 %tmp22)
+  %tmp24.unpack = load double, ptr %pos, align 8
+  %tmp24.elt66 = getelementptr inbounds nuw i8, ptr %pos, i64 8
+  %tmp24.unpack67 = load double, ptr %tmp24.elt66, align 8
+  %fun_call_tmp.i = call {} @"[c-flat]:f64:drop"(double %tmp24.unpack67)
+  %fun_call_tmp2.i = call {} @"[c-flat]:f64:drop"(double %tmp24.unpack)
+  ret %"[c-flat]:Particle" %tmp_constructor
+}
+
+define %"[c-flat]:Vec_2<T = i32>" @"[c-flat]:pixel:Game:mouse_pos"(ptr %0) {
+entry:
+  %self = alloca ptr, align 8
+  store ptr %0, ptr %self, align 8
+  %fun_call_tmp = call i32 @crl_get_mouse_x()
+  %tmp.pixel_size_factor = getelementptr inbounds nuw i8, ptr %0, i64 40
+  %tmp1 = load i64, ptr %tmp.pixel_size_factor, align 4
+  %cast = trunc i64 %tmp1 to i32
+  %tmp.i13 = sdiv i32 %fun_call_tmp, %cast
+  %fun_call_tmp3 = call i32 @crl_get_mouse_y()
+  %tmp4 = load ptr, ptr %self, align 8
+  %tmp4.pixel_size_factor = getelementptr inbounds nuw i8, ptr %tmp4, i64 40
+  %tmp5 = load i64, ptr %tmp4.pixel_size_factor, align 4
+  %cast6 = trunc i64 %tmp5 to i32
+  %tmp.i = sdiv i32 %fun_call_tmp3, %cast6
+  %tmp_agg = insertvalue %"[c-flat]:Vec_2<T = i32>" undef, i32 %tmp.i13, 0
+  %tmp_constructor = insertvalue %"[c-flat]:Vec_2<T = i32>" %tmp_agg, i32 %tmp.i, 1
+  ret %"[c-flat]:Vec_2<T = i32>" %tmp_constructor
+}
+
+declare i32 @crl_get_mouse_x()
+
+declare i32 @crl_get_mouse_y()
+
+define i32 @"[c-flat]:i32:clone"(ptr %0) {
+entry:
+  %tmp1 = load i32, ptr %0, align 4
+  ret i32 %tmp1
+}
+
+define %"[c-flat]:Vec_2<T = f64>" @"[c-flat]:Range<T = i32>:as<T2 = f64>"(%"[c-flat]:Vec_2<T = i32>" %0) {
+entry:
+  %self = alloca %"[c-flat]:Vec_2<T = i32>", align 8
+  %.elt = extractvalue %"[c-flat]:Vec_2<T = i32>" %0, 0
+  store i32 %.elt, ptr %self, align 4
+  %self.repack4 = getelementptr inbounds nuw i8, ptr %self, i64 4
+  %.elt5 = extractvalue %"[c-flat]:Vec_2<T = i32>" %0, 1
+  store i32 %.elt5, ptr %self.repack4, align 4
+  %cast = sitofp i32 %.elt to double
+  %cast2 = sitofp i32 %.elt5 to double
+  %tmp_agg = insertvalue %"[c-flat]:Vec_2<T = f64>" undef, double %cast, 0
+  %tmp_constructor = insertvalue %"[c-flat]:Vec_2<T = f64>" %tmp_agg, double %cast2, 1
+  %tmp3.unpack = load i32, ptr %self, align 4
+  %tmp3.elt6 = getelementptr inbounds nuw i8, ptr %self, i64 4
+  %tmp3.unpack7 = load i32, ptr %tmp3.elt6, align 4
+  %fun_call_tmp.i = call {} @"[c-flat]:i32:drop"(i32 %tmp3.unpack7)
+  %fun_call_tmp2.i = call {} @"[c-flat]:i32:drop"(i32 %tmp3.unpack)
+  ret %"[c-flat]:Vec_2<T = f64>" %tmp_constructor
+}
+
+define { ptr, i64 } @"[c-flat]:Vec<T = File>:deref_mut"(ptr %0) {
+entry:
+  %fun_call_tmp = call { ptr, i64 } @"[c-flat]:Vec<T = File>:as_mut_slice"(ptr %0)
   ret { ptr, i64 } %fun_call_tmp
 }
 
-define { ptr, i64 } @"[c-flat]:Vec<T = Particle>:as_mut_slice"(ptr %0) {
+define { ptr, i64 } @"[c-flat]:Vec<T = File>:as_mut_slice"(ptr %0) {
 entry:
   %tmp1.len = getelementptr inbounds nuw i8, ptr %0, i64 8
   %tmp2 = load ptr, ptr %0, align 8
@@ -1592,26 +1891,26 @@ entry:
   ret { ptr, i64 } %len2.i
 }
 
-define %"[c-flat]:SliceMutIter<T = Particle>" @"[c-flat]:[Particle]:iter_mut"({ ptr, i64 } %0) {
+define %"[c-flat]:SliceMutIter<T = File>" @"[c-flat]:[File]:iter_mut"({ ptr, i64 } %0) {
 entry:
   %.elt21 = extractvalue { ptr, i64 } %0, 1
   %ref.i = extractvalue { ptr, i64 } %0, 0
   %cast = ptrtoint ptr %ref.i to i64
-  %tmp.i15 = mul i64 %.elt21, 44
+  %tmp.i15 = mul i64 %.elt21, 52
   %tmp.i = add i64 %tmp.i15, %cast
   %cast7 = inttoptr i64 %tmp.i to ptr
-  %tmp_agg = insertvalue %"[c-flat]:SliceMutIter<T = Particle>" undef, ptr %ref.i, 0
-  %tmp_constructor = insertvalue %"[c-flat]:SliceMutIter<T = Particle>" %tmp_agg, ptr %cast7, 1
-  ret %"[c-flat]:SliceMutIter<T = Particle>" %tmp_constructor
+  %tmp_agg = insertvalue %"[c-flat]:SliceMutIter<T = File>" undef, ptr %ref.i, 0
+  %tmp_constructor = insertvalue %"[c-flat]:SliceMutIter<T = File>" %tmp_agg, ptr %cast7, 1
+  ret %"[c-flat]:SliceMutIter<T = File>" %tmp_constructor
 }
 
-define ptr @"[c-flat]:&mut Particle:clone"(ptr %0) {
+define ptr @"[c-flat]:&mut File:clone"(ptr %0) {
 entry:
   %tmp1 = load ptr, ptr %0, align 8
   ret ptr %tmp1
 }
 
-define i1 @"[c-flat]:&mut Particle:eq"(ptr %0, ptr %1) {
+define i1 @"[c-flat]:&mut File:eq"(ptr %0, ptr %1) {
 entry:
   %other.i = alloca ptr, align 8
   %tmp1 = load ptr, ptr %0, align 8
@@ -1630,36 +1929,43 @@ entry:
   %tmp3.i = getelementptr inbounds nuw i8, ptr %tmp1, i64 16
   %tmp4.i = load ptr, ptr %other.i, align 8
   %tmp4.size.i = getelementptr inbounds nuw i8, ptr %tmp4.i, i64 16
-  %tmp.i26.i = load double, ptr %tmp3.i, align 8
-  %tmp1.i27.i = load double, ptr %tmp4.size.i, align 8
-  %tmp2.i28.i = fcmp oeq double %tmp.i26.i, %tmp1.i27.i
-  %tmp6.i = and i1 %tmp6.i.i, %tmp2.i28.i
+  %tmp.i35.i = load double, ptr %tmp3.i, align 8
+  %tmp1.i36.i = load double, ptr %tmp4.size.i, align 8
+  %tmp2.i37.i = fcmp oeq double %tmp.i35.i, %tmp1.i36.i
+  %tmp6.i = and i1 %tmp6.i.i, %tmp2.i37.i
   %tmp7.i = getelementptr inbounds nuw i8, ptr %tmp1, i64 24
   %tmp8.i = load ptr, ptr %other.i, align 8
   %tmp8.speed.i = getelementptr inbounds nuw i8, ptr %tmp8.i, i64 24
-  %tmp.i21.i = load double, ptr %tmp7.i, align 8
-  %tmp1.i22.i = load double, ptr %tmp8.speed.i, align 8
-  %tmp2.i23.i = fcmp oeq double %tmp.i21.i, %tmp1.i22.i
-  %tmp10.i = and i1 %tmp6.i, %tmp2.i23.i
+  %tmp.i30.i = load double, ptr %tmp7.i, align 8
+  %tmp1.i31.i = load double, ptr %tmp8.speed.i, align 8
+  %tmp2.i32.i = fcmp oeq double %tmp.i30.i, %tmp1.i31.i
+  %tmp10.i = and i1 %tmp6.i, %tmp2.i32.i
   %tmp11.i = getelementptr inbounds nuw i8, ptr %tmp1, i64 32
   %tmp12.i = load ptr, ptr %other.i, align 8
-  %tmp12.offset.i = getelementptr inbounds nuw i8, ptr %tmp12.i, i64 32
-  %tmp.i.i = load double, ptr %tmp11.i, align 8
-  %tmp1.i.i = load double, ptr %tmp12.offset.i, align 8
-  %tmp2.i.i = fcmp oeq double %tmp.i.i, %tmp1.i.i
-  %tmp14.i = and i1 %tmp10.i, %tmp2.i.i
+  %tmp12.new_speed.i = getelementptr inbounds nuw i8, ptr %tmp12.i, i64 32
+  %tmp.i25.i = load double, ptr %tmp11.i, align 8
+  %tmp1.i26.i = load double, ptr %tmp12.new_speed.i, align 8
+  %tmp2.i27.i = fcmp oeq double %tmp.i25.i, %tmp1.i26.i
+  %tmp14.i = and i1 %tmp10.i, %tmp2.i27.i
   %tmp15.i = getelementptr inbounds nuw i8, ptr %tmp1, i64 40
   %tmp16.i = load ptr, ptr %other.i, align 8
-  %tmp16.color.i = getelementptr inbounds nuw i8, ptr %tmp16.i, i64 40
-  %tmp.i36.i = load i32, ptr %tmp15.i, align 4
-  %tmp1.i37.i = load i32, ptr %tmp16.color.i, align 4
-  %tmp2.i38.i = icmp eq i32 %tmp.i36.i, %tmp1.i37.i
-  %tmp18.i = and i1 %tmp14.i, %tmp2.i38.i
+  %tmp16.offset.i = getelementptr inbounds nuw i8, ptr %tmp16.i, i64 40
+  %tmp.i.i = load double, ptr %tmp15.i, align 8
+  %tmp1.i.i = load double, ptr %tmp16.offset.i, align 8
+  %tmp2.i.i = fcmp oeq double %tmp.i.i, %tmp1.i.i
+  %tmp18.i = and i1 %tmp14.i, %tmp2.i.i
+  %tmp19.i = getelementptr inbounds nuw i8, ptr %tmp1, i64 48
+  %tmp20.i = load ptr, ptr %other.i, align 8
+  %tmp20.color.i = getelementptr inbounds nuw i8, ptr %tmp20.i, i64 48
+  %tmp.i45.i = load i32, ptr %tmp19.i, align 4
+  %tmp1.i46.i = load i32, ptr %tmp20.color.i, align 4
+  %tmp2.i47.i = icmp eq i32 %tmp.i45.i, %tmp1.i46.i
+  %tmp22.i = and i1 %tmp18.i, %tmp2.i47.i
   call void @llvm.lifetime.end.p0(i64 8, ptr nonnull %other.i)
-  ret i1 %tmp18.i
+  ret i1 %tmp22.i
 }
 
-define i1 @"[c-flat]:Vec<T = Particle>:has_next"(ptr %0) {
+define i1 @"[c-flat]:Vec<T = File>:has_next"(ptr %0) {
 entry:
   %tmp1 = load ptr, ptr %0, align 8
   %tmp2.end = getelementptr inbounds nuw i8, ptr %0, i64 8
@@ -1668,87 +1974,139 @@ entry:
   ret i1 %tmp.i
 }
 
-define ptr @"[c-flat]:Vec<T = Particle>:next"(ptr %0) {
+define ptr @"[c-flat]:Vec<T = File>:next"(ptr %0) {
 entry:
   %tmp1 = load ptr, ptr %0, align 8
   %cast = ptrtoint ptr %tmp1 to i64
-  %tmp.i = add i64 %cast, 44
+  %tmp.i = add i64 %cast, 52
   %cast6 = inttoptr i64 %tmp.i to ptr
   store ptr %cast6, ptr %0, align 8
   ret ptr %tmp1
 }
 
-define {} @"[c-flat]:Particle:update"(ptr %0, %"[c-flat]:Vec_2<T = u64>" %1) {
+define {} @"[c-flat]:File:update"(ptr %0, %"[c-flat]:Vec_2<T = u64>" %1) {
 entry:
-  %tmp231 = alloca %"[c-flat]:Range<T = f64>", align 8
+  %tmp258 = alloca %"[c-flat]:Range<T = f64>", align 8
+  %tmp237 = alloca %"[c-flat]:Range<T = f64>", align 8
   %screen_size = alloca %"[c-flat]:Vec_2<T = u64>", align 8
   %self = alloca ptr, align 8
   store ptr %0, ptr %self, align 8
   %.elt = extractvalue %"[c-flat]:Vec_2<T = u64>" %1, 0
   store i64 %.elt, ptr %screen_size, align 4
-  %screen_size.repack65 = getelementptr inbounds nuw i8, ptr %screen_size, i64 8
-  %.elt66 = extractvalue %"[c-flat]:Vec_2<T = u64>" %1, 1
-  store i64 %.elt66, ptr %screen_size.repack65, align 4
-  %tmp1 = load double, ptr %0, align 8
-  %tmp2 = load ptr, ptr %self, align 8
-  %tmp2.speed = getelementptr inbounds nuw i8, ptr %tmp2, i64 24
-  %tmp3 = load double, ptr %tmp2.speed, align 8
-  %tmp.i49 = fadd double %tmp1, %tmp3
-  store double %tmp.i49, ptr %tmp2, align 8
-  %tmp5.pos.y = getelementptr inbounds nuw i8, ptr %tmp2, i64 8
-  %tmp6 = load double, ptr %tmp5.pos.y, align 8
-  %tmp7 = load ptr, ptr %self, align 8
-  %tmp7.offset = getelementptr inbounds nuw i8, ptr %tmp7, i64 32
-  %tmp8 = load double, ptr %tmp7.offset, align 8
-  %fun_call_tmp9 = call double @"[c-flat]:f64:sin"(double %tmp8)
-  %tmp.i46 = fadd double %tmp6, %fun_call_tmp9
-  %tmp11.pos.y = getelementptr inbounds nuw i8, ptr %tmp7, i64 8
-  store double %tmp.i46, ptr %tmp11.pos.y, align 8
-  %tmp12 = load ptr, ptr %self, align 8
-  %tmp12.offset = getelementptr inbounds nuw i8, ptr %tmp12, i64 32
-  %tmp13 = load double, ptr %tmp12.offset, align 8
-  %tmp14.speed = getelementptr inbounds nuw i8, ptr %tmp12, i64 24
-  %tmp15 = load double, ptr %tmp14.speed, align 8
-  %tmp.i52 = fdiv double %tmp15, 4.600000e+01
-  %fun_call_tmp17 = call double @"[c-flat]:f64:min"(double 5.000000e-02, double %tmp.i52)
-  %tmp.i43 = fadd double %tmp13, %fun_call_tmp17
-  %tmp19 = load ptr, ptr %self, align 8
-  %tmp19.offset = getelementptr inbounds nuw i8, ptr %tmp19, i64 32
-  store double %tmp.i43, ptr %tmp19.offset, align 8
-  %tmp20 = load ptr, ptr %self, align 8
-  %tmp21 = load double, ptr %tmp20, align 8
-  %tmp22 = load i64, ptr %screen_size, align 4
-  %cast = uitofp i64 %tmp22 to double
-  %tmp.i40 = fadd double %cast, 4.000000e+00
-  %tmp.i56 = fcmp ogt double %tmp21, %tmp.i40
-  br i1 %tmp.i56, label %then, label %merge
+  %screen_size.repack107 = getelementptr inbounds nuw i8, ptr %screen_size, i64 8
+  %.elt108 = extractvalue %"[c-flat]:Vec_2<T = u64>" %1, 1
+  store i64 %.elt108, ptr %screen_size.repack107, align 4
+  %tmp.speed = getelementptr inbounds nuw i8, ptr %0, i64 24
+  %tmp1 = load ptr, ptr %self, align 8
+  %tmp1.speed = getelementptr inbounds nuw i8, ptr %tmp1, i64 24
+  %tmp2 = load double, ptr %tmp1.speed, align 8
+  %tmp3.new_speed = getelementptr inbounds nuw i8, ptr %tmp1, i64 32
+  %tmp4 = load double, ptr %tmp3.new_speed, align 8
+  %fun_call_tmp = call double @"[c-flat]:f64:lerp"(double %tmp2, double %tmp4, double 5.000000e-02)
+  store double %fun_call_tmp, ptr %tmp.speed, align 8
+  %tmp5 = load ptr, ptr %self, align 8
+  %tmp6 = load double, ptr %tmp5, align 8
+  %tmp7.speed = getelementptr inbounds nuw i8, ptr %tmp5, i64 24
+  %tmp8 = load double, ptr %tmp7.speed, align 8
+  %tmp.i79 = fadd double %tmp6, %tmp8
+  store double %tmp.i79, ptr %tmp5, align 8
+  %tmp11.pos.y = getelementptr inbounds nuw i8, ptr %tmp5, i64 8
+  %tmp12 = load double, ptr %tmp11.pos.y, align 8
+  %tmp13 = load ptr, ptr %self, align 8
+  %tmp13.offset = getelementptr inbounds nuw i8, ptr %tmp13, i64 40
+  %tmp14 = load double, ptr %tmp13.offset, align 8
+  %fun_call_tmp15 = call double @"[c-flat]:f64:sin"(double %tmp14)
+  %tmp.i76 = fadd double %tmp12, %fun_call_tmp15
+  %tmp17.pos.y = getelementptr inbounds nuw i8, ptr %tmp13, i64 8
+  store double %tmp.i76, ptr %tmp17.pos.y, align 8
+  %tmp18 = load ptr, ptr %self, align 8
+  %tmp18.offset = getelementptr inbounds nuw i8, ptr %tmp18, i64 40
+  %tmp19 = load double, ptr %tmp18.offset, align 8
+  %tmp20.speed = getelementptr inbounds nuw i8, ptr %tmp18, i64 24
+  %tmp21 = load double, ptr %tmp20.speed, align 8
+  %tmp.i82 = fdiv double %tmp21, 4.600000e+01
+  %fun_call_tmp23 = call double @"[c-flat]:f64:min"(double 5.000000e-02, double %tmp.i82)
+  %tmp.i73 = fadd double %tmp19, %fun_call_tmp23
+  %tmp25 = load ptr, ptr %self, align 8
+  %tmp25.offset = getelementptr inbounds nuw i8, ptr %tmp25, i64 40
+  store double %tmp.i73, ptr %tmp25.offset, align 8
+  %tmp26 = load ptr, ptr %self, align 8
+  %tmp27 = load double, ptr %tmp26, align 8
+  %tmp28 = load i64, ptr %screen_size, align 4
+  %cast = uitofp i64 %tmp28 to double
+  %tmp.i70 = fadd double %cast, 4.000000e+00
+  %tmp.i90 = fcmp ogt double %tmp27, %tmp.i70
+  br i1 %tmp.i90, label %then, label %cond42
 
-merge:                                            ; preds = %entry, %then
-  %tmp35.unpack = load i64, ptr %screen_size, align 4
-  %tmp35.elt72 = getelementptr inbounds nuw i8, ptr %screen_size, i64 8
-  %tmp35.unpack73 = load i64, ptr %tmp35.elt72, align 4
-  %fun_call_tmp.i = call {} @"[c-flat]:u64:drop"(i64 %tmp35.unpack73)
-  %fun_call_tmp2.i = call {} @"[c-flat]:u64:drop"(i64 %tmp35.unpack)
+merge:                                            ; preds = %cond42, %then41, %then
+  %tmp62.unpack = load i64, ptr %screen_size, align 4
+  %tmp62.elt119 = getelementptr inbounds nuw i8, ptr %screen_size, i64 8
+  %tmp62.unpack120 = load i64, ptr %tmp62.elt119, align 4
+  %fun_call_tmp.i = call {} @"[c-flat]:u64:drop"(i64 %tmp62.unpack120)
+  %fun_call_tmp2.i = call {} @"[c-flat]:u64:drop"(i64 %tmp62.unpack)
   ret {} zeroinitializer
 
 then:                                             ; preds = %entry
-  %tmp25 = load ptr, ptr %self, align 8
-  store double -4.000000e+00, ptr %tmp25, align 8
-  %tmp27.pos.y = getelementptr inbounds nuw i8, ptr %tmp25, i64 8
+  %tmp31 = load ptr, ptr %self, align 8
+  store double -4.000000e+00, ptr %tmp31, align 8
+  %tmp33.pos.y = getelementptr inbounds nuw i8, ptr %tmp31, i64 8
   %screen_size.y = getelementptr inbounds nuw i8, ptr %screen_size, i64 8
-  %tmp28 = load i64, ptr %screen_size.y, align 4
-  %cast29 = uitofp i64 %tmp28 to double
-  store double 0.000000e+00, ptr %tmp231, align 8
-  %tmp231.repack67 = getelementptr inbounds nuw i8, ptr %tmp231, i64 8
-  store double %cast29, ptr %tmp231.repack67, align 8
-  %fun_call_tmp32 = call double @"[c-flat]:Vec_2<T = f64>:rand"(ptr nonnull %tmp231)
-  store double %fun_call_tmp32, ptr %tmp27.pos.y, align 8
-  %tmp33.unpack = load double, ptr %tmp231, align 8
-  %tmp33.elt69 = getelementptr inbounds nuw i8, ptr %tmp231, i64 8
-  %tmp33.unpack70 = load double, ptr %tmp33.elt69, align 8
-  %fun_call_tmp.i61 = call {} @"[c-flat]:f64:drop"(double %tmp33.unpack70)
-  %fun_call_tmp2.i63 = call {} @"[c-flat]:f64:drop"(double %tmp33.unpack)
+  %tmp34 = load i64, ptr %screen_size.y, align 4
+  %cast35 = uitofp i64 %tmp34 to double
+  store double 0.000000e+00, ptr %tmp237, align 8
+  %tmp237.repack114 = getelementptr inbounds nuw i8, ptr %tmp237, i64 8
+  store double %cast35, ptr %tmp237.repack114, align 8
+  %fun_call_tmp38 = call double @"[c-flat]:Vec_2<T = f64>:rand"(ptr nonnull %tmp237)
+  store double %fun_call_tmp38, ptr %tmp33.pos.y, align 8
+  %tmp39.unpack = load double, ptr %tmp237, align 8
+  %tmp39.elt116 = getelementptr inbounds nuw i8, ptr %tmp237, i64 8
+  %tmp39.unpack117 = load double, ptr %tmp39.elt116, align 8
+  %fun_call_tmp.i103 = call {} @"[c-flat]:f64:drop"(double %tmp39.unpack117)
+  %fun_call_tmp2.i105 = call {} @"[c-flat]:f64:drop"(double %tmp39.unpack)
   br label %merge
+
+then41:                                           ; preds = %cond42
+  %tmp48 = load ptr, ptr %self, align 8
+  %tmp50 = load i64, ptr %screen_size, align 4
+  %cast51 = uitofp i64 %tmp50 to double
+  %tmp.i67 = fadd double %cast51, 4.000000e+00
+  store double %tmp.i67, ptr %tmp48, align 8
+  %tmp53.pos.y = getelementptr inbounds nuw i8, ptr %tmp48, i64 8
+  %screen_size.y54 = getelementptr inbounds nuw i8, ptr %screen_size, i64 8
+  %tmp55 = load i64, ptr %screen_size.y54, align 4
+  %cast56 = uitofp i64 %tmp55 to double
+  store double 0.000000e+00, ptr %tmp258, align 8
+  %tmp258.repack109 = getelementptr inbounds nuw i8, ptr %tmp258, i64 8
+  store double %cast56, ptr %tmp258.repack109, align 8
+  %fun_call_tmp59 = call double @"[c-flat]:Vec_2<T = f64>:rand"(ptr nonnull %tmp258)
+  store double %fun_call_tmp59, ptr %tmp53.pos.y, align 8
+  %tmp60.unpack = load double, ptr %tmp258, align 8
+  %tmp60.elt111 = getelementptr inbounds nuw i8, ptr %tmp258, i64 8
+  %tmp60.unpack112 = load double, ptr %tmp60.elt111, align 8
+  %fun_call_tmp.i98 = call {} @"[c-flat]:f64:drop"(double %tmp60.unpack112)
+  %fun_call_tmp2.i100 = call {} @"[c-flat]:f64:drop"(double %tmp60.unpack)
+  br label %merge
+
+cond42:                                           ; preds = %entry
+  %tmp44 = load ptr, ptr %self, align 8
+  %tmp45 = load double, ptr %tmp44, align 8
+  %tmp.i87 = fcmp olt double %tmp45, -4.000000e+00
+  br i1 %tmp.i87, label %then41, label %merge
+}
+
+define double @"[c-flat]:f64:lerp"(double %0, double %1, double %2) {
+entry:
+  %self = alloca double, align 8
+  store double %0, ptr %self, align 8
+  %tmp.i21 = fmul double %1, %2
+  %tmp.i15 = fsub double 1.000000e+00, %2
+  %tmp.i18 = fmul double %0, %tmp.i15
+  %tmp.i = fadd double %tmp.i21, %tmp.i18
+  %fun_call_tmp8 = call {} @"[c-flat]:f64:drop"(double %2)
+  %fun_call_tmp10 = call {} @"[c-flat]:f64:drop"(double %1)
+  %tmp11 = load double, ptr %self, align 8
+  %fun_call_tmp12 = call {} @"[c-flat]:f64:drop"(double %tmp11)
+  ret double %tmp.i
 }
 
 define double @"[c-flat]:f64:sin"(double %0) {
@@ -1795,7 +2153,7 @@ entry:
 
 declare {} @crl_clear_background(i32)
 
-define {} @"[c-flat]:Particle:render"(ptr %0, ptr %1) {
+define {} @"[c-flat]:File:render"(ptr %0, ptr %1) {
 entry:
   %self = alloca ptr, align 8
   store ptr %0, ptr %self, align 8
@@ -1814,7 +2172,7 @@ entry:
   %tmp_agg12 = insertvalue %"[c-flat]:Vec_2<T = u64>" undef, i64 %cast8, 0
   %tmp_constructor13 = insertvalue %"[c-flat]:Vec_2<T = u64>" %tmp_agg12, i64 %cast11, 1
   %tmp14 = load ptr, ptr %self, align 8
-  %tmp14.color = getelementptr inbounds nuw i8, ptr %tmp14, i64 40
+  %tmp14.color = getelementptr inbounds nuw i8, ptr %tmp14, i64 48
   %tmp15 = load i32, ptr %tmp14.color, align 4
   %fun_call_tmp = call {} @"[c-flat]:pixel:Game:draw_rect"(ptr %1, %"[c-flat]:Vec_2<T = i32>" %tmp_constructor, %"[c-flat]:Vec_2<T = u64>" %tmp_constructor13, i32 %tmp15)
   ret {} zeroinitializer
@@ -1859,16 +2217,80 @@ entry:
 
 declare {} @crl_draw_rectangle(i32, i32, i32, i32, i32)
 
-define i32 @"[c-flat]:i32:clone"(ptr %0) {
+define i1 @"[c-flat]:pixel:Game:is_mouse_down"(ptr %0, i32 %1) {
 entry:
-  %tmp1 = load i32, ptr %0, align 4
-  ret i32 %tmp1
+  %fun_call_tmp = call i1 @crl_is_mouse_button_down(i32 %1)
+  %fun_call_tmp2 = call {} @"[c-flat]:i32:drop"(i32 %1)
+  ret i1 %fun_call_tmp
 }
 
-define {} @"[c-flat]:i32:drop"(i32 %0) {
+declare i1 @crl_is_mouse_button_down(i32)
+
+define {} @"[c-flat]:pixel:Game:draw_text"(ptr %0, { ptr, i64 } %1, %"[c-flat]:Vec_2<T = i32>" %2, i64 %3, i32 %4) {
 entry:
+  %s = alloca %"[c-flat]:Vec<T = char>", align 8
+  %color = alloca i32, align 4
+  %font_size = alloca i64, align 8
+  %pos = alloca %"[c-flat]:Vec_2<T = i32>", align 8
+  %text = alloca { ptr, i64 }, align 8
+  %.elt = extractvalue { ptr, i64 } %1, 0
+  store ptr %.elt, ptr %text, align 8
+  %text.repack24 = getelementptr inbounds nuw i8, ptr %text, i64 8
+  %.elt25 = extractvalue { ptr, i64 } %1, 1
+  store i64 %.elt25, ptr %text.repack24, align 8
+  %.elt26 = extractvalue %"[c-flat]:Vec_2<T = i32>" %2, 0
+  store i32 %.elt26, ptr %pos, align 4
+  %pos.repack27 = getelementptr inbounds nuw i8, ptr %pos, i64 4
+  %.elt28 = extractvalue %"[c-flat]:Vec_2<T = i32>" %2, 1
+  store i32 %.elt28, ptr %pos.repack27, align 4
+  store i64 %3, ptr %font_size, align 4
+  store i32 %4, ptr %color, align 4
+  %tmp.unpack = load ptr, ptr %text, align 8
+  %5 = insertvalue { ptr, i64 } poison, ptr %tmp.unpack, 0
+  %tmp.elt29 = getelementptr inbounds nuw i8, ptr %text, i64 8
+  %tmp.unpack30 = load i64, ptr %tmp.elt29, align 8
+  %tmp31 = insertvalue { ptr, i64 } %5, i64 %tmp.unpack30, 1
+  %fun_call_tmp = call %"[c-flat]:Vec<T = char>" @"[c-flat]:[char]:to_string"({ ptr, i64 } %tmp31)
+  %fun_call_tmp1 = call %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:null_terminate"(%"[c-flat]:Vec<T = char>" %fun_call_tmp)
+  %fun_call_tmp1.elt = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp1, 0
+  store ptr %fun_call_tmp1.elt, ptr %s, align 8
+  %s.repack32 = getelementptr inbounds nuw i8, ptr %s, i64 8
+  %fun_call_tmp1.elt33 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp1, 1
+  store i64 %fun_call_tmp1.elt33, ptr %s.repack32, align 8
+  %s.repack34 = getelementptr inbounds nuw i8, ptr %s, i64 16
+  %fun_call_tmp1.elt35 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp1, 2
+  store i64 %fun_call_tmp1.elt35, ptr %s.repack34, align 8
+  %fun_call_tmp2 = call { ptr, i64 } @"[c-flat]:Vec<T = char>:deref"(ptr nonnull %s)
+  %ref.i = extractvalue { ptr, i64 } %fun_call_tmp2, 0
+  %pos.y = getelementptr inbounds nuw i8, ptr %pos, i64 4
+  %tmp4 = load i64, ptr %font_size, align 4
+  %cast = trunc i64 %tmp4 to i32
+  %tmp5 = load i32, ptr %pos, align 4
+  %tmp6 = load i32, ptr %pos.y, align 4
+  %tmp7 = load i32, ptr %color, align 4
+  %fun_call_tmp8 = call {} @crl_draw_text(ptr %ref.i, i32 %tmp5, i32 %tmp6, i32 %cast, i32 %tmp7)
+  %tmp9.unpack = load ptr, ptr %s, align 8
+  %6 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp9.unpack, 0
+  %tmp9.elt36 = getelementptr inbounds nuw i8, ptr %s, i64 8
+  %tmp9.unpack37 = load i64, ptr %tmp9.elt36, align 8
+  %7 = insertvalue %"[c-flat]:Vec<T = char>" %6, i64 %tmp9.unpack37, 1
+  %tmp9.elt38 = getelementptr inbounds nuw i8, ptr %s, i64 16
+  %tmp9.unpack39 = load i64, ptr %tmp9.elt38, align 8
+  %tmp940 = insertvalue %"[c-flat]:Vec<T = char>" %7, i64 %tmp9.unpack39, 2
+  %fun_call_tmp10 = call {} @"[c-flat]:Vec<T = char>:drop.30"(%"[c-flat]:Vec<T = char>" %tmp940)
+  %tmp11 = load i32, ptr %color, align 4
+  %fun_call_tmp12 = call {} @"[c-flat]:u32:drop"(i32 %tmp11)
+  %tmp13 = load i64, ptr %font_size, align 4
+  %fun_call_tmp14 = call {} @"[c-flat]:u64:drop"(i64 %tmp13)
+  %tmp15.unpack = load i32, ptr %pos, align 4
+  %tmp15.elt41 = getelementptr inbounds nuw i8, ptr %pos, i64 4
+  %tmp15.unpack42 = load i32, ptr %tmp15.elt41, align 4
+  %fun_call_tmp.i = call {} @"[c-flat]:i32:drop"(i32 %tmp15.unpack42)
+  %fun_call_tmp2.i = call {} @"[c-flat]:i32:drop"(i32 %tmp15.unpack)
   ret {} zeroinitializer
 }
+
+declare {} @crl_draw_text(ptr, i32, i32, i32, i32)
 
 define {} @"[c-flat]:pixel:Game:end_draw"(ptr %0) {
 entry:
@@ -1892,38 +2314,40 @@ entry:
 
 declare {} @crl_close_window()
 
-define {} @"[c-flat]:Vec<T = Particle>:drop.69"(%"[c-flat]:Vec<T = Particle>" %0) {
+define {} @"[c-flat]:Vec<T = File>:drop.71"(%"[c-flat]:Vec<T = File>" %0) {
 entry:
   %idx = alloca i64, align 8
-  %self = alloca %"[c-flat]:Vec<T = Particle>", align 8
-  %.elt = extractvalue %"[c-flat]:Vec<T = Particle>" %0, 0
+  %self = alloca %"[c-flat]:Vec<T = File>", align 8
+  %.elt = extractvalue %"[c-flat]:Vec<T = File>" %0, 0
   store ptr %.elt, ptr %self, align 8
   %self.repack21 = getelementptr inbounds nuw i8, ptr %self, i64 8
-  %.elt22 = extractvalue %"[c-flat]:Vec<T = Particle>" %0, 1
+  %.elt22 = extractvalue %"[c-flat]:Vec<T = File>" %0, 1
   store i64 %.elt22, ptr %self.repack21, align 8
   %self.repack23 = getelementptr inbounds nuw i8, ptr %self, i64 16
-  %.elt24 = extractvalue %"[c-flat]:Vec<T = Particle>" %0, 2
+  %.elt24 = extractvalue %"[c-flat]:Vec<T = File>" %0, 2
   store i64 %.elt24, ptr %self.repack23, align 8
   br label %cond
 
 then:                                             ; preds = %cond
-  %fun_call_tmp3 = call { ptr, i64 } @"[c-flat]:Vec<T = Particle>:deref"(ptr nonnull %self)
+  %fun_call_tmp3 = call { ptr, i64 } @"[c-flat]:Vec<T = File>:deref"(ptr nonnull %self)
   %tmp4 = load i64, ptr %idx, align 4
   %ref.i = extractvalue { ptr, i64 } %fun_call_tmp3, 0
   %tmp_index.i = getelementptr %"[c-flat]:Particle", ptr %ref.i, i64 %tmp4
   %tmp6 = load %"[c-flat]:Particle", ptr %tmp_index.i, align 8
-  %tmp.i18 = extractvalue %"[c-flat]:Particle" %tmp6, 4
+  %tmp.i18 = extractvalue %"[c-flat]:Particle" %tmp6, 5
   %fun_call_tmp.i = call {} @"[c-flat]:u32:drop"(i32 %tmp.i18)
-  %tmp1.i = extractvalue %"[c-flat]:Particle" %tmp6, 3
+  %tmp1.i = extractvalue %"[c-flat]:Particle" %tmp6, 4
   %fun_call_tmp2.i = call {} @"[c-flat]:f64:drop"(double %tmp1.i)
-  %tmp3.i = extractvalue %"[c-flat]:Particle" %tmp6, 2
+  %tmp3.i = extractvalue %"[c-flat]:Particle" %tmp6, 3
   %fun_call_tmp4.i = call {} @"[c-flat]:f64:drop"(double %tmp3.i)
-  %tmp5.i = extractvalue %"[c-flat]:Particle" %tmp6, 1
+  %tmp5.i = extractvalue %"[c-flat]:Particle" %tmp6, 2
   %fun_call_tmp6.i = call {} @"[c-flat]:f64:drop"(double %tmp5.i)
-  %tmp7.i = extractvalue %"[c-flat]:Particle" %tmp6, 0
-  %tmp.i.i = extractvalue %"[c-flat]:Vec_2<T = f64>" %tmp7.i, 1
+  %tmp7.i = extractvalue %"[c-flat]:Particle" %tmp6, 1
+  %fun_call_tmp8.i = call {} @"[c-flat]:f64:drop"(double %tmp7.i)
+  %tmp9.i = extractvalue %"[c-flat]:Particle" %tmp6, 0
+  %tmp.i.i = extractvalue %"[c-flat]:Vec_2<T = f64>" %tmp9.i, 1
   %fun_call_tmp.i.i = call {} @"[c-flat]:f64:drop"(double %tmp.i.i)
-  %tmp1.i.i = extractvalue %"[c-flat]:Vec_2<T = f64>" %tmp7.i, 0
+  %tmp1.i.i = extractvalue %"[c-flat]:Vec_2<T = f64>" %tmp9.i, 0
   %fun_call_tmp2.i.i = call {} @"[c-flat]:f64:drop"(double %tmp1.i.i)
   %tmp8 = load i64, ptr %idx, align 4
   %tmp.i = add i64 %tmp8, 1
@@ -1932,26 +2356,26 @@ then:                                             ; preds = %cond
 cond:                                             ; preds = %then, %entry
   %storemerge = phi i64 [ 0, %entry ], [ %tmp.i, %then ]
   store i64 %storemerge, ptr %idx, align 4
-  %fun_call_tmp = call { ptr, i64 } @"[c-flat]:Vec<T = Particle>:deref"(ptr nonnull %self)
+  %fun_call_tmp = call { ptr, i64 } @"[c-flat]:Vec<T = File>:deref"(ptr nonnull %self)
   %len.i = extractvalue { ptr, i64 } %fun_call_tmp, 1
   %tmp.i16 = icmp ult i64 %storemerge, %len.i
   br i1 %tmp.i16, label %then, label %else
 
 else:                                             ; preds = %cond
   %tmp10 = load ptr, ptr %self, align 8
-  %fun_call_tmp11 = call {} @"[c-flat]:mem:free<T = Particle>"(ptr %tmp10)
+  %fun_call_tmp11 = call {} @"[c-flat]:mem:free<T = File>"(ptr %tmp10)
   %tmp12 = load i64, ptr %idx, align 4
   %fun_call_tmp13 = call {} @"[c-flat]:u64:drop"(i64 %tmp12)
   ret {} zeroinitializer
 }
 
-define { ptr, i64 } @"[c-flat]:Vec<T = Particle>:deref"(ptr %0) {
+define { ptr, i64 } @"[c-flat]:Vec<T = File>:deref"(ptr %0) {
 entry:
-  %fun_call_tmp = call { ptr, i64 } @"[c-flat]:Vec<T = Particle>:as_slice"(ptr %0)
+  %fun_call_tmp = call { ptr, i64 } @"[c-flat]:Vec<T = File>:as_slice"(ptr %0)
   ret { ptr, i64 } %fun_call_tmp
 }
 
-define { ptr, i64 } @"[c-flat]:Vec<T = Particle>:as_slice"(ptr %0) {
+define { ptr, i64 } @"[c-flat]:Vec<T = File>:as_slice"(ptr %0) {
 entry:
   %tmp1.len = getelementptr inbounds nuw i8, ptr %0, i64 8
   %tmp2 = load ptr, ptr %0, align 8
@@ -2045,7 +2469,7 @@ common.ret:                                       ; preds = %else39, %then
   ret %"[c-flat]:Vec<T = char>" %common.ret.op
 
 then:                                             ; preds = %entry
-  %fun_call_tmp1 = call %"[c-flat]:Vec<T = char>" @"[c-flat]:[char]:to_string"({ ptr, i64 } { ptr @global_string.72, i64 1 })
+  %fun_call_tmp1 = call %"[c-flat]:Vec<T = char>" @"[c-flat]:[char]:to_string"({ ptr, i64 } { ptr @global_string.74, i64 1 })
   %tmp2 = load i64, ptr %tmp1, align 4
   %fun_call_tmp3 = call {} @"[c-flat]:u64:drop"(i64 %tmp2)
   br label %common.ret

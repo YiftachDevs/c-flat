@@ -40,15 +40,21 @@ fn main() {
 }
 
 fn run() -> Result<(), CompilerError> {
-    let std_folder = "/home/yiftach/dev/c_flat/src/std".to_string();
-    let code_folder = "/home/yiftach/dev/c_flat/src/test".to_string();
+    let std_folder = PathBuf::from("/home/yiftach/dev/c_flat/src/std".to_string());
+    let code_folder = PathBuf::from("/home/yiftach/dev/c_flat/src/test".to_string());
 
     let mut file_context = FileContext::new();
-    let mut parser: Parser = Parser::new(&mut file_context, code_folder.clone(), std_folder.clone());
+    let mut parser: Parser = Parser::new(&mut file_context);
+
+    parser.add_workspace(std_folder.clone());
+    parser.add_workspace(code_folder.clone());
+
     let mut main_scope: Scope = Scope::new();
 
     parser.parse_file("std/core.cf", &mut main_scope)?;
     parser.parse_file("main.cf", &mut main_scope)?;
+
+    let c_helpers = parser.c_helpers;
     
     let llvm_context: Context = Context::create();
     let mut code_lowerer = CodeLowerer::new(&main_scope, file_context, &llvm_context);
@@ -62,15 +68,18 @@ fn run() -> Result<(), CompilerError> {
         return Ok(());
     }
 
-    std::env::set_current_dir(std::path::Path::new(&code_folder)).unwrap();
+    std::env::set_current_dir(code_folder).unwrap();
 
     code_lowerer.export_ir_to_file(Path::new("output.ll"));
 
-    let helpers_file = PathBuf::from(std_folder).join("helpers.c");
+    let mut output = Command::new("clang");
+    output.arg("output.ll");
 
-    let output = Command::new("clang")
-        .arg("output.ll")
-        .arg(helpers_file)
+    for c_helper in c_helpers.iter() {
+        output.arg(c_helper);
+    }
+
+    let result = output
         .arg("-lraylib")
         .arg("-lm")
         .arg("-ldl")            
@@ -78,8 +87,8 @@ fn run() -> Result<(), CompilerError> {
         .arg("-o")
         .arg("output_exec")
         .arg("-lm").output().expect("Failed to launch clang");
-    if !output.status.success() {
-        eprintln!("{}", String::from_utf8_lossy(&output.stderr));
+    if !result.status.success() {
+        eprintln!("{}", String::from_utf8_lossy(&result.stderr));
         return Ok(());
     }
 

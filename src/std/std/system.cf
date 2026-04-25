@@ -1,0 +1,32 @@
+import std/heap.cf;
+import std/helpers.c;
+
+extern fun c_read_file(path: &char, out_size: &mut usize) -> &u8;
+extern fun c_write_file(path: &char, data: &u8, size: usize);
+extern fun c_append_file(path: &char, data: &u8, size: usize);
+extern fun c_file_exists(path: &char) -> i32;
+extern fun c_delete_file(path: &char);
+
+extern fun c_system(cmd: &char) -> i32;
+
+fun system(str_: &str) -> i32 {
+    let string = String:from(str_).null_terminate();
+    c_system(string.as_ref())
+}
+
+struct File {
+    data: Vec<u8>
+}
+
+impl File {
+    fun open(path: &str) -> Self {
+        let mut size = 0;
+        let ptr = c_read_file(path.as_ref(), &mut size);
+        *mem:heap_count() += 1;
+        File{ Vec<u8>{ ptr, size, size } }
+    }
+    
+    fun read_str(&self) -> &str {
+        str:from_raw_parts(self.data.ptr as &char, self.data.len)
+    }
+}
