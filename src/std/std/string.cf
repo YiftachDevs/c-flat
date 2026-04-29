@@ -20,9 +20,10 @@ impl<T: ToString> ToString for [T] {
 }
 
 impl String {
-    fun null_terminate(mut self) -> Self {
-        self.push('\0');
-        self
+    fun c_string(&self) -> Self {
+        let mut result = self.clone();
+        result.push('\0');
+        result
     }
 }
 

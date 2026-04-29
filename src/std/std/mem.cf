@@ -13,6 +13,11 @@ mod mem {
         fun drop(self) { }
     }
 
+    impl<T> Deref<T> for Manually_Drop<T> {
+        fun deref(&self) -> &T { &self.value }
+        fun deref_mut(&mut self) -> &mut T { &mut self.value }
+    }
+
     fun copy<T>(dest_ptr: &T, src_ptr: &T) {
         c_memcpy(dest_ptr as &(), src_ptr as &(), T:mem_size());
     }

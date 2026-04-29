@@ -7,8 +7,17 @@ import game.cf;
 
 fun main() -> usize {
     {
-        game();
-    };
+        let file_name = "map.txt";
+        if File:exists(file_name) {
+            let file = File:open(file_name);
+            println(&file.read_text());
+            file.clear();
+            file.write_text("\nNOT EVIL ANYMORE SORRY GANG");
+            println(&file.read_text());
+            println("GOODBYE!");
+            File:delete(file_name);
+        }
+    }
     println("game over");
     debug_heap_count();
     0

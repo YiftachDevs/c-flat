@@ -165,22 +165,6 @@ impl<T: Primitive> Clone for T {
     }
 }
 
-impl<T: Clone> Clone for &T {
-    fun clone(&self) -> Self { *self }
-}
-
-impl<T: Clone> Clone for &mut T {
-    fun clone(&self) -> Self { *self }
-}
-
-impl<T: Clone> Clone for &[T] {
-    fun clone(&self) -> Self { *self }
-}
-
-impl<T: Clone> Clone for &mut [T] {
-    fun clone(&self) -> Self { *self }
-}
-
 impl<T: Clone, const S: usize> Clone for [T; S] {
     fun clone(&self) -> Self {
         let mut res = Self:mem_zero();
@@ -193,7 +177,7 @@ impl<T: Clone, const S: usize> Clone for [T; S] {
     }
 }
 
-impl<T: (!Clone & {Clone})> Clone for T {
+impl<T: ({Clone} & !Clone)> Clone for T {
     fun clone(&self) -> Self;
 }
 

@@ -111,7 +111,8 @@ pub enum Statement {
     VarDeclaration(Variable),
     Const(Const),
     ConditionalChain(ConditionalChain),
-    ControlFlow(ControlFlow)
+    ControlFlow(ControlFlow),
+    Scope(Scope)
 }
 
 #[derive(Eq, PartialEq, Clone, Copy, Debug)]
@@ -1309,6 +1310,8 @@ impl Statement {
         } else if let Some(control_flow) = ControlFlow::is_from_def(parser)? {
             parser.ensure_next(";")?;
             return Ok(Statement::ControlFlow(control_flow));
+        } else if let Some(scope) = Scope::is_from_def(parser)? {
+            return Ok(Statement::Scope(scope));
         } else {
             let expr: ExprNode = ExprNode::from_def(parser, true)?;
             let is_final_value: bool = !parser.is_next(";");
@@ -1420,6 +1423,9 @@ impl ToString for Statement {
             }
             Statement::Const(const_value) => {
                 const_value.to_string() + ";"
+            }
+            Statement::Scope(scope) => {
+                scope.to_string()
             }
         }
     }

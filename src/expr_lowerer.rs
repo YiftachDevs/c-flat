@@ -84,6 +84,13 @@ impl<'ctx> CodeLowerer<'ctx> {
             let is_final_statement = i == scope.statements.len() - 1;
             let ctx_t = if is_final_statement { expr_context } else { &IRExprContext::Value(None) }; 
             match statement {
+                Statement::Scope(scope) => {
+                    let expr_result = self.lower_scope(ir_context, scope, ctx_t)?;
+                    if is_final_statement || expr_result.type_id == self.primitive_type(PrimitiveType::Never)? {
+                        scope_result = expr_result;
+                        break;
+                    }
+                },
                 Statement::VarDeclaration(var) => {
                     if let Some(init_expr) = var.init_expr.as_ref() {
                         let ctx_type = if let Some(var_type) = var.var_type.as_ref() { IRExprContext::Value(Some(self.get_type(ir_context, var_type, &IRExprContext::Type)?)) } else { IRExprContext::Value(None) };
@@ -118,7 +125,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 Statement::ControlFlow(control_flow) => {
                     scope_result = self.lower_control_flow(ir_context, control_flow,)?;
                     break;
-                }
+                },
                 Statement::Const(const_def) => {
                     self.lower_constant(ir_context, const_def)?;
                 }

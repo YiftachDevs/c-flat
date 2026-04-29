@@ -32,7 +32,6 @@ impl<T> Iter<&mut T> for SliceMutIter<T> {
     }
 }
 
-
 impl<T: Integer> Iter<T> for Range<T> {
     fun next(&mut self) -> T {
         let result = self.start;

@@ -10,18 +10,16 @@ extern fun c_printf(c_str: &char);
 extern fun c_flush();
 
 fun println(str_: &str) {
-    let string = String:from(str_).null_terminate();
-    c_puts(string.as_ref());
+    c_puts(str_.to_string().c_string().as_ref());
     c_flush();
 }
 
 fun print(str_: &str) {
-    let string = String:from(str_).null_terminate();
-    c_printf(string.as_ref());
+    c_printf(str_.to_string().c_string().as_ref());
     c_flush();
 }
 
-fun read() -> String {
+fun readln() -> String {
     let mut input = String:new();
     loop {
         let ch = c_getchar();

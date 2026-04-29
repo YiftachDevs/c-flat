@@ -196,7 +196,7 @@ impl<'ctx> CodeLowerer<'ctx> {
     }
 
     fn build_core_trait_funs(&mut self, type_id: IRTypeId, core_trait: &CoreTraitFun) -> Result<(), CompilerError> {
-        let impl_id = self.find_impl_of_fun(type_id, core_trait.get_fun_name(), None)?.unwrap();
+        let impl_id = if let Some(v) = self.find_impl_of_fun(type_id, core_trait.get_fun_name(), None)? { v } else { return Ok(()); };
         let fun_def = self.ir_impl(impl_id).ast_def.scope.as_ref().unwrap().functions.iter().find(|f| f.name == core_trait.get_fun_name()).unwrap();
         let trait_fun_name = fun_def.name.clone();
         if let Some(_) = fun_def.scope {
@@ -284,7 +284,12 @@ impl<'ctx> CodeLowerer<'ctx> {
                 let mut llvm_value: inkwell::values::AggregateValueEnum<'_> = self.ir_type(self_type).llvm_type.into_struct_type().get_undef().into();
                 for (i, var_dec) in ir_struct.args.iter().enumerate() {
                     let arg_ptr_value = self.builder.build_struct_gep(self.ir_type(self_type).llvm_type, first_value.into_pointer_value(), i as u32, "tmp").unwrap().into();
-                    let cloned_arg = self.call_core_trait(ir_context, IRExprResult::Place(IRExprPlaceResult { type_id: var_dec.type_id, ptr_value: arg_ptr_value, is_mut: false, owner: None }), None, &CoreTraitFun::Clone, Span::dummy())?;
+                    let arg_place = IRExprPlaceResult { type_id: var_dec.type_id, ptr_value: arg_ptr_value, is_mut: false, owner: None };
+                    let cloned_arg = if let Some(impl_id) = self.find_impl_of_core_trait(var_dec.type_id, &CoreTraitFun::Clone)? {
+                        self.call_core_trait(ir_context, IRExprResult::Place(arg_place), None, &CoreTraitFun::Clone, Span::dummy())?
+                    } else {
+                        self.load_place(ir_context, arg_place, Span::dummy())?
+                    };
                     llvm_value = self.builder.build_insert_value(llvm_value, cloned_arg.llvm_value, i as u32, "tmp").unwrap();
                 }
                 return Ok(llvm_value.as_basic_value_enum());
