@@ -43,19 +43,59 @@ impl Particle {
     }
 }
 
+struct Player {
+    texture: pixel:Texture,
+    pos: Vec_2<f64>,
+    velocity: Vec_2<f64>,
+    anim_vec: Vec_2<usize>
+}
+
+impl Player {
+    fun new(game: &mut pixel:Game) -> Self {
+        let texture = game.load_texture("res/slime.png");
+        Self{ texture, Vec_2<f64>{ 0.0, 0.0 }, Vec_2<f64>{ 0.0, 0.0 }, Vec_2<usize>{ 0, 0 } }
+    }
+
+    fun update(&mut self, game: &mut pixel:Game, particles: &mut Vec<Particle>) {
+        let prev_pos = self.pos;
+        self.velocity.x = if game.is_key_down('D') { 1.0 } else if game.is_key_down('A') { -1.0 } else { 0.0 };
+        self.velocity.y = if game.is_key_down('S') { 4.0 } else if game.is_key_down('W') { -4.0 } else { self.velocity.y };
+        self.velocity.y += 0.1;
+        self.pos = self.pos + self.velocity;
+        let floor = game.pixel_frame_size.y as f64 - 32.0;
+        if self.pos.y >= floor {
+            self.pos.y = floor;
+            self.velocity.y = 0.0;
+        }
+        self.anim_vec.x = (self.anim_vec.x + 1) % 30;
+
+        if game.is_key_down('P') {
+            particles.push(Particle:spawn_at(self.pos, rand_color()));
+            self.anim_vec.y = 3 * 3;
+        } else {
+            self.anim_vec.y = 2 * 3;
+        }
+    }
+
+    fun render(&self, game: &mut pixel:Game) {
+        game.draw_animation_texture(self.texture, self.pos.as<i32>(), self.anim_vec / 3, Vec_2<usize>{ 32, 32 });
+    }
+}
+
 fun rand_color() -> pixel:Color {
-    ((0..256).rand() |
-    ((0..256).rand() << 8) |
-    ((0..256).rand() << 16) |
+    ((200..256).rand() |
+    ((200..256).rand() << 8) |
+    ((200..256).rand() << 16) |
     255 << 24) as pixel:Color
 }
 
 fun game() {
-    let mut game = pixel:Game:new("My First Game", Vec_2<usize>{ 320, 180 }, 6);
+    let mut game = pixel:Game:new("My First Game", Vec_2<usize>{ 320, 180 }, 4);
 
-    let texture = game.load_texture("res/image.png");
+    let mut player = Player:new(&mut game);
+    
     let mut particles = Vec<Particle>:new();
-    for i in 0..50 {
+    for i in 0..5 {
         particles.push(Particle:spawn(game.pixel_frame_size));
     }
 
@@ -68,6 +108,13 @@ fun game() {
                 particle.new_speed = -particle.speed;
             } 
         }
+        if game.is_key_down('F') {
+            for particle in particles.iter_mut() {
+                particle.new_speed *= 1.01;
+            } 
+        }
+
+        player.update(&mut game, &mut particles);
         
         for particle in particles.iter_mut() {
             particle.update(game.pixel_frame_size);
@@ -75,14 +122,16 @@ fun game() {
 
         game.begin_draw();
         game.clear_background();
+        player.render(&mut game);
         for particle in particles.iter_mut() {
             particle.render(&mut game);
         }
         if game.is_mouse_down(0) {
             game.draw_text("Mouse Down", Vec_2<i32>{ 10, 10 }, 1, 0xFFFFFFFF);
         }
-        // game.draw_texture(texture, Vec_2<usize>{ (-10..11).rand(), (-10..11).rand() }.as<i32>() );
         game.end_draw();
+
+        sleep(1.0 / 60.0);
     }
 
     game.close();

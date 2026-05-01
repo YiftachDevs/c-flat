@@ -1556,6 +1556,9 @@ impl<'fctx> Parser<'fctx> {
     }
 
     pub fn error(&mut self, err_type: CompilerErrorType) -> CompilerError {
+        if let CompilerErrorType::LinkerError(_) = err_type {
+            return CompilerError { err_type, file: "".to_string(), span: None, line_str: "".to_string() };
+        }
         let chars: &Vec<char> = &self.cur_file();
         let line_end_idx: usize = chars[self.new_line_index..].iter().position(|&c| c == '\n').map(|pos| self.new_line_index + pos).unwrap_or(chars.len());
         let line_str: String = chars[self.new_line_index..line_end_idx].iter().collect();

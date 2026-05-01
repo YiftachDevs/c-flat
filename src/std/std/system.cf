@@ -27,7 +27,7 @@ impl File {
     }
 
     fun read(&self) -> Vec<u8> {
-        let mut size = 0;
+        let mut size: usize = 0;
         let ptr = c_read_file(self.path.c_string().as_ref(), &mut size);
         *mem:heap_count() += 1;
         Vec<u8>{ ptr, size, size }

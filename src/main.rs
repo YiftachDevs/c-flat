@@ -40,8 +40,8 @@ fn main() {
 }
 
 fn run() -> Result<(), CompilerError> {
-    let std_folder = PathBuf::from("/home/yiftach/dev/c_flat/src/std".to_string());
-    let code_folder = PathBuf::from("/home/yiftach/dev/c_flat/src/test".to_string());
+    let std_folder = PathBuf::from("/mnt/c/Users/admin/c-flat/src/std".to_string());
+    let code_folder = PathBuf::from("/mnt/c/Users/admin/c-flat/src/test".to_string());
 
     let mut file_context = FileContext::new();
     let mut parser: Parser = Parser::new(&mut file_context);
@@ -70,9 +70,12 @@ fn run() -> Result<(), CompilerError> {
 
     std::env::set_current_dir(code_folder).unwrap();
 
+    println!("{}", std::env::current_dir().unwrap().display());
+
     code_lowerer.export_ir_to_file(Path::new("output.ll"));
 
     let mut output = Command::new("clang");
+    output.arg("-I/usr/local/include");
     output.arg("output.ll");
 
     for c_helper in c_helpers.iter() {
@@ -80,10 +83,14 @@ fn run() -> Result<(), CompilerError> {
     }
 
     let result = output
+        .arg("-L/usr/local/lib") 
         .arg("-lraylib")
+        .arg("-lGL")             
         .arg("-lm")
-        .arg("-ldl")            
         .arg("-lpthread")
+        .arg("-ldl")
+        .arg("-lrt")
+        .arg("-lX11")          
         .arg("-o")
         .arg("output_exec")
         .arg("-lm").output().expect("Failed to launch clang");

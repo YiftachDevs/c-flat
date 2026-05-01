@@ -44,12 +44,14 @@ mod pixel {
 
     impl Game {
         fun new(mut title: &str, pixel_frame_size: Vec_2<usize>, pixel_size_factor: usize) -> Self {
-            let result = Self{ title.to_string().null_terminate(), pixel_frame_size, pixel_size_factor, pixel_frame_size * pixel_size_factor, Vec<String>:new() };
+            let result = Self{ title.to_string().c_string(), pixel_frame_size, pixel_size_factor, pixel_frame_size * pixel_size_factor, Vec<String>:new() };
             crl_set_config_flags(64); // V-Sync
             crl_init_window(result.frame_size.x as i32, result.frame_size.y as i32, result.title.as_ref());
             crl_init_canvas(pixel_frame_size.x as i32, pixel_frame_size.y as i32);
             result
         }
+
+        fun is_key_down(&self, key: char) -> bool { crl_is_key_down(key) }
 
         fun is_mouse_down(&self, button: i32) -> bool { crl_is_mouse_button_down(button) }
         fun is_mouse_pressed(&self, button: i32) -> bool { crl_is_mouse_button_pressed(button) }
@@ -57,7 +59,7 @@ mod pixel {
 
         fun load_texture(&mut self, path: &str) -> Texture {
             let idx = self.loaded_textures.len();
-            self.loaded_textures.push(path.to_string().null_terminate());
+            self.loaded_textures.push(path.to_string().c_string());
             crl_load_texture(self.loaded_textures[idx].as_ref())
         }
 
@@ -66,7 +68,8 @@ mod pixel {
         }
 
         fun draw_animation_texture(&self, texture: Texture, pos: Vec_2<i32>, index: Vec_2<usize>, size: Vec_2<usize>) {
-
+            let src_pos = Vec_2<usize>{ index.x * size.x, index.y * size.y }.as<i32>();
+            crl_draw_texture_rec(texture, src_pos.x, src_pos.y, size.x as i32, size.y as i32, pos.x, pos.y, 0xFFFFFFFF);
         }
 
         fun draw_rect(&self, pos: Vec_2<i32>, size: Vec_2<usize>, color: Color) {
@@ -74,8 +77,7 @@ mod pixel {
         }
 
         fun draw_text(&self, text: &str, pos: Vec_2<i32>, font_size: usize, color: Color) {
-            let s = text.to_string().null_terminate();
-            crl_draw_text(s.as_ref(), pos.x, pos.y, font_size as i32, color);
+            crl_draw_text(text.to_string().c_string().as_ref(), pos.x, pos.y, font_size as i32, color);
         }
 
         fun should_close(&self) -> bool { crl_window_should_close() }
