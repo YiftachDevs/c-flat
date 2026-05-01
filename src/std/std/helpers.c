@@ -5,6 +5,57 @@
 #include <termios.h>
 #include <fcntl.h>
 #include <math.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+#include <poll.h>
+#include <sys/ioctl.h>
+
+int c_bytes_available(int sock) {
+    int bytes;
+    ioctl(sock, FIONREAD, &bytes);
+    return bytes;
+}
+
+int c_connect(const char* ip, int port) {
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) return -1;
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    inet_pton(AF_INET, ip, &addr.sin_addr);
+    if (connect(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) return -1;
+    return sock;
+}
+
+int c_listen(int port, int backlog) {
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) return -1;
+    struct sockaddr_in addr;
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = INADDR_ANY;
+    if (bind(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) return -1;
+    if (listen(sock, backlog) < 0) return -1;
+    return sock;
+}
+
+int c_accept(int server_sock) {
+    return accept(server_sock, NULL, NULL);
+}
+
+int c_send(int sock, char* data, long long size) {
+    return send(sock, data, size, 0);
+}
+
+int c_recv(int sock, char* buf, long long size) {
+    return recv(sock, buf, size, 0);
+}
+
+void c_close(int sock) {
+    close(sock);
+}
 
 char* c_read_file(const char* path, long long* out_size) {
     FILE* f = fopen(path, "rb");

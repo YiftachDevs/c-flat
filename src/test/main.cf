@@ -10,8 +10,9 @@ fun main() -> usize {
         loop {
             print("Enter file to read: ");
             let file_name = readln();
-            if File:exists(&file_name) {
-                let file = File:open(&file_name);
+            let opt_file = File:open(&file_name);
+            if opt_file.is_some() {
+                let file = opt_file.unwrap();
                 println(&file.read_text());
                 break;
             } else {

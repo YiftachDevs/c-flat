@@ -132,7 +132,9 @@ impl<'ctx> CodeLowerer<'ctx> {
             }
         }
 
-        if scope_result.type_id != self.primitive_type(PrimitiveType::Never)? {
+        if scope_result.type_id == self.primitive_type(PrimitiveType::Never)? {
+            ir_context.into_fun_context().vars.drain(prev_vars_len..);
+        } else {
             self.drop_vars(ir_context, prev_vars_len, scope.span)?;
         }
 

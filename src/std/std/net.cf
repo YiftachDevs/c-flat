@@ -1,0 +1,9 @@
+import std/helpers.c;
+
+extern fun c_connect(ip: &char, port: i32) -> i32;
+extern fun c_listen(port: i32, backlog: i32) -> i32;
+extern fun c_accept(server_sock: i32) -> i32;
+extern fun c_send(sock: i32, data: &u8, size: usize) -> i32;
+extern fun c_recv(sock: i32, buf: &u8, size: usize) -> i32;
+extern fun c_close(sock: i32);
+extern fun c_bytes_available(sock: i32) -> i32;

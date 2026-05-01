@@ -1,0 +1,22 @@
+import std/net.cf;
+import std/io.cf;
+
+fun main() {
+    println("connecting...");
+    let sock = c_connect("127.0.0.1".to_string().c_string().as_ref(), 8080);
+    println("connected!");
+    loop {
+        print("> ");
+        let msg = readln();
+        let msg_len = msg.len();
+        c_send(sock, msg.as_slice().as_ref() as &u8, msg_len);
+        if msg_len == 3 {
+            break;
+        }
+        let buffer = String:with_capacity(msg_len);
+        c_recv(sock, buffer.as_slice().as_ref() as &u8, msg_len);
+        print("< ");
+        println(&buffer);
+    }
+    println("done.")
+}

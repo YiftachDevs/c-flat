@@ -53,6 +53,10 @@ impl<T> Vec<T> {
         Self{ mem:alloc<T>(capacity), 0, capacity }
     }
 
+    fun set_len(&mut self, new_len: usize) {
+        self.len = new_len;
+    }
+
     fun reserve(&mut self, additional: usize) {
         let new_len = self.len + additional;
         if new_len > self.capacity {

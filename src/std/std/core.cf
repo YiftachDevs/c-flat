@@ -221,3 +221,33 @@ impl<T> [T] {
 
 type usize = u64;
 type str = [char];
+
+struct Option<T> { value: T, is_some: bool }
+
+impl<T> Option<T> {
+    fun some(value: T) -> Self {
+        Self{ value, true }
+    }
+
+    fun none() -> Self {
+        Self{ T:mem_zero(), false }
+    }
+
+    fun is_some(&self) -> bool { self.is_some }
+    fun is_none(&self) -> bool { !self.is_some }
+
+    fun unwrap(self) -> T { self.value }
+}
+
+// impl<T> Deref<T> for Option<T> {
+//     fun deref(&self) -> &T { &self.value }
+//     fun deref_mut(&mut self) -> &mut T { &mut self.value }
+// }
+
+impl<T> Drop for Option<T> {
+    fun drop(self) {
+        if self.is_some {
+            self.value.drop();
+        }
+    }
+}

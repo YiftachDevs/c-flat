@@ -18,8 +18,12 @@ struct File {
 }
 
 impl File {
-    fun open(path: &str) -> Self {
-        Self{ path.to_string() }
+    fun open(path: &str) -> Option<Self> {
+        if Self:exists(path) {
+            Option<Self>:some(Self{ path.to_string() })
+        } else {
+            Option<Self>:none()
+        }
     }
 
     fun clear(&self) {

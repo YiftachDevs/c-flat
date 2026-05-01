@@ -1,0 +1,28 @@
+import std/net.cf;
+import std/io.cf;
+import std/time.cf;
+
+fun main() {
+    println("listening...");
+    let server = c_listen(8080, 10);
+    let sock = c_accept(server);
+    println("connected!");
+    loop {
+        let msg_len = c_bytes_available(sock) as usize;
+        if msg_len == 0 {
+            sleep(1.0/60.0);
+            skip;
+        }
+        println(&msg_len.to_string());
+        let mut buffer = String:with_capacity(msg_len);
+        buffer.set_len(msg_len);
+        c_recv(sock, buffer.as_slice().as_ref() as &u8, msg_len);
+        print("<> ");
+        println(&buffer);
+        if msg_len == 3 {
+            break;
+        }
+        c_send(sock, buffer.as_slice().as_ref() as &u8, msg_len);
+    }
+    println("done.");
+}

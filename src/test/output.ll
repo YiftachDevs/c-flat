@@ -2,60 +2,111 @@
 source_filename = "main_module"
 
 %"[c-flat]:Vec<T = char>" = type { ptr, i64, i64 }
+%"[c-flat]:File" = type { %"[c-flat]:Vec<T = char>" }
+%"[c-flat]:Option<T = c_printf>" = type { %"[c-flat]:File", i1 }
 %"[c-flat]:mem:Manually_Drop<T = char>" = type { i8 }
 %"[c-flat]:SliceIter<T = char>" = type { ptr, ptr }
+%"[c-flat]:mem:Manually_Drop<T = Vec<T = u8>>" = type { %"[c-flat]:Vec<T = u8>" }
+%"[c-flat]:Vec<T = u8>" = type { ptr, i64, i64 }
+%"[c-flat]:SliceIter<T = u8>" = type { ptr, ptr }
+%"[c-flat]:mem:Manually_Drop<T = u8>" = type { i8 }
 
 @"[c-flat]:count" = internal global i64 0
 @global_string = private unnamed_addr constant [21 x i8] c"Enter file to read: \00", align 1
-@global_string.15 = private unnamed_addr constant [31 x i8] c"File doesn't exist, try again.\00", align 1
-@global_string.16 = private unnamed_addr constant [10 x i8] c"game over\00", align 1
-@global_string.17 = private unnamed_addr constant [2 x i8] c"0\00", align 1
+@global_string.27 = private unnamed_addr constant [31 x i8] c"File doesn't exist, try again.\00", align 1
+@global_string.28 = private unnamed_addr constant [10 x i8] c"game over\00", align 1
+@global_string.29 = private unnamed_addr constant [2 x i8] c"0\00", align 1
 
 define i64 @main() {
 entry:
+  %tmp3 = alloca %"[c-flat]:Vec<T = char>", align 8
+  %file = alloca %"[c-flat]:File", align 8
+  %opt_file = alloca %"[c-flat]:Option<T = c_printf>", align 8
   %file_name = alloca %"[c-flat]:Vec<T = char>", align 8
   br label %then
 
-then:                                             ; preds = %then7, %entry
+then:                                             ; preds = %then17, %entry
   %fun_call_tmp = call {} @"[c-flat]:print"({ ptr, i64 } { ptr @global_string, i64 20 })
   %fun_call_tmp1 = call %"[c-flat]:Vec<T = char>" @"[c-flat]:readln"()
   %fun_call_tmp1.elt = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp1, 0
   store ptr %fun_call_tmp1.elt, ptr %file_name, align 8
-  %file_name.repack14 = getelementptr inbounds nuw i8, ptr %file_name, i64 8
-  %fun_call_tmp1.elt15 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp1, 1
-  store i64 %fun_call_tmp1.elt15, ptr %file_name.repack14, align 8
-  %file_name.repack16 = getelementptr inbounds nuw i8, ptr %file_name, i64 16
-  %fun_call_tmp1.elt17 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp1, 2
-  store i64 %fun_call_tmp1.elt17, ptr %file_name.repack16, align 8
-  %fun_call_tmp4 = call { ptr, i64 } @"[c-flat]:Vec<T = char>:deref"(ptr nonnull %file_name)
-  %fun_call_tmp5 = call i1 @"[c-flat]:c_printf:exists"({ ptr, i64 } %fun_call_tmp4)
-  br i1 %fun_call_tmp5, label %then3, label %then7
+  %file_name.repack24 = getelementptr inbounds nuw i8, ptr %file_name, i64 8
+  %fun_call_tmp1.elt25 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp1, 1
+  store i64 %fun_call_tmp1.elt25, ptr %file_name.repack24, align 8
+  %file_name.repack26 = getelementptr inbounds nuw i8, ptr %file_name, i64 16
+  %fun_call_tmp1.elt27 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp1, 2
+  store i64 %fun_call_tmp1.elt27, ptr %file_name.repack26, align 8
+  %fun_call_tmp2 = call { ptr, i64 } @"[c-flat]:Vec<T = char>:deref"(ptr nonnull %file_name)
+  %fun_call_tmp3 = call %"[c-flat]:Option<T = c_printf>" @"[c-flat]:c_printf:open"({ ptr, i64 } %fun_call_tmp2)
+  store %"[c-flat]:Option<T = c_printf>" %fun_call_tmp3, ptr %opt_file, align 8
+  %fun_call_tmp6 = call i1 @"[c-flat]:Option<T = c_printf>:is_some"(ptr nonnull %opt_file)
+  br i1 %fun_call_tmp6, label %then5, label %then17
 
-then3:                                            ; preds = %then
-  %tmp.unpack = load ptr, ptr %file_name, align 8
-  %0 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp.unpack, 0
-  %tmp.elt23 = getelementptr inbounds nuw i8, ptr %file_name, i64 8
-  %tmp.unpack24 = load i64, ptr %tmp.elt23, align 8
-  %1 = insertvalue %"[c-flat]:Vec<T = char>" %0, i64 %tmp.unpack24, 1
-  %tmp.elt25 = getelementptr inbounds nuw i8, ptr %file_name, i64 16
-  %tmp.unpack26 = load i64, ptr %tmp.elt25, align 8
-  %tmp27 = insertvalue %"[c-flat]:Vec<T = char>" %1, i64 %tmp.unpack26, 2
-  %fun_call_tmp6 = call {} @"[c-flat]:Vec<T = char>:drop.13"(%"[c-flat]:Vec<T = char>" %tmp27)
-  %fun_call_tmp12 = call {} @"[c-flat]:println"({ ptr, i64 } { ptr @global_string.16, i64 9 })
-  %fun_call_tmp13 = call {} @"[c-flat]:debug_heap_count"()
+then5:                                            ; preds = %then
+  %tmp = load %"[c-flat]:Option<T = c_printf>", ptr %opt_file, align 8
+  %fun_call_tmp7 = call %"[c-flat]:File" @"[c-flat]:Option<T = c_printf>:unwrap"(%"[c-flat]:Option<T = c_printf>" %tmp)
+  %0 = extractvalue %"[c-flat]:File" %fun_call_tmp7, 0
+  %.elt = extractvalue %"[c-flat]:Vec<T = char>" %0, 0
+  store ptr %.elt, ptr %file, align 8
+  %file.repack33 = getelementptr inbounds nuw i8, ptr %file, i64 8
+  %.elt34 = extractvalue %"[c-flat]:Vec<T = char>" %0, 1
+  store i64 %.elt34, ptr %file.repack33, align 8
+  %file.repack35 = getelementptr inbounds nuw i8, ptr %file, i64 16
+  %.elt36 = extractvalue %"[c-flat]:Vec<T = char>" %0, 2
+  store i64 %.elt36, ptr %file.repack35, align 8
+  %fun_call_tmp8 = call %"[c-flat]:Vec<T = char>" @"[c-flat]:c_printf:read_text"(ptr nonnull %file)
+  %fun_call_tmp8.elt = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp8, 0
+  store ptr %fun_call_tmp8.elt, ptr %tmp3, align 8
+  %tmp3.repack37 = getelementptr inbounds nuw i8, ptr %tmp3, i64 8
+  %fun_call_tmp8.elt38 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp8, 1
+  store i64 %fun_call_tmp8.elt38, ptr %tmp3.repack37, align 8
+  %tmp3.repack39 = getelementptr inbounds nuw i8, ptr %tmp3, i64 16
+  %fun_call_tmp8.elt40 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp8, 2
+  store i64 %fun_call_tmp8.elt40, ptr %tmp3.repack39, align 8
+  %fun_call_tmp9 = call { ptr, i64 } @"[c-flat]:Vec<T = char>:deref_mut"(ptr nonnull %tmp3)
+  %fun_call_tmp10 = call {} @"[c-flat]:println"({ ptr, i64 } %fun_call_tmp9)
+  %tmp11.unpack = load ptr, ptr %tmp3, align 8
+  %1 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp11.unpack, 0
+  %tmp11.elt41 = getelementptr inbounds nuw i8, ptr %tmp3, i64 8
+  %tmp11.unpack42 = load i64, ptr %tmp11.elt41, align 8
+  %2 = insertvalue %"[c-flat]:Vec<T = char>" %1, i64 %tmp11.unpack42, 1
+  %tmp11.elt43 = getelementptr inbounds nuw i8, ptr %tmp3, i64 16
+  %tmp11.unpack44 = load i64, ptr %tmp11.elt43, align 8
+  %tmp1145 = insertvalue %"[c-flat]:Vec<T = char>" %2, i64 %tmp11.unpack44, 2
+  %fun_call_tmp12 = call {} @"[c-flat]:Vec<T = char>:drop.13"(%"[c-flat]:Vec<T = char>" %tmp1145)
+  %tmp13.unpack.unpack = load ptr, ptr %file, align 8
+  %3 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp13.unpack.unpack, 0
+  %tmp13.unpack.elt47 = getelementptr inbounds nuw i8, ptr %file, i64 8
+  %tmp13.unpack.unpack48 = load i64, ptr %tmp13.unpack.elt47, align 8
+  %4 = insertvalue %"[c-flat]:Vec<T = char>" %3, i64 %tmp13.unpack.unpack48, 1
+  %tmp13.unpack.elt49 = getelementptr inbounds nuw i8, ptr %file, i64 16
+  %tmp13.unpack.unpack50 = load i64, ptr %tmp13.unpack.elt49, align 8
+  %tmp13.unpack51 = insertvalue %"[c-flat]:Vec<T = char>" %4, i64 %tmp13.unpack.unpack50, 2
+  %fun_call_tmp.i = call {} @"[c-flat]:Vec<T = char>:drop.13"(%"[c-flat]:Vec<T = char>" %tmp13.unpack51)
+  %tmp15.unpack = load ptr, ptr %file_name, align 8
+  %5 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp15.unpack, 0
+  %tmp15.elt52 = getelementptr inbounds nuw i8, ptr %file_name, i64 8
+  %tmp15.unpack53 = load i64, ptr %tmp15.elt52, align 8
+  %6 = insertvalue %"[c-flat]:Vec<T = char>" %5, i64 %tmp15.unpack53, 1
+  %tmp15.elt54 = getelementptr inbounds nuw i8, ptr %file_name, i64 16
+  %tmp15.unpack55 = load i64, ptr %tmp15.elt54, align 8
+  %tmp1556 = insertvalue %"[c-flat]:Vec<T = char>" %6, i64 %tmp15.unpack55, 2
+  %fun_call_tmp16 = call {} @"[c-flat]:Vec<T = char>:drop.13"(%"[c-flat]:Vec<T = char>" %tmp1556)
+  %fun_call_tmp22 = call {} @"[c-flat]:println"({ ptr, i64 } { ptr @global_string.28, i64 9 })
+  %fun_call_tmp23 = call {} @"[c-flat]:debug_heap_count"()
   ret i64 0
 
-then7:                                            ; preds = %then
-  %fun_call_tmp8 = call {} @"[c-flat]:println"({ ptr, i64 } { ptr @global_string.15, i64 30 })
-  %tmp9.unpack = load ptr, ptr %file_name, align 8
-  %2 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp9.unpack, 0
-  %tmp9.elt18 = getelementptr inbounds nuw i8, ptr %file_name, i64 8
-  %tmp9.unpack19 = load i64, ptr %tmp9.elt18, align 8
-  %3 = insertvalue %"[c-flat]:Vec<T = char>" %2, i64 %tmp9.unpack19, 1
-  %tmp9.elt20 = getelementptr inbounds nuw i8, ptr %file_name, i64 16
-  %tmp9.unpack21 = load i64, ptr %tmp9.elt20, align 8
-  %tmp922 = insertvalue %"[c-flat]:Vec<T = char>" %3, i64 %tmp9.unpack21, 2
-  %fun_call_tmp10 = call {} @"[c-flat]:Vec<T = char>:drop.13"(%"[c-flat]:Vec<T = char>" %tmp922)
+then17:                                           ; preds = %then
+  %fun_call_tmp18 = call {} @"[c-flat]:println"({ ptr, i64 } { ptr @global_string.27, i64 30 })
+  %tmp19.unpack = load ptr, ptr %file_name, align 8
+  %7 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp19.unpack, 0
+  %tmp19.elt28 = getelementptr inbounds nuw i8, ptr %file_name, i64 8
+  %tmp19.unpack29 = load i64, ptr %tmp19.elt28, align 8
+  %8 = insertvalue %"[c-flat]:Vec<T = char>" %7, i64 %tmp19.unpack29, 1
+  %tmp19.elt30 = getelementptr inbounds nuw i8, ptr %file_name, i64 16
+  %tmp19.unpack31 = load i64, ptr %tmp19.elt30, align 8
+  %tmp1932 = insertvalue %"[c-flat]:Vec<T = char>" %8, i64 %tmp19.unpack31, 2
+  %fun_call_tmp20 = call {} @"[c-flat]:Vec<T = char>:drop.13"(%"[c-flat]:Vec<T = char>" %tmp1932)
   br label %then
 }
 
@@ -611,6 +662,42 @@ else:                                             ; preds = %then
 
 declare i8 @c_getchar()
 
+define %"[c-flat]:Option<T = c_printf>" @"[c-flat]:c_printf:open"({ ptr, i64 } %0) {
+entry:
+  %path = alloca { ptr, i64 }, align 8
+  %.elt = extractvalue { ptr, i64 } %0, 0
+  store ptr %.elt, ptr %path, align 8
+  %path.repack8 = getelementptr inbounds nuw i8, ptr %path, i64 8
+  %.elt9 = extractvalue { ptr, i64 } %0, 1
+  store i64 %.elt9, ptr %path.repack8, align 8
+  %tmp.unpack = load ptr, ptr %path, align 8
+  %1 = insertvalue { ptr, i64 } poison, ptr %tmp.unpack, 0
+  %tmp.elt10 = getelementptr inbounds nuw i8, ptr %path, i64 8
+  %tmp.unpack11 = load i64, ptr %tmp.elt10, align 8
+  %tmp12 = insertvalue { ptr, i64 } %1, i64 %tmp.unpack11, 1
+  %fun_call_tmp = call i1 @"[c-flat]:c_printf:exists"({ ptr, i64 } %tmp12)
+  br i1 %fun_call_tmp, label %then, label %then4
+
+merge:                                            ; preds = %then4, %then
+  %result = phi %"[c-flat]:Option<T = c_printf>" [ %fun_call_tmp3, %then ], [ %fun_call_tmp5, %then4 ]
+  ret %"[c-flat]:Option<T = c_printf>" %result
+
+then:                                             ; preds = %entry
+  %tmp1.unpack = load ptr, ptr %path, align 8
+  %2 = insertvalue { ptr, i64 } poison, ptr %tmp1.unpack, 0
+  %tmp1.elt13 = getelementptr inbounds nuw i8, ptr %path, i64 8
+  %tmp1.unpack14 = load i64, ptr %tmp1.elt13, align 8
+  %tmp115 = insertvalue { ptr, i64 } %2, i64 %tmp1.unpack14, 1
+  %fun_call_tmp2 = call %"[c-flat]:Vec<T = char>" @"[c-flat]:[char]:to_string"({ ptr, i64 } %tmp115)
+  %tmp_constructor = insertvalue %"[c-flat]:File" undef, %"[c-flat]:Vec<T = char>" %fun_call_tmp2, 0
+  %fun_call_tmp3 = call %"[c-flat]:Option<T = c_printf>" @"[c-flat]:Option<T = c_printf>:some"(%"[c-flat]:File" %tmp_constructor)
+  br label %merge
+
+then4:                                            ; preds = %entry
+  %fun_call_tmp5 = call %"[c-flat]:Option<T = c_printf>" @"[c-flat]:Option<T = c_printf>:none"()
+  br label %merge
+}
+
 define i1 @"[c-flat]:c_printf:exists"({ ptr, i64 } %0) {
 entry:
   %tmp2 = alloca %"[c-flat]:Vec<T = char>", align 8
@@ -658,6 +745,66 @@ entry:
 }
 
 declare i1 @c_file_exists(ptr)
+
+define i1 @"[c-flat]:bool:clone"(ptr %0) {
+entry:
+  %tmp1 = load i1, ptr %0, align 1
+  ret i1 %tmp1
+}
+
+define %"[c-flat]:Option<T = c_printf>" @"[c-flat]:Option<T = c_printf>:some"(%"[c-flat]:File" %0) {
+entry:
+  %value = alloca %"[c-flat]:File", align 8
+  %1 = extractvalue %"[c-flat]:File" %0, 0
+  %.elt = extractvalue %"[c-flat]:Vec<T = char>" %1, 0
+  store ptr %.elt, ptr %value, align 8
+  %value.repack1 = getelementptr inbounds nuw i8, ptr %value, i64 8
+  %.elt2 = extractvalue %"[c-flat]:Vec<T = char>" %1, 1
+  store i64 %.elt2, ptr %value.repack1, align 8
+  %value.repack3 = getelementptr inbounds nuw i8, ptr %value, i64 16
+  %.elt4 = extractvalue %"[c-flat]:Vec<T = char>" %1, 2
+  store i64 %.elt4, ptr %value.repack3, align 8
+  %tmp.unpack.unpack = load ptr, ptr %value, align 8
+  %2 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp.unpack.unpack, 0
+  %tmp.unpack.elt6 = getelementptr inbounds nuw i8, ptr %value, i64 8
+  %tmp.unpack.unpack7 = load i64, ptr %tmp.unpack.elt6, align 8
+  %3 = insertvalue %"[c-flat]:Vec<T = char>" %2, i64 %tmp.unpack.unpack7, 1
+  %tmp.unpack.elt8 = getelementptr inbounds nuw i8, ptr %value, i64 16
+  %tmp.unpack.unpack9 = load i64, ptr %tmp.unpack.elt8, align 8
+  %tmp.unpack10 = insertvalue %"[c-flat]:Vec<T = char>" %3, i64 %tmp.unpack.unpack9, 2
+  %tmp5 = insertvalue %"[c-flat]:File" poison, %"[c-flat]:Vec<T = char>" %tmp.unpack10, 0
+  %tmp_agg = insertvalue %"[c-flat]:Option<T = c_printf>" undef, %"[c-flat]:File" %tmp5, 0
+  %tmp_constructor = insertvalue %"[c-flat]:Option<T = c_printf>" %tmp_agg, i1 true, 1
+  ret %"[c-flat]:Option<T = c_printf>" %tmp_constructor
+}
+
+define %"[c-flat]:Option<T = c_printf>" @"[c-flat]:Option<T = c_printf>:none"() {
+entry:
+  ret %"[c-flat]:Option<T = c_printf>" zeroinitializer
+}
+
+define i1 @"[c-flat]:Option<T = c_printf>:is_some"(ptr %0) {
+entry:
+  %tmp.is_some = getelementptr inbounds nuw i8, ptr %0, i64 24
+  %tmp1 = load i1, ptr %tmp.is_some, align 1
+  ret i1 %tmp1
+}
+
+define %"[c-flat]:File" @"[c-flat]:Option<T = c_printf>:unwrap"(%"[c-flat]:Option<T = c_printf>" %0) {
+entry:
+  %self = alloca %"[c-flat]:Option<T = c_printf>", align 8
+  store %"[c-flat]:Option<T = c_printf>" %0, ptr %self, align 8
+  %tmp.unpack.unpack = load ptr, ptr %self, align 8
+  %1 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp.unpack.unpack, 0
+  %tmp.unpack.elt2 = getelementptr inbounds nuw i8, ptr %self, i64 8
+  %tmp.unpack.unpack3 = load i64, ptr %tmp.unpack.elt2, align 8
+  %2 = insertvalue %"[c-flat]:Vec<T = char>" %1, i64 %tmp.unpack.unpack3, 1
+  %tmp.unpack.elt4 = getelementptr inbounds nuw i8, ptr %self, i64 16
+  %tmp.unpack.unpack5 = load i64, ptr %tmp.unpack.elt4, align 8
+  %tmp.unpack6 = insertvalue %"[c-flat]:Vec<T = char>" %2, i64 %tmp.unpack.unpack5, 2
+  %tmp1 = insertvalue %"[c-flat]:File" poison, %"[c-flat]:Vec<T = char>" %tmp.unpack6, 0
+  ret %"[c-flat]:File" %tmp1
+}
 
 define {} @"[c-flat]:println"({ ptr, i64 } %0) {
 entry:
@@ -707,6 +854,382 @@ entry:
 }
 
 declare {} @c_puts(ptr)
+
+define %"[c-flat]:Vec<T = char>" @"[c-flat]:c_printf:read_text"(ptr %0) {
+entry:
+  %data = alloca %"[c-flat]:mem:Manually_Drop<T = Vec<T = u8>>", align 8
+  %fun_call_tmp = call %"[c-flat]:Vec<T = u8>" @"[c-flat]:c_printf:read"(ptr %0)
+  %fun_call_tmp.elt = extractvalue %"[c-flat]:Vec<T = u8>" %fun_call_tmp, 0
+  store ptr %fun_call_tmp.elt, ptr %data, align 8
+  %data.repack13 = getelementptr inbounds nuw i8, ptr %data, i64 8
+  %fun_call_tmp.elt14 = extractvalue %"[c-flat]:Vec<T = u8>" %fun_call_tmp, 1
+  store i64 %fun_call_tmp.elt14, ptr %data.repack13, align 8
+  %data.repack15 = getelementptr inbounds nuw i8, ptr %data, i64 16
+  %fun_call_tmp.elt16 = extractvalue %"[c-flat]:Vec<T = u8>" %fun_call_tmp, 2
+  store i64 %fun_call_tmp.elt16, ptr %data.repack15, align 8
+  %fun_call_tmp1 = call ptr @"[c-flat]:mem:Manually_Drop<T = Vec<T = u8>>:deref"(ptr nonnull %data)
+  %tmp2 = load ptr, ptr %fun_call_tmp1, align 8
+  %fun_call_tmp3 = call ptr @"[c-flat]:mem:Manually_Drop<T = Vec<T = u8>>:deref"(ptr nonnull %data)
+  %fun_call_tmp3.len = getelementptr inbounds nuw i8, ptr %fun_call_tmp3, i64 8
+  %fun_call_tmp4 = call ptr @"[c-flat]:mem:Manually_Drop<T = Vec<T = u8>>:deref"(ptr nonnull %data)
+  %fun_call_tmp4.capacity = getelementptr inbounds nuw i8, ptr %fun_call_tmp4, i64 16
+  %tmp5 = load i64, ptr %fun_call_tmp3.len, align 4
+  %tmp6 = load i64, ptr %fun_call_tmp4.capacity, align 4
+  %tmp_agg = insertvalue %"[c-flat]:Vec<T = char>" undef, ptr %tmp2, 0
+  %tmp_agg7 = insertvalue %"[c-flat]:Vec<T = char>" %tmp_agg, i64 %tmp5, 1
+  %tmp_constructor8 = insertvalue %"[c-flat]:Vec<T = char>" %tmp_agg7, i64 %tmp6, 2
+  %tmp9.unpack.unpack = load ptr, ptr %data, align 8
+  %1 = insertvalue %"[c-flat]:Vec<T = u8>" poison, ptr %tmp9.unpack.unpack, 0
+  %tmp9.unpack.elt18 = getelementptr inbounds nuw i8, ptr %data, i64 8
+  %tmp9.unpack.unpack19 = load i64, ptr %tmp9.unpack.elt18, align 8
+  %2 = insertvalue %"[c-flat]:Vec<T = u8>" %1, i64 %tmp9.unpack.unpack19, 1
+  %tmp9.unpack.elt20 = getelementptr inbounds nuw i8, ptr %data, i64 16
+  %tmp9.unpack.unpack21 = load i64, ptr %tmp9.unpack.elt20, align 8
+  %tmp9.unpack22 = insertvalue %"[c-flat]:Vec<T = u8>" %2, i64 %tmp9.unpack.unpack21, 2
+  %tmp917 = insertvalue %"[c-flat]:mem:Manually_Drop<T = Vec<T = u8>>" poison, %"[c-flat]:Vec<T = u8>" %tmp9.unpack22, 0
+  %fun_call_tmp10 = call {} @"[c-flat]:mem:Manually_Drop<T = Vec<T = u8>>:drop"(%"[c-flat]:mem:Manually_Drop<T = Vec<T = u8>>" %tmp917)
+  ret %"[c-flat]:Vec<T = char>" %tmp_constructor8
+}
+
+define %"[c-flat]:Vec<T = u8>" @"[c-flat]:c_printf:read"(ptr %0) {
+entry:
+  %tmp2 = alloca %"[c-flat]:Vec<T = char>", align 8
+  %size = alloca i64, align 8
+  store i64 0, ptr %size, align 4
+  %fun_call_tmp = call %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:c_string"(ptr %0)
+  %fun_call_tmp.elt = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 0
+  store ptr %fun_call_tmp.elt, ptr %tmp2, align 8
+  %tmp2.repack23 = getelementptr inbounds nuw i8, ptr %tmp2, i64 8
+  %fun_call_tmp.elt24 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 1
+  store i64 %fun_call_tmp.elt24, ptr %tmp2.repack23, align 8
+  %tmp2.repack25 = getelementptr inbounds nuw i8, ptr %tmp2, i64 16
+  %fun_call_tmp.elt26 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 2
+  store i64 %fun_call_tmp.elt26, ptr %tmp2.repack25, align 8
+  %fun_call_tmp1 = call { ptr, i64 } @"[c-flat]:Vec<T = char>:deref_mut"(ptr nonnull %tmp2)
+  %ref.i = extractvalue { ptr, i64 } %fun_call_tmp1, 0
+  %fun_call_tmp3 = call ptr @c_read_file(ptr %ref.i, ptr nonnull %size)
+  %fun_call_tmp4 = call ptr @"[c-flat]:mem:heap_count"()
+  %tmp5 = load i64, ptr %fun_call_tmp4, align 4
+  %tmp.i = add i64 %tmp5, 1
+  %fun_call_tmp7 = call ptr @"[c-flat]:mem:heap_count"()
+  store i64 %tmp.i, ptr %fun_call_tmp7, align 4
+  %tmp9 = load i64, ptr %size, align 4
+  %tmp_agg = insertvalue %"[c-flat]:Vec<T = u8>" undef, ptr %fun_call_tmp3, 0
+  %tmp_agg11 = insertvalue %"[c-flat]:Vec<T = u8>" %tmp_agg, i64 %tmp9, 1
+  %tmp_constructor = insertvalue %"[c-flat]:Vec<T = u8>" %tmp_agg11, i64 %tmp9, 2
+  %tmp14.unpack = load ptr, ptr %tmp2, align 8
+  %1 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp14.unpack, 0
+  %tmp14.elt27 = getelementptr inbounds nuw i8, ptr %tmp2, i64 8
+  %tmp14.unpack28 = load i64, ptr %tmp14.elt27, align 8
+  %2 = insertvalue %"[c-flat]:Vec<T = char>" %1, i64 %tmp14.unpack28, 1
+  %tmp14.elt29 = getelementptr inbounds nuw i8, ptr %tmp2, i64 16
+  %tmp14.unpack30 = load i64, ptr %tmp14.elt29, align 8
+  %tmp1431 = insertvalue %"[c-flat]:Vec<T = char>" %2, i64 %tmp14.unpack30, 2
+  %fun_call_tmp15 = call {} @"[c-flat]:Vec<T = char>:drop.13"(%"[c-flat]:Vec<T = char>" %tmp1431)
+  %tmp16 = load i64, ptr %size, align 4
+  %fun_call_tmp17 = call {} @"[c-flat]:u64:drop"(i64 %tmp16)
+  ret %"[c-flat]:Vec<T = u8>" %tmp_constructor
+}
+
+declare ptr @c_read_file(ptr, ptr)
+
+define i1 @"[c-flat]:&u8:eq"(ptr %0, ptr %1) {
+entry:
+  %tmp1 = load ptr, ptr %0, align 8
+  %tmp3 = load ptr, ptr %1, align 8
+  %tmp.i = load i8, ptr %tmp1, align 1
+  %tmp1.i = load i8, ptr %tmp3, align 1
+  %tmp2.i = icmp eq i8 %tmp.i, %tmp1.i
+  ret i1 %tmp2.i
+}
+
+define %"[c-flat]:Vec<T = u8>" @"[c-flat]:Vec<T = u8>:clone"(ptr %0) {
+entry:
+  %tmp_iter2 = alloca %"[c-flat]:SliceIter<T = u8>", align 8
+  %clone = alloca %"[c-flat]:Vec<T = u8>", align 8
+  %self = alloca ptr, align 8
+  store ptr %0, ptr %self, align 8
+  %fun_call_tmp = call %"[c-flat]:Vec<T = u8>" @"[c-flat]:Vec<T = u8>:new"()
+  %fun_call_tmp.elt = extractvalue %"[c-flat]:Vec<T = u8>" %fun_call_tmp, 0
+  store ptr %fun_call_tmp.elt, ptr %clone, align 8
+  %clone.repack22 = getelementptr inbounds nuw i8, ptr %clone, i64 8
+  %fun_call_tmp.elt23 = extractvalue %"[c-flat]:Vec<T = u8>" %fun_call_tmp, 1
+  store i64 %fun_call_tmp.elt23, ptr %clone.repack22, align 8
+  %clone.repack24 = getelementptr inbounds nuw i8, ptr %clone, i64 16
+  %fun_call_tmp.elt25 = extractvalue %"[c-flat]:Vec<T = u8>" %fun_call_tmp, 2
+  store i64 %fun_call_tmp.elt25, ptr %clone.repack24, align 8
+  %tmp = load ptr, ptr %self, align 8
+  %fun_call_tmp1 = call { ptr, i64 } @"[c-flat]:Vec<T = u8>:deref"(ptr %tmp)
+  %len.i = extractvalue { ptr, i64 } %fun_call_tmp1, 1
+  %fun_call_tmp3 = call {} @"[c-flat]:Vec<T = u8>:reserve"(ptr nonnull %clone, i64 %len.i)
+  %fun_call_tmp5 = call { ptr, i64 } @"[c-flat]:Vec<T = u8>:deref"(ptr %tmp)
+  %fun_call_tmp6 = call %"[c-flat]:SliceIter<T = u8>" @"[c-flat]:[u8]:iter"({ ptr, i64 } %fun_call_tmp5)
+  %fun_call_tmp6.elt = extractvalue %"[c-flat]:SliceIter<T = u8>" %fun_call_tmp6, 0
+  store ptr %fun_call_tmp6.elt, ptr %tmp_iter2, align 8
+  %tmp_iter2.repack26 = getelementptr inbounds nuw i8, ptr %tmp_iter2, i64 8
+  %fun_call_tmp6.elt27 = extractvalue %"[c-flat]:SliceIter<T = u8>" %fun_call_tmp6, 1
+  store ptr %fun_call_tmp6.elt27, ptr %tmp_iter2.repack26, align 8
+  br label %cond
+
+then:                                             ; preds = %cond
+  %fun_call_tmp8 = call ptr @"[c-flat]:Vec<T = u8>:next"(ptr nonnull %tmp_iter2)
+  %fun_call_tmp10 = call i8 @"[c-flat]:u8:clone"(ptr %fun_call_tmp8)
+  %fun_call_tmp11 = call {} @"[c-flat]:Vec<T = u8>:push"(ptr nonnull %clone, i8 %fun_call_tmp10)
+  br label %cond
+
+cond:                                             ; preds = %then, %entry
+  %fun_call_tmp7 = call i1 @"[c-flat]:Vec<T = u8>:has_next"(ptr nonnull %tmp_iter2)
+  br i1 %fun_call_tmp7, label %then, label %else
+
+else:                                             ; preds = %cond
+  %tmp14.unpack = load ptr, ptr %clone, align 8
+  %1 = insertvalue %"[c-flat]:Vec<T = u8>" poison, ptr %tmp14.unpack, 0
+  %tmp14.elt28 = getelementptr inbounds nuw i8, ptr %clone, i64 8
+  %tmp14.unpack29 = load i64, ptr %tmp14.elt28, align 8
+  %2 = insertvalue %"[c-flat]:Vec<T = u8>" %1, i64 %tmp14.unpack29, 1
+  %tmp14.elt30 = getelementptr inbounds nuw i8, ptr %clone, i64 16
+  %tmp14.unpack31 = load i64, ptr %tmp14.elt30, align 8
+  %tmp1432 = insertvalue %"[c-flat]:Vec<T = u8>" %2, i64 %tmp14.unpack31, 2
+  ret %"[c-flat]:Vec<T = u8>" %tmp1432
+}
+
+define %"[c-flat]:Vec<T = u8>" @"[c-flat]:Vec<T = u8>:new"() {
+entry:
+  %fun_call_tmp = call %"[c-flat]:Vec<T = u8>" @"[c-flat]:Vec<T = u8>:with_capacity"(i64 4)
+  ret %"[c-flat]:Vec<T = u8>" %fun_call_tmp
+}
+
+define %"[c-flat]:Vec<T = u8>" @"[c-flat]:Vec<T = u8>:with_capacity"(i64 %0) {
+entry:
+  %fun_call_tmp = call ptr @"[c-flat]:mem:alloc<T = u8>"(i64 %0)
+  %tmp_agg = insertvalue %"[c-flat]:Vec<T = u8>" undef, ptr %fun_call_tmp, 0
+  %tmp_agg2 = insertvalue %"[c-flat]:Vec<T = u8>" %tmp_agg, i64 0, 1
+  %tmp_constructor = insertvalue %"[c-flat]:Vec<T = u8>" %tmp_agg2, i64 %0, 2
+  %fun_call_tmp4 = call {} @"[c-flat]:u64:drop"(i64 %0)
+  ret %"[c-flat]:Vec<T = u8>" %tmp_constructor
+}
+
+define ptr @"[c-flat]:mem:alloc<T = u8>"(i64 %0) {
+entry:
+  %len = alloca i64, align 8
+  store i64 %0, ptr %len, align 4
+  %fun_call_tmp = call ptr @"[c-flat]:mem:heap_count"()
+  %tmp = load i64, ptr %fun_call_tmp, align 4
+  %tmp.i = add i64 %tmp, 1
+  %fun_call_tmp2 = call ptr @"[c-flat]:mem:heap_count"()
+  store i64 %tmp.i, ptr %fun_call_tmp2, align 4
+  %fun_call_tmp6 = call ptr @c_malloc(i64 %0)
+  %tmp7 = load i64, ptr %len, align 4
+  %fun_call_tmp8 = call {} @"[c-flat]:u64:drop"(i64 %tmp7)
+  ret ptr %fun_call_tmp6
+}
+
+define {} @"[c-flat]:Vec<T = u8>:reserve"(ptr %0, i64 %1) {
+entry:
+  %new_ptr = alloca ptr, align 8
+  %new_len = alloca i64, align 8
+  %additional = alloca i64, align 8
+  %self = alloca ptr, align 8
+  store ptr %0, ptr %self, align 8
+  store i64 %1, ptr %additional, align 4
+  %tmp.len = getelementptr inbounds nuw i8, ptr %0, i64 8
+  %tmp1 = load i64, ptr %tmp.len, align 4
+  %tmp.i = add i64 %tmp1, %1
+  store i64 %tmp.i, ptr %new_len, align 4
+  %tmp3 = load i64, ptr %new_len, align 4
+  %tmp4 = load ptr, ptr %self, align 8
+  %tmp4.capacity = getelementptr inbounds nuw i8, ptr %tmp4, i64 16
+  %tmp5 = load i64, ptr %tmp4.capacity, align 4
+  %tmp.i50 = icmp ugt i64 %tmp3, %tmp5
+  br i1 %tmp.i50, label %cond9, label %merge
+
+merge:                                            ; preds = %entry, %else10
+  %tmp36 = load i64, ptr %new_len, align 4
+  %fun_call_tmp37 = call {} @"[c-flat]:u64:drop"(i64 %tmp36)
+  %tmp38 = load i64, ptr %additional, align 4
+  %fun_call_tmp39 = call {} @"[c-flat]:u64:drop"(i64 %tmp38)
+  ret {} zeroinitializer
+
+then8:                                            ; preds = %cond9
+  %tmp15 = load ptr, ptr %self, align 8
+  %tmp15.capacity = getelementptr inbounds nuw i8, ptr %tmp15, i64 16
+  %tmp16 = load i64, ptr %tmp15.capacity, align 4
+  %tmp.i44 = shl i64 %tmp16, 1
+  %tmp18.capacity = getelementptr inbounds nuw i8, ptr %tmp15, i64 16
+  store i64 %tmp.i44, ptr %tmp18.capacity, align 4
+  br label %cond9
+
+cond9:                                            ; preds = %entry, %then8
+  %tmp11 = load i64, ptr %new_len, align 4
+  %tmp12 = load ptr, ptr %self, align 8
+  %tmp12.capacity = getelementptr inbounds nuw i8, ptr %tmp12, i64 16
+  %tmp13 = load i64, ptr %tmp12.capacity, align 4
+  %tmp.i47 = icmp ugt i64 %tmp11, %tmp13
+  br i1 %tmp.i47, label %then8, label %else10
+
+else10:                                           ; preds = %cond9
+  %tmp19 = load ptr, ptr %self, align 8
+  %tmp19.capacity = getelementptr inbounds nuw i8, ptr %tmp19, i64 16
+  %tmp20 = load i64, ptr %tmp19.capacity, align 4
+  %fun_call_tmp21 = call ptr @"[c-flat]:mem:alloc<T = u8>"(i64 %tmp20)
+  store ptr %fun_call_tmp21, ptr %new_ptr, align 8
+  %tmp23.len = getelementptr inbounds nuw i8, ptr %tmp19, i64 8
+  %tmp25 = load ptr, ptr %tmp19, align 8
+  %tmp26 = load i64, ptr %tmp23.len, align 4
+  %fun_call_tmp27 = call {} @"[c-flat]:mem:copy_range<T = u8>"(ptr %fun_call_tmp21, ptr %tmp25, i64 %tmp26)
+  %tmp28 = load ptr, ptr %self, align 8
+  %tmp29 = load ptr, ptr %tmp28, align 8
+  %fun_call_tmp30 = call {} @"[c-flat]:mem:free<T = u8>"(ptr %tmp29)
+  %tmp32 = load ptr, ptr %new_ptr, align 8
+  store ptr %tmp32, ptr %tmp28, align 8
+  br label %merge
+}
+
+define {} @"[c-flat]:mem:copy_range<T = u8>"(ptr %0, ptr %1, i64 %2) {
+entry:
+  %fun_call_tmp4 = call {} @c_memcpy(ptr %0, ptr %1, i64 %2)
+  %fun_call_tmp6 = call {} @"[c-flat]:u64:drop"(i64 %2)
+  ret {} zeroinitializer
+}
+
+define {} @"[c-flat]:mem:free<T = u8>"(ptr %0) {
+entry:
+  %fun_call_tmp = call ptr @"[c-flat]:mem:heap_count"()
+  %tmp = load i64, ptr %fun_call_tmp, align 4
+  %tmp.i = add i64 %tmp, -1
+  %fun_call_tmp2 = call ptr @"[c-flat]:mem:heap_count"()
+  store i64 %tmp.i, ptr %fun_call_tmp2, align 4
+  %fun_call_tmp4 = call {} @c_free(ptr %0)
+  ret {} %fun_call_tmp4
+}
+
+define { ptr, i64 } @"[c-flat]:Vec<T = u8>:deref_mut"(ptr %0) {
+entry:
+  %fun_call_tmp = call { ptr, i64 } @"[c-flat]:Vec<T = u8>:as_mut_slice"(ptr %0)
+  ret { ptr, i64 } %fun_call_tmp
+}
+
+define { ptr, i64 } @"[c-flat]:Vec<T = u8>:as_mut_slice"(ptr %0) {
+entry:
+  %tmp1.len = getelementptr inbounds nuw i8, ptr %0, i64 8
+  %tmp2 = load ptr, ptr %0, align 8
+  %tmp3 = load i64, ptr %tmp1.len, align 4
+  %ptr1.i = insertvalue { ptr, i64 } undef, ptr %tmp2, 0
+  %len2.i = insertvalue { ptr, i64 } %ptr1.i, i64 %tmp3, 1
+  ret { ptr, i64 } %len2.i
+}
+
+define { ptr, i64 } @"[c-flat]:Vec<T = u8>:deref"(ptr %0) {
+entry:
+  %fun_call_tmp = call { ptr, i64 } @"[c-flat]:Vec<T = u8>:as_slice"(ptr %0)
+  ret { ptr, i64 } %fun_call_tmp
+}
+
+define { ptr, i64 } @"[c-flat]:Vec<T = u8>:as_slice"(ptr %0) {
+entry:
+  %tmp1.len = getelementptr inbounds nuw i8, ptr %0, i64 8
+  %tmp2 = load ptr, ptr %0, align 8
+  %tmp3 = load i64, ptr %tmp1.len, align 4
+  %ptr1.i = insertvalue { ptr, i64 } undef, ptr %tmp2, 0
+  %len2.i = insertvalue { ptr, i64 } %ptr1.i, i64 %tmp3, 1
+  ret { ptr, i64 } %len2.i
+}
+
+define %"[c-flat]:SliceIter<T = u8>" @"[c-flat]:[u8]:iter"({ ptr, i64 } %0) {
+entry:
+  %.elt21 = extractvalue { ptr, i64 } %0, 1
+  %ref.i = extractvalue { ptr, i64 } %0, 0
+  %cast = ptrtoint ptr %ref.i to i64
+  %tmp.i = add i64 %.elt21, %cast
+  %cast7 = inttoptr i64 %tmp.i to ptr
+  %tmp_agg = insertvalue %"[c-flat]:SliceIter<T = u8>" undef, ptr %ref.i, 0
+  %tmp_constructor = insertvalue %"[c-flat]:SliceIter<T = u8>" %tmp_agg, ptr %cast7, 1
+  ret %"[c-flat]:SliceIter<T = u8>" %tmp_constructor
+}
+
+define i1 @"[c-flat]:Vec<T = u8>:has_next"(ptr %0) {
+entry:
+  %tmp1 = load ptr, ptr %0, align 8
+  %tmp2.end = getelementptr inbounds nuw i8, ptr %0, i64 8
+  %tmp3 = load ptr, ptr %tmp2.end, align 8
+  %tmp.i = icmp ult ptr %tmp1, %tmp3
+  ret i1 %tmp.i
+}
+
+define ptr @"[c-flat]:Vec<T = u8>:next"(ptr %0) {
+entry:
+  %tmp1 = load ptr, ptr %0, align 8
+  %cast = ptrtoint ptr %tmp1 to i64
+  %tmp.i = add i64 %cast, 1
+  %cast6 = inttoptr i64 %tmp.i to ptr
+  store ptr %cast6, ptr %0, align 8
+  ret ptr %tmp1
+}
+
+define {} @"[c-flat]:Vec<T = u8>:push"(ptr %0, i8 %1) {
+entry:
+  %value = alloca i8, align 1
+  %self = alloca ptr, align 8
+  store ptr %0, ptr %self, align 8
+  store i8 %1, ptr %value, align 1
+  %fun_call_tmp = call {} @"[c-flat]:Vec<T = u8>:reserve"(ptr %0, i64 1)
+  %tmp2 = load ptr, ptr %0, align 8
+  %cast = ptrtoint ptr %tmp2 to i64
+  %tmp3.len = getelementptr inbounds nuw i8, ptr %0, i64 8
+  %tmp4 = load i64, ptr %tmp3.len, align 4
+  %tmp.i23 = add i64 %tmp4, %cast
+  %cast8 = inttoptr i64 %tmp.i23 to ptr
+  %fun_call_tmp9 = call {} @"[c-flat]:mem:copy<T = u8>"(ptr %cast8, ptr nonnull %value)
+  %tmp10 = load ptr, ptr %self, align 8
+  %tmp10.len = getelementptr inbounds nuw i8, ptr %tmp10, i64 8
+  %tmp11 = load i64, ptr %tmp10.len, align 4
+  %tmp.i = add i64 %tmp11, 1
+  %tmp13.len = getelementptr inbounds nuw i8, ptr %tmp10, i64 8
+  store i64 %tmp.i, ptr %tmp13.len, align 4
+  %tmp14 = load i8, ptr %value, align 1
+  %tmp1528 = insertvalue %"[c-flat]:mem:Manually_Drop<T = u8>" poison, i8 %tmp14, 0
+  %fun_call_tmp16 = call {} @"[c-flat]:mem:Manually_Drop<T = u8>:drop"(%"[c-flat]:mem:Manually_Drop<T = u8>" %tmp1528)
+  %tmp17 = load i8, ptr %value, align 1
+  %fun_call_tmp18 = call {} @"[c-flat]:u8:drop"(i8 %tmp17)
+  ret {} zeroinitializer
+}
+
+define {} @"[c-flat]:mem:copy<T = u8>"(ptr %0, ptr %1) {
+entry:
+  %fun_call_tmp2 = call {} @c_memcpy(ptr %0, ptr %1, i64 1)
+  ret {} zeroinitializer
+}
+
+define i8 @"[c-flat]:u8:clone"(ptr %0) {
+entry:
+  %tmp1 = load i8, ptr %0, align 1
+  ret i8 %tmp1
+}
+
+define {} @"[c-flat]:mem:Manually_Drop<T = u8>:drop"(%"[c-flat]:mem:Manually_Drop<T = u8>" %0) {
+entry:
+  ret {} zeroinitializer
+}
+
+define {} @"[c-flat]:u8:drop"(i8 %0) {
+entry:
+  ret {} zeroinitializer
+}
+
+define ptr @"[c-flat]:mem:Manually_Drop<T = Vec<T = u8>>:deref_mut"(ptr %0) {
+entry:
+  ret ptr %0
+}
+
+define ptr @"[c-flat]:mem:Manually_Drop<T = Vec<T = u8>>:deref"(ptr %0) {
+entry:
+  ret ptr %0
+}
+
+define {} @"[c-flat]:mem:Manually_Drop<T = Vec<T = u8>>:drop"(%"[c-flat]:mem:Manually_Drop<T = Vec<T = u8>>" %0) {
+entry:
+  ret {} zeroinitializer
+}
 
 define {} @"[c-flat]:debug_heap_count"() {
 entry:
@@ -759,7 +1282,7 @@ common.ret:                                       ; preds = %else39, %then
   ret %"[c-flat]:Vec<T = char>" %common.ret.op
 
 then:                                             ; preds = %entry
-  %fun_call_tmp1 = call %"[c-flat]:Vec<T = char>" @"[c-flat]:[char]:to_string"({ ptr, i64 } { ptr @global_string.17, i64 1 })
+  %fun_call_tmp1 = call %"[c-flat]:Vec<T = char>" @"[c-flat]:[char]:to_string"({ ptr, i64 } { ptr @global_string.29, i64 1 })
   %tmp2 = load i64, ptr %tmp1, align 4
   %fun_call_tmp3 = call {} @"[c-flat]:u64:drop"(i64 %tmp2)
   br label %common.ret
