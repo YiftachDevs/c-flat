@@ -2,12 +2,22 @@ import std/io.cf;
 import std/math.cf;
 import std/rng.cf;
 import std/time.cf;
-// import std/system.cf;
+import std/system.cf;
 import game.cf;
 
 fun main() -> usize {
     {
-        game();
+        loop {
+            print("Enter file to read: ");
+            let file_name = readln();
+            if File:exists(&file_name) {
+                let file = File:open(&file_name);
+                println(&file.read_text());
+                break;
+            } else {
+                println("File doesn't exist, try again.");
+            }
+        }
     }
     println("game over");
     debug_heap_count();

@@ -23,7 +23,7 @@ impl File {
     }
 
     fun clear(&self) {
-        c_write_file(self.path.c_string().as_ref(), 0 as &u8, 0);
+        c_write_file(self.path.c_string().as_ref(), [0 as u8].as_ref(), 0);
     }
 
     fun read(&self) -> Vec<u8> {

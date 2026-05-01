@@ -271,7 +271,8 @@ pub struct IRLoop<'ctx> {
     pub loop_block: BasicBlock<'ctx>,
     pub merge_block: BasicBlock<'ctx>,
     pub label: Option<Label>,
-    pub span: Span,
+    pub break_var_count: usize,
+    pub skip_var_count: usize,
     pub ctx_type: IRExprContext<'ctx>,
     pub phi_values: IRPhiValues<'ctx>
 }

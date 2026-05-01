@@ -30,6 +30,8 @@ impl<'ctx> CodeLowerer<'ctx> {
         let void_type = self.primitive_type(PrimitiveType::Void)?;
         let never_type = self.primitive_type(PrimitiveType::Never)?;
 
+        let break_var_count = ir_context.into_fun_context().vars.len();
+
         let iter_place = if conditional_chain.kind == Conditional::For {
             let iter_result = self.get_value(ir_context, conditional_chain.cond_expr.as_ref().unwrap(), &IRExprContext::Value(None), false)?;
             /*if let None = self.find_impl_of_core_trait(iter_result.type_id, &CoreTraitFun::HasNext)? {
@@ -40,6 +42,8 @@ impl<'ctx> CodeLowerer<'ctx> {
             let var_id = self.alloc_var(ir_context.into_fun_context(), &var_dec, Some(iter_result.llvm_value), Some(conditional_chain.span))?;
             Some(ir_context.into_fun_context().vars[var_id].place.clone())
         } else { None };
+
+        let skip_var_count = ir_context.into_fun_context().vars.len();
 
         let then_block = self.llvm_context.append_basic_block(fun_value, "then");
 
@@ -63,7 +67,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         
         if conditional_chain.kind == Conditional::Loop || conditional_chain.kind == Conditional::While || conditional_chain.kind == Conditional::For {
             let (loop_block, merge_block) = if conditional_chain.kind == Conditional::Loop { (then_block, merge_block) } else { (cond_block.unwrap(), merge_block) };
-            let ir_loop = IRLoop { loop_block, merge_block: merge_block, label: conditional_chain.label.clone(), span: conditional_chain.span, ctx_type: context_type.clone(), phi_values: Vec::new() };
+            let ir_loop = IRLoop { loop_block, merge_block: merge_block, label: conditional_chain.label.clone(), break_var_count, skip_var_count, ctx_type: context_type.clone(), phi_values: Vec::new() };
             ir_context.into_fun_context().loop_stack.push(ir_loop);
         }
         let mut phi_result = match &conditional_chain.kind {
@@ -169,8 +173,11 @@ impl<'ctx> CodeLowerer<'ctx> {
             },
             ControlFlow::Skip { label, span } => {
                 let loop_idx = self.find_loop_idx(ir_context.into_fun_context(), control_flow, label, *span)?;
-                let ir_loop = &ir_context.into_fun_context().loop_stack[loop_idx];
-                self.builder.build_unconditional_branch(ir_loop.loop_block).unwrap();
+                let skip_var_count = ir_context.into_fun_context().loop_stack[loop_idx].skip_var_count;
+                let saved_vars = self.save_vars(ir_context.into_fun_context());
+                self.drop_vars(ir_context, skip_var_count, *span)?;
+                self.load_vars(ir_context.into_fun_context(), saved_vars);
+                self.builder.build_unconditional_branch(ir_context.into_fun_context().loop_stack[loop_idx].loop_block).unwrap();
             },
             ControlFlow::Break { label, expr, span } => {
                 let loop_idx = self.find_loop_idx(ir_context.into_fun_context(), control_flow, label, *span)?;
@@ -179,6 +186,10 @@ impl<'ctx> CodeLowerer<'ctx> {
                 let break_value = self.ensure_expr_result_value(ir_context, if break_expr_result == IRExprResult::Empty { &IRExprResult::Void } else { &break_expr_result }, true, expr.span, &ctx_type)?;
                 ir_context.into_fun_context().loop_stack[loop_idx].ctx_type = IRExprContext::Value(Some(break_value.type_id));
                 ir_context.into_fun_context().loop_stack[loop_idx].phi_values.push((break_value, self.builder.get_insert_block().unwrap()));
+                let break_var_count = ir_context.into_fun_context().loop_stack[loop_idx].break_var_count;
+                let saved_vars = self.save_vars(ir_context.into_fun_context());
+                self.drop_vars(ir_context, break_var_count, *span)?;
+                self.load_vars(ir_context.into_fun_context(), saved_vars);
                 self.builder.build_unconditional_branch(ir_context.into_fun_context().loop_stack[loop_idx].merge_block).unwrap();
             }
             _ => panic!()
