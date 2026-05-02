@@ -159,4 +159,18 @@ impl<'ctx> CodeLowerer<'ctx> {
     pub fn load_vars(&mut self, ir_fun_context: &mut IRFunContext<'ctx>, vars: IRVariables<'ctx>) {
         ir_fun_context.vars = vars;
     }
+
+    pub fn save_vars_move_state(&mut self, ir_fun_context: &mut IRFunContext<'ctx>) -> Vec<bool> {
+        ir_fun_context.vars.iter().map(|v| v.moved).collect()
+    }
+
+    pub fn load_vars_move_states(&mut self, ir_fun_context: &mut IRFunContext<'ctx>, move_states: &[bool], override_state: bool) {
+        for (i, var) in ir_fun_context.vars.iter_mut().enumerate() {
+            var.moved = if override_state {
+                move_states[i]
+            } else {
+                var.moved | move_states[i]
+            };
+        }
+    }
 }

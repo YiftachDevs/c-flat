@@ -1,5 +1,7 @@
 import std/heap.cf;
 
+extern fun c_strlen(c_str: &char) -> usize;
+
 type String = Vec<char>;
 
 impl<T: ToString> ToString for [T] {
@@ -24,6 +26,12 @@ impl String {
         let mut result = self.clone();
         result.push('\0');
         result
+    }
+
+    fun from_c_str(c_str: &char) -> Self {
+        let len = c_strlen(c_str);
+        let slice = [char]:from_raw_parts(c_str, len);
+        Self:from(slice)
     }
 }
 

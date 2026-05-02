@@ -1,208 +1,82 @@
 ; ModuleID = 'main_module'
 source_filename = "main_module"
 
+%"[c-flat]:Result<T = TCP_Listener>" = type { %"[c-flat]:TCP_Listener", %"[c-flat]:Error", i1 }
+%"[c-flat]:TCP_Listener" = type { i32, i32, i32 }
+%"[c-flat]:Error" = type { %"[c-flat]:Vec<T = char>" }
 %"[c-flat]:Vec<T = char>" = type { ptr, i64, i64 }
-%"[c-flat]:mem:Manually_Drop<T = char>" = type { i8 }
 %"[c-flat]:SliceIter<T = char>" = type { ptr, ptr }
+%"[c-flat]:mem:Manually_Drop<T = char>" = type { i8 }
 
 @"[c-flat]:count" = internal global i64 0
-@global_string = private unnamed_addr constant [13 x i8] c"listening...\00", align 1
-@global_string.15 = private unnamed_addr constant [11 x i8] c"connected!\00", align 1
-@global_string.16 = private unnamed_addr constant [2 x i8] c"0\00", align 1
-@global_string.17 = private unnamed_addr constant [4 x i8] c"<> \00", align 1
-@global_string.18 = private unnamed_addr constant [6 x i8] c"done.\00", align 1
 
-define {} @main() {
+define i32 @main() {
 entry:
-  %tmp6 = alloca i64, align 8
-  %buffer = alloca %"[c-flat]:Vec<T = char>", align 8
-  %tmp416 = alloca %"[c-flat]:Vec<T = char>", align 8
-  %tmp3 = alloca i64, align 8
-  %msg_len = alloca i64, align 8
-  %sock = alloca i32, align 4
-  %server = alloca i32, align 4
-  %fun_call_tmp = call {} @"[c-flat]:println"({ ptr, i64 } { ptr @global_string, i64 12 })
-  %fun_call_tmp1 = call i32 @c_listen(i32 8080, i32 10)
-  store i32 %fun_call_tmp1, ptr %server, align 4
-  %fun_call_tmp2 = call i32 @c_accept(i32 %fun_call_tmp1)
-  store i32 %fun_call_tmp2, ptr %sock, align 4
-  %fun_call_tmp3 = call {} @"[c-flat]:println"({ ptr, i64 } { ptr @global_string.15, i64 10 })
-  br label %then
-
-then:                                             ; preds = %else34, %then7, %entry
-  %tmp4 = load i32, ptr %sock, align 4
-  %fun_call_tmp5 = call i32 @c_bytes_available(i32 %tmp4)
-  %cast = sext i32 %fun_call_tmp5 to i64
-  store i64 %cast, ptr %msg_len, align 4
-  store i64 0, ptr %tmp3, align 4
-  %tmp.i73 = load i64, ptr %msg_len, align 4
-  %tmp2.i75 = icmp eq i64 %tmp.i73, 0
-  br i1 %tmp2.i75, label %then7, label %else
-
-then7:                                            ; preds = %then
-  %fun_call_tmp10 = call {} @"[c-flat]:sleep"(double 0x3F91111111111111)
-  %tmp11 = load i64, ptr %tmp3, align 4
-  %fun_call_tmp12 = call {} @"[c-flat]:u64:drop"(i64 %tmp11)
-  %tmp13 = load i64, ptr %msg_len, align 4
-  %fun_call_tmp14 = call {} @"[c-flat]:u64:drop"(i64 %tmp13)
-  br label %then
-
-else:                                             ; preds = %then
-  %fun_call_tmp15 = call %"[c-flat]:Vec<T = char>" @"[c-flat]:u64:to_string"(ptr nonnull %msg_len)
-  %fun_call_tmp15.elt = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp15, 0
-  store ptr %fun_call_tmp15.elt, ptr %tmp416, align 8
-  %tmp416.repack78 = getelementptr inbounds nuw i8, ptr %tmp416, i64 8
-  %fun_call_tmp15.elt79 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp15, 1
-  store i64 %fun_call_tmp15.elt79, ptr %tmp416.repack78, align 8
-  %tmp416.repack80 = getelementptr inbounds nuw i8, ptr %tmp416, i64 16
-  %fun_call_tmp15.elt81 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp15, 2
-  store i64 %fun_call_tmp15.elt81, ptr %tmp416.repack80, align 8
-  %fun_call_tmp17 = call { ptr, i64 } @"[c-flat]:Vec<T = char>:deref_mut"(ptr nonnull %tmp416)
-  %fun_call_tmp18 = call {} @"[c-flat]:println"({ ptr, i64 } %fun_call_tmp17)
-  %tmp19 = load i64, ptr %msg_len, align 4
-  %fun_call_tmp20 = call %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:with_capacity"(i64 %tmp19)
-  %fun_call_tmp20.elt = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp20, 0
-  store ptr %fun_call_tmp20.elt, ptr %buffer, align 8
-  %buffer.repack82 = getelementptr inbounds nuw i8, ptr %buffer, i64 8
-  %fun_call_tmp20.elt83 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp20, 1
-  store i64 %fun_call_tmp20.elt83, ptr %buffer.repack82, align 8
-  %buffer.repack84 = getelementptr inbounds nuw i8, ptr %buffer, i64 16
-  %fun_call_tmp20.elt85 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp20, 2
-  store i64 %fun_call_tmp20.elt85, ptr %buffer.repack84, align 8
-  %tmp21 = load i64, ptr %msg_len, align 4
-  %fun_call_tmp22 = call {} @"[c-flat]:Vec<T = char>:set_len"(ptr nonnull %buffer, i64 %tmp21)
-  %fun_call_tmp23 = call { ptr, i64 } @"[c-flat]:Vec<T = char>:as_slice"(ptr nonnull %buffer)
-  %ref.i69 = extractvalue { ptr, i64 } %fun_call_tmp23, 0
-  %tmp25 = load i32, ptr %sock, align 4
-  %tmp26 = load i64, ptr %msg_len, align 4
-  %fun_call_tmp27 = call i32 @c_recv(i32 %tmp25, ptr %ref.i69, i64 %tmp26)
-  %fun_call_tmp28 = call {} @"[c-flat]:print"({ ptr, i64 } { ptr @global_string.17, i64 3 })
-  %fun_call_tmp29 = call { ptr, i64 } @"[c-flat]:Vec<T = char>:deref_mut"(ptr nonnull %buffer)
-  %fun_call_tmp30 = call {} @"[c-flat]:println"({ ptr, i64 } %fun_call_tmp29)
-  store i64 3, ptr %tmp6, align 4
-  %tmp.i = load i64, ptr %msg_len, align 4
-  %tmp2.i = icmp eq i64 %tmp.i, 3
-  br i1 %tmp2.i, label %then32, label %else34
-
-then32:                                           ; preds = %else
-  %tmp36 = load i64, ptr %tmp6, align 4
-  %fun_call_tmp37 = call {} @"[c-flat]:u64:drop"(i64 %tmp36)
-  %tmp38.unpack = load ptr, ptr %buffer, align 8
-  %0 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp38.unpack, 0
-  %tmp38.elt96 = getelementptr inbounds nuw i8, ptr %buffer, i64 8
-  %tmp38.unpack97 = load i64, ptr %tmp38.elt96, align 8
-  %1 = insertvalue %"[c-flat]:Vec<T = char>" %0, i64 %tmp38.unpack97, 1
-  %tmp38.elt98 = getelementptr inbounds nuw i8, ptr %buffer, i64 16
-  %tmp38.unpack99 = load i64, ptr %tmp38.elt98, align 8
-  %tmp38100 = insertvalue %"[c-flat]:Vec<T = char>" %1, i64 %tmp38.unpack99, 2
-  %fun_call_tmp39 = call {} @"[c-flat]:Vec<T = char>:drop.13"(%"[c-flat]:Vec<T = char>" %tmp38100)
-  %tmp40.unpack = load ptr, ptr %tmp416, align 8
-  %2 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp40.unpack, 0
-  %tmp40.elt101 = getelementptr inbounds nuw i8, ptr %tmp416, i64 8
-  %tmp40.unpack102 = load i64, ptr %tmp40.elt101, align 8
-  %3 = insertvalue %"[c-flat]:Vec<T = char>" %2, i64 %tmp40.unpack102, 1
-  %tmp40.elt103 = getelementptr inbounds nuw i8, ptr %tmp416, i64 16
-  %tmp40.unpack104 = load i64, ptr %tmp40.elt103, align 8
-  %tmp40105 = insertvalue %"[c-flat]:Vec<T = char>" %3, i64 %tmp40.unpack104, 2
-  %fun_call_tmp41 = call {} @"[c-flat]:Vec<T = char>:drop.13"(%"[c-flat]:Vec<T = char>" %tmp40105)
-  %tmp42 = load i64, ptr %tmp3, align 4
-  %fun_call_tmp43 = call {} @"[c-flat]:u64:drop"(i64 %tmp42)
-  %tmp44 = load i64, ptr %msg_len, align 4
-  %fun_call_tmp45 = call {} @"[c-flat]:u64:drop"(i64 %tmp44)
-  %fun_call_tmp63 = call {} @"[c-flat]:println"({ ptr, i64 } { ptr @global_string.18, i64 5 })
-  %tmp64 = load i32, ptr %sock, align 4
-  %fun_call_tmp65 = call {} @"[c-flat]:i32:drop"(i32 %tmp64)
-  %tmp66 = load i32, ptr %server, align 4
-  %fun_call_tmp67 = call {} @"[c-flat]:i32:drop"(i32 %tmp66)
-  ret {} zeroinitializer
-
-else34:                                           ; preds = %else
-  %fun_call_tmp47 = call { ptr, i64 } @"[c-flat]:Vec<T = char>:as_slice"(ptr nonnull %buffer)
-  %ref.i = extractvalue { ptr, i64 } %fun_call_tmp47, 0
-  %tmp49 = load i32, ptr %sock, align 4
-  %tmp50 = load i64, ptr %msg_len, align 4
-  %fun_call_tmp51 = call i32 @c_send(i32 %tmp49, ptr %ref.i, i64 %tmp50)
-  %tmp52 = load i64, ptr %tmp6, align 4
-  %fun_call_tmp53 = call {} @"[c-flat]:u64:drop"(i64 %tmp52)
-  %tmp54.unpack = load ptr, ptr %buffer, align 8
-  %4 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp54.unpack, 0
-  %tmp54.elt86 = getelementptr inbounds nuw i8, ptr %buffer, i64 8
-  %tmp54.unpack87 = load i64, ptr %tmp54.elt86, align 8
-  %5 = insertvalue %"[c-flat]:Vec<T = char>" %4, i64 %tmp54.unpack87, 1
-  %tmp54.elt88 = getelementptr inbounds nuw i8, ptr %buffer, i64 16
-  %tmp54.unpack89 = load i64, ptr %tmp54.elt88, align 8
-  %tmp5490 = insertvalue %"[c-flat]:Vec<T = char>" %5, i64 %tmp54.unpack89, 2
-  %fun_call_tmp55 = call {} @"[c-flat]:Vec<T = char>:drop.13"(%"[c-flat]:Vec<T = char>" %tmp5490)
-  %tmp56.unpack = load ptr, ptr %tmp416, align 8
-  %6 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp56.unpack, 0
-  %tmp56.elt91 = getelementptr inbounds nuw i8, ptr %tmp416, i64 8
-  %tmp56.unpack92 = load i64, ptr %tmp56.elt91, align 8
-  %7 = insertvalue %"[c-flat]:Vec<T = char>" %6, i64 %tmp56.unpack92, 1
-  %tmp56.elt93 = getelementptr inbounds nuw i8, ptr %tmp416, i64 16
-  %tmp56.unpack94 = load i64, ptr %tmp56.elt93, align 8
-  %tmp5695 = insertvalue %"[c-flat]:Vec<T = char>" %7, i64 %tmp56.unpack94, 2
-  %fun_call_tmp57 = call {} @"[c-flat]:Vec<T = char>:drop.13"(%"[c-flat]:Vec<T = char>" %tmp5695)
-  %tmp58 = load i64, ptr %tmp3, align 4
-  %fun_call_tmp59 = call {} @"[c-flat]:u64:drop"(i64 %tmp58)
-  %tmp60 = load i64, ptr %msg_len, align 4
-  %fun_call_tmp61 = call {} @"[c-flat]:u64:drop"(i64 %tmp60)
-  br label %then
+  %fun_call_tmp = call %"[c-flat]:Result<T = TCP_Listener>" @"[c-flat]:TCP_Listener:listen"(i32 8080, i32 1)
+  %fun_call_tmp1 = call %"[c-flat]:Result<T = TCP_Listener>" @"[c-flat]:TCP_Listener:listen"(i32 8080, i32 2)
+  %fun_call_tmp2 = call ptr @"[c-flat]:mem:heap_count"()
+  %tmp = load i64, ptr %fun_call_tmp2, align 4
+  %cast = trunc i64 %tmp to i32
+  %fun_call_tmp4 = call {} @"[c-flat]:Result<T = TCP_Listener>:drop"(%"[c-flat]:Result<T = TCP_Listener>" %fun_call_tmp1)
+  %fun_call_tmp6 = call {} @"[c-flat]:Result<T = TCP_Listener>:drop"(%"[c-flat]:Result<T = TCP_Listener>" %fun_call_tmp)
+  ret i32 %cast
 }
 
-define {} @"[c-flat]:println"({ ptr, i64 } %0) {
+define i32 @"[c-flat]:i32:clone"(ptr %0) {
 entry:
-  %tmp2 = alloca %"[c-flat]:Vec<T = char>", align 8
-  %tmp1 = alloca %"[c-flat]:Vec<T = char>", align 8
-  %fun_call_tmp = call %"[c-flat]:Vec<T = char>" @"[c-flat]:[char]:to_string"({ ptr, i64 } %0)
-  %fun_call_tmp.elt = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 0
-  store ptr %fun_call_tmp.elt, ptr %tmp1, align 8
-  %tmp1.repack18 = getelementptr inbounds nuw i8, ptr %tmp1, i64 8
-  %fun_call_tmp.elt19 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 1
-  store i64 %fun_call_tmp.elt19, ptr %tmp1.repack18, align 8
-  %tmp1.repack20 = getelementptr inbounds nuw i8, ptr %tmp1, i64 16
-  %fun_call_tmp.elt21 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 2
-  store i64 %fun_call_tmp.elt21, ptr %tmp1.repack20, align 8
-  %fun_call_tmp1 = call %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:c_string"(ptr nonnull %tmp1)
-  %fun_call_tmp1.elt = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp1, 0
-  store ptr %fun_call_tmp1.elt, ptr %tmp2, align 8
-  %tmp2.repack22 = getelementptr inbounds nuw i8, ptr %tmp2, i64 8
-  %fun_call_tmp1.elt23 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp1, 1
-  store i64 %fun_call_tmp1.elt23, ptr %tmp2.repack22, align 8
-  %tmp2.repack24 = getelementptr inbounds nuw i8, ptr %tmp2, i64 16
-  %fun_call_tmp1.elt25 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp1, 2
-  store i64 %fun_call_tmp1.elt25, ptr %tmp2.repack24, align 8
-  %fun_call_tmp2 = call { ptr, i64 } @"[c-flat]:Vec<T = char>:deref_mut"(ptr nonnull %tmp2)
-  %ref.i = extractvalue { ptr, i64 } %fun_call_tmp2, 0
-  %fun_call_tmp4 = call {} @c_puts(ptr %ref.i)
-  %fun_call_tmp5 = call {} @c_flush()
-  %tmp6.unpack = load ptr, ptr %tmp2, align 8
-  %1 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp6.unpack, 0
-  %tmp6.elt26 = getelementptr inbounds nuw i8, ptr %tmp2, i64 8
-  %tmp6.unpack27 = load i64, ptr %tmp6.elt26, align 8
-  %2 = insertvalue %"[c-flat]:Vec<T = char>" %1, i64 %tmp6.unpack27, 1
-  %tmp6.elt28 = getelementptr inbounds nuw i8, ptr %tmp2, i64 16
-  %tmp6.unpack29 = load i64, ptr %tmp6.elt28, align 8
-  %tmp630 = insertvalue %"[c-flat]:Vec<T = char>" %2, i64 %tmp6.unpack29, 2
-  %fun_call_tmp7 = call {} @"[c-flat]:Vec<T = char>:drop.13"(%"[c-flat]:Vec<T = char>" %tmp630)
-  %tmp8.unpack = load ptr, ptr %tmp1, align 8
-  %3 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp8.unpack, 0
-  %tmp8.elt31 = getelementptr inbounds nuw i8, ptr %tmp1, i64 8
-  %tmp8.unpack32 = load i64, ptr %tmp8.elt31, align 8
-  %4 = insertvalue %"[c-flat]:Vec<T = char>" %3, i64 %tmp8.unpack32, 1
-  %tmp8.elt33 = getelementptr inbounds nuw i8, ptr %tmp1, i64 16
-  %tmp8.unpack34 = load i64, ptr %tmp8.elt33, align 8
-  %tmp835 = insertvalue %"[c-flat]:Vec<T = char>" %4, i64 %tmp8.unpack34, 2
-  %fun_call_tmp9 = call {} @"[c-flat]:Vec<T = char>:drop.13"(%"[c-flat]:Vec<T = char>" %tmp835)
+  %tmp1 = load i32, ptr %0, align 4
+  ret i32 %tmp1
+}
+
+define {} @"[c-flat]:i32:drop"(i32 %0) {
+entry:
   ret {} zeroinitializer
 }
 
-declare {} @c_puts(ptr)
-
-define %"[c-flat]:Vec<T = char>" @"[c-flat]:[char]:to_string"({ ptr, i64 } %0) {
+define %"[c-flat]:Result<T = TCP_Listener>" @"[c-flat]:TCP_Listener:listen"(i32 %0, i32 %1) {
 entry:
-  %fun_call_tmp = call %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:from"({ ptr, i64 } %0)
-  ret %"[c-flat]:Vec<T = char>" %fun_call_tmp
+  %tmp3 = alloca i32, align 4
+  %socket = alloca i32, align 4
+  %backlog = alloca i32, align 4
+  %port = alloca i32, align 4
+  store i32 %0, ptr %port, align 4
+  store i32 %1, ptr %backlog, align 4
+  %fun_call_tmp = call i32 @c_listen(i32 %0, i32 %1)
+  store i32 %fun_call_tmp, ptr %socket, align 4
+  store i32 -1, ptr %tmp3, align 4
+  %tmp.i = load i32, ptr %socket, align 4
+  %tmp2.i = icmp eq i32 %tmp.i, -1
+  br i1 %tmp2.i, label %then, label %then6
+
+merge:                                            ; preds = %then6, %then
+  %result = phi %"[c-flat]:Result<T = TCP_Listener>" [ %fun_call_tmp5, %then ], [ %fun_call_tmp11, %then6 ]
+  %tmp12 = load i32, ptr %tmp3, align 4
+  %fun_call_tmp13 = call {} @"[c-flat]:i32:drop"(i32 %tmp12)
+  %tmp14 = load i32, ptr %socket, align 4
+  %fun_call_tmp15 = call {} @"[c-flat]:i32:drop"(i32 %tmp14)
+  %tmp16 = load i32, ptr %backlog, align 4
+  %fun_call_tmp17 = call {} @"[c-flat]:i32:drop"(i32 %tmp16)
+  %tmp18 = load i32, ptr %port, align 4
+  %fun_call_tmp19 = call {} @"[c-flat]:i32:drop"(i32 %tmp18)
+  ret %"[c-flat]:Result<T = TCP_Listener>" %result
+
+then:                                             ; preds = %entry
+  %fun_call_tmp4 = call %"[c-flat]:Error" @"[c-flat]:TCP_Listener:c_err"()
+  %fun_call_tmp5 = call %"[c-flat]:Result<T = TCP_Listener>" @"[c-flat]:Result<T = TCP_Listener>:err"(%"[c-flat]:Error" %fun_call_tmp4)
+  br label %merge
+
+then6:                                            ; preds = %entry
+  %tmp7 = load i32, ptr %port, align 4
+  %tmp8 = load i32, ptr %backlog, align 4
+  %tmp9 = load i32, ptr %socket, align 4
+  %tmp_agg = insertvalue %"[c-flat]:TCP_Listener" undef, i32 %tmp7, 0
+  %tmp_agg10 = insertvalue %"[c-flat]:TCP_Listener" %tmp_agg, i32 %tmp8, 1
+  %tmp_constructor = insertvalue %"[c-flat]:TCP_Listener" %tmp_agg10, i32 %tmp9, 2
+  %fun_call_tmp11 = call %"[c-flat]:Result<T = TCP_Listener>" @"[c-flat]:Result<T = TCP_Listener>:ok"(%"[c-flat]:TCP_Listener" %tmp_constructor)
+  br label %merge
 }
+
+declare i32 @c_listen(i32, i32)
 
 define i1 @"[c-flat]:&char:eq"(ptr %0, ptr %1) {
 entry:
@@ -214,39 +88,54 @@ entry:
   ret i1 %tmp2.i
 }
 
-define %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:from"({ ptr, i64 } %0) {
+define %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:clone"(ptr %0) {
 entry:
-  %result = alloca %"[c-flat]:Vec<T = char>", align 8
-  %slice = alloca { ptr, i64 }, align 8
-  %.elt = extractvalue { ptr, i64 } %0, 0
-  store ptr %.elt, ptr %slice, align 8
-  %slice.repack5 = getelementptr inbounds nuw i8, ptr %slice, i64 8
-  %.elt6 = extractvalue { ptr, i64 } %0, 1
-  store i64 %.elt6, ptr %slice.repack5, align 8
+  %tmp_iter2 = alloca %"[c-flat]:SliceIter<T = char>", align 8
+  %clone = alloca %"[c-flat]:Vec<T = char>", align 8
+  %self = alloca ptr, align 8
+  store ptr %0, ptr %self, align 8
   %fun_call_tmp = call %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:new"()
   %fun_call_tmp.elt = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 0
-  store ptr %fun_call_tmp.elt, ptr %result, align 8
-  %result.repack7 = getelementptr inbounds nuw i8, ptr %result, i64 8
-  %fun_call_tmp.elt8 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 1
-  store i64 %fun_call_tmp.elt8, ptr %result.repack7, align 8
-  %result.repack9 = getelementptr inbounds nuw i8, ptr %result, i64 16
-  %fun_call_tmp.elt10 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 2
-  store i64 %fun_call_tmp.elt10, ptr %result.repack9, align 8
-  %tmp.unpack = load ptr, ptr %slice, align 8
-  %1 = insertvalue { ptr, i64 } poison, ptr %tmp.unpack, 0
-  %tmp.elt11 = getelementptr inbounds nuw i8, ptr %slice, i64 8
-  %tmp.unpack12 = load i64, ptr %tmp.elt11, align 8
-  %tmp13 = insertvalue { ptr, i64 } %1, i64 %tmp.unpack12, 1
-  %fun_call_tmp1 = call {} @"[c-flat]:Vec<T = char>:extend_from_slice"(ptr nonnull %result, { ptr, i64 } %tmp13)
-  %tmp2.unpack = load ptr, ptr %result, align 8
-  %2 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp2.unpack, 0
-  %tmp2.elt14 = getelementptr inbounds nuw i8, ptr %result, i64 8
-  %tmp2.unpack15 = load i64, ptr %tmp2.elt14, align 8
-  %3 = insertvalue %"[c-flat]:Vec<T = char>" %2, i64 %tmp2.unpack15, 1
-  %tmp2.elt16 = getelementptr inbounds nuw i8, ptr %result, i64 16
-  %tmp2.unpack17 = load i64, ptr %tmp2.elt16, align 8
-  %tmp218 = insertvalue %"[c-flat]:Vec<T = char>" %3, i64 %tmp2.unpack17, 2
-  ret %"[c-flat]:Vec<T = char>" %tmp218
+  store ptr %fun_call_tmp.elt, ptr %clone, align 8
+  %clone.repack22 = getelementptr inbounds nuw i8, ptr %clone, i64 8
+  %fun_call_tmp.elt23 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 1
+  store i64 %fun_call_tmp.elt23, ptr %clone.repack22, align 8
+  %clone.repack24 = getelementptr inbounds nuw i8, ptr %clone, i64 16
+  %fun_call_tmp.elt25 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 2
+  store i64 %fun_call_tmp.elt25, ptr %clone.repack24, align 8
+  %tmp = load ptr, ptr %self, align 8
+  %fun_call_tmp1 = call { ptr, i64 } @"[c-flat]:Vec<T = char>:deref"(ptr %tmp)
+  %len.i = extractvalue { ptr, i64 } %fun_call_tmp1, 1
+  %fun_call_tmp3 = call {} @"[c-flat]:Vec<T = char>:reserve"(ptr nonnull %clone, i64 %len.i)
+  %fun_call_tmp5 = call { ptr, i64 } @"[c-flat]:Vec<T = char>:deref"(ptr %tmp)
+  %fun_call_tmp6 = call %"[c-flat]:SliceIter<T = char>" @"[c-flat]:[char]:iter"({ ptr, i64 } %fun_call_tmp5)
+  %fun_call_tmp6.elt = extractvalue %"[c-flat]:SliceIter<T = char>" %fun_call_tmp6, 0
+  store ptr %fun_call_tmp6.elt, ptr %tmp_iter2, align 8
+  %tmp_iter2.repack26 = getelementptr inbounds nuw i8, ptr %tmp_iter2, i64 8
+  %fun_call_tmp6.elt27 = extractvalue %"[c-flat]:SliceIter<T = char>" %fun_call_tmp6, 1
+  store ptr %fun_call_tmp6.elt27, ptr %tmp_iter2.repack26, align 8
+  br label %cond
+
+then:                                             ; preds = %cond
+  %fun_call_tmp8 = call ptr @"[c-flat]:Vec<T = char>:next"(ptr nonnull %tmp_iter2)
+  %fun_call_tmp10 = call i8 @"[c-flat]:char:clone"(ptr %fun_call_tmp8)
+  %fun_call_tmp11 = call {} @"[c-flat]:Vec<T = char>:push"(ptr nonnull %clone, i8 %fun_call_tmp10)
+  br label %cond
+
+cond:                                             ; preds = %then, %entry
+  %fun_call_tmp7 = call i1 @"[c-flat]:Vec<T = char>:has_next"(ptr nonnull %tmp_iter2)
+  br i1 %fun_call_tmp7, label %then, label %else
+
+else:                                             ; preds = %cond
+  %tmp14.unpack = load ptr, ptr %clone, align 8
+  %1 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp14.unpack, 0
+  %tmp14.elt28 = getelementptr inbounds nuw i8, ptr %clone, i64 8
+  %tmp14.unpack29 = load i64, ptr %tmp14.elt28, align 8
+  %2 = insertvalue %"[c-flat]:Vec<T = char>" %1, i64 %tmp14.unpack29, 1
+  %tmp14.elt30 = getelementptr inbounds nuw i8, ptr %clone, i64 16
+  %tmp14.unpack31 = load i64, ptr %tmp14.elt30, align 8
+  %tmp1432 = insertvalue %"[c-flat]:Vec<T = char>" %2, i64 %tmp14.unpack31, 2
+  ret %"[c-flat]:Vec<T = char>" %tmp1432
 }
 
 define %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:new"() {
@@ -293,71 +182,6 @@ entry:
 }
 
 declare ptr @c_malloc(i64)
-
-define {} @"[c-flat]:Vec<T = char>:extend_from_slice"(ptr %0, { ptr, i64 } %1) {
-entry:
-  %idx = alloca i64, align 8
-  %slice = alloca { ptr, i64 }, align 8
-  %self = alloca ptr, align 8
-  store ptr %0, ptr %self, align 8
-  %.elt = extractvalue { ptr, i64 } %1, 0
-  store ptr %.elt, ptr %slice, align 8
-  %slice.repack24 = getelementptr inbounds nuw i8, ptr %slice, i64 8
-  %.elt25 = extractvalue { ptr, i64 } %1, 1
-  store i64 %.elt25, ptr %slice.repack24, align 8
-  br label %cond
-
-then:                                             ; preds = %cond
-  %tmp3 = load ptr, ptr %self, align 8
-  %tmp4.unpack = load ptr, ptr %slice, align 8
-  %tmp5 = load i64, ptr %idx, align 4
-  %tmp_index.i = getelementptr i8, ptr %tmp4.unpack, i64 %tmp5
-  %tmp7 = load i8, ptr %tmp_index.i, align 1
-  %fun_call_tmp8 = call {} @"[c-flat]:Vec<T = char>:push"(ptr %tmp3, i8 %tmp7)
-  %tmp.i = add i64 %tmp5, 1
-  br label %cond
-
-cond:                                             ; preds = %then, %entry
-  %storemerge = phi i64 [ 0, %entry ], [ %tmp.i, %then ]
-  store i64 %storemerge, ptr %idx, align 4
-  %tmp1.elt26 = getelementptr inbounds nuw i8, ptr %slice, i64 8
-  %tmp1.unpack27 = load i64, ptr %tmp1.elt26, align 8
-  %tmp.i22 = icmp ult i64 %storemerge, %tmp1.unpack27
-  br i1 %tmp.i22, label %then, label %else
-
-else:                                             ; preds = %cond
-  %tmp11 = load i64, ptr %idx, align 4
-  %fun_call_tmp12 = call {} @"[c-flat]:u64:drop"(i64 %tmp11)
-  ret {} zeroinitializer
-}
-
-define {} @"[c-flat]:Vec<T = char>:push"(ptr %0, i8 %1) {
-entry:
-  %value = alloca i8, align 1
-  %self = alloca ptr, align 8
-  store ptr %0, ptr %self, align 8
-  store i8 %1, ptr %value, align 1
-  %fun_call_tmp = call {} @"[c-flat]:Vec<T = char>:reserve"(ptr %0, i64 1)
-  %tmp2 = load ptr, ptr %0, align 8
-  %cast = ptrtoint ptr %tmp2 to i64
-  %tmp3.len = getelementptr inbounds nuw i8, ptr %0, i64 8
-  %tmp4 = load i64, ptr %tmp3.len, align 4
-  %tmp.i23 = add i64 %tmp4, %cast
-  %cast8 = inttoptr i64 %tmp.i23 to ptr
-  %fun_call_tmp9 = call {} @"[c-flat]:mem:copy<T = char>"(ptr %cast8, ptr nonnull %value)
-  %tmp10 = load ptr, ptr %self, align 8
-  %tmp10.len = getelementptr inbounds nuw i8, ptr %tmp10, i64 8
-  %tmp11 = load i64, ptr %tmp10.len, align 4
-  %tmp.i = add i64 %tmp11, 1
-  %tmp13.len = getelementptr inbounds nuw i8, ptr %tmp10, i64 8
-  store i64 %tmp.i, ptr %tmp13.len, align 4
-  %tmp14 = load i8, ptr %value, align 1
-  %tmp1528 = insertvalue %"[c-flat]:mem:Manually_Drop<T = char>" poison, i8 %tmp14, 0
-  %fun_call_tmp16 = call {} @"[c-flat]:mem:Manually_Drop<T = char>:drop"(%"[c-flat]:mem:Manually_Drop<T = char>" %tmp1528)
-  %tmp17 = load i8, ptr %value, align 1
-  %fun_call_tmp18 = call {} @"[c-flat]:char:drop"(i8 %tmp17)
-  ret {} zeroinitializer
-}
 
 define {} @"[c-flat]:Vec<T = char>:reserve"(ptr %0, i64 %1) {
 entry:
@@ -442,102 +266,6 @@ entry:
 
 declare {} @c_free(ptr)
 
-define {} @"[c-flat]:mem:copy<T = char>"(ptr %0, ptr %1) {
-entry:
-  %fun_call_tmp2 = call {} @c_memcpy(ptr %0, ptr %1, i64 1)
-  ret {} zeroinitializer
-}
-
-define i8 @"[c-flat]:char:clone"(ptr %0) {
-entry:
-  %tmp1 = load i8, ptr %0, align 1
-  ret i8 %tmp1
-}
-
-define {} @"[c-flat]:mem:Manually_Drop<T = char>:drop"(%"[c-flat]:mem:Manually_Drop<T = char>" %0) {
-entry:
-  ret {} zeroinitializer
-}
-
-define {} @"[c-flat]:char:drop"(i8 %0) {
-entry:
-  ret {} zeroinitializer
-}
-
-define %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:c_string"(ptr %0) {
-entry:
-  %result = alloca %"[c-flat]:Vec<T = char>", align 8
-  %fun_call_tmp = call %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:clone"(ptr %0)
-  %fun_call_tmp.elt = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 0
-  store ptr %fun_call_tmp.elt, ptr %result, align 8
-  %result.repack5 = getelementptr inbounds nuw i8, ptr %result, i64 8
-  %fun_call_tmp.elt6 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 1
-  store i64 %fun_call_tmp.elt6, ptr %result.repack5, align 8
-  %result.repack7 = getelementptr inbounds nuw i8, ptr %result, i64 16
-  %fun_call_tmp.elt8 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 2
-  store i64 %fun_call_tmp.elt8, ptr %result.repack7, align 8
-  %fun_call_tmp1 = call {} @"[c-flat]:Vec<T = char>:push"(ptr nonnull %result, i8 0)
-  %tmp2.unpack = load ptr, ptr %result, align 8
-  %1 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp2.unpack, 0
-  %tmp2.elt9 = getelementptr inbounds nuw i8, ptr %result, i64 8
-  %tmp2.unpack10 = load i64, ptr %tmp2.elt9, align 8
-  %2 = insertvalue %"[c-flat]:Vec<T = char>" %1, i64 %tmp2.unpack10, 1
-  %tmp2.elt11 = getelementptr inbounds nuw i8, ptr %result, i64 16
-  %tmp2.unpack12 = load i64, ptr %tmp2.elt11, align 8
-  %tmp213 = insertvalue %"[c-flat]:Vec<T = char>" %2, i64 %tmp2.unpack12, 2
-  ret %"[c-flat]:Vec<T = char>" %tmp213
-}
-
-define %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:clone"(ptr %0) {
-entry:
-  %tmp_iter2 = alloca %"[c-flat]:SliceIter<T = char>", align 8
-  %clone = alloca %"[c-flat]:Vec<T = char>", align 8
-  %self = alloca ptr, align 8
-  store ptr %0, ptr %self, align 8
-  %fun_call_tmp = call %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:new"()
-  %fun_call_tmp.elt = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 0
-  store ptr %fun_call_tmp.elt, ptr %clone, align 8
-  %clone.repack22 = getelementptr inbounds nuw i8, ptr %clone, i64 8
-  %fun_call_tmp.elt23 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 1
-  store i64 %fun_call_tmp.elt23, ptr %clone.repack22, align 8
-  %clone.repack24 = getelementptr inbounds nuw i8, ptr %clone, i64 16
-  %fun_call_tmp.elt25 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 2
-  store i64 %fun_call_tmp.elt25, ptr %clone.repack24, align 8
-  %tmp = load ptr, ptr %self, align 8
-  %fun_call_tmp1 = call { ptr, i64 } @"[c-flat]:Vec<T = char>:deref"(ptr %tmp)
-  %len.i = extractvalue { ptr, i64 } %fun_call_tmp1, 1
-  %fun_call_tmp3 = call {} @"[c-flat]:Vec<T = char>:reserve"(ptr nonnull %clone, i64 %len.i)
-  %fun_call_tmp5 = call { ptr, i64 } @"[c-flat]:Vec<T = char>:deref"(ptr %tmp)
-  %fun_call_tmp6 = call %"[c-flat]:SliceIter<T = char>" @"[c-flat]:[char]:iter"({ ptr, i64 } %fun_call_tmp5)
-  %fun_call_tmp6.elt = extractvalue %"[c-flat]:SliceIter<T = char>" %fun_call_tmp6, 0
-  store ptr %fun_call_tmp6.elt, ptr %tmp_iter2, align 8
-  %tmp_iter2.repack26 = getelementptr inbounds nuw i8, ptr %tmp_iter2, i64 8
-  %fun_call_tmp6.elt27 = extractvalue %"[c-flat]:SliceIter<T = char>" %fun_call_tmp6, 1
-  store ptr %fun_call_tmp6.elt27, ptr %tmp_iter2.repack26, align 8
-  br label %cond
-
-then:                                             ; preds = %cond
-  %fun_call_tmp8 = call ptr @"[c-flat]:Vec<T = char>:next"(ptr nonnull %tmp_iter2)
-  %fun_call_tmp10 = call i8 @"[c-flat]:char:clone"(ptr %fun_call_tmp8)
-  %fun_call_tmp11 = call {} @"[c-flat]:Vec<T = char>:push"(ptr nonnull %clone, i8 %fun_call_tmp10)
-  br label %cond
-
-cond:                                             ; preds = %then, %entry
-  %fun_call_tmp7 = call i1 @"[c-flat]:Vec<T = char>:has_next"(ptr nonnull %tmp_iter2)
-  br i1 %fun_call_tmp7, label %then, label %else
-
-else:                                             ; preds = %cond
-  %tmp14.unpack = load ptr, ptr %clone, align 8
-  %1 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp14.unpack, 0
-  %tmp14.elt28 = getelementptr inbounds nuw i8, ptr %clone, i64 8
-  %tmp14.unpack29 = load i64, ptr %tmp14.elt28, align 8
-  %2 = insertvalue %"[c-flat]:Vec<T = char>" %1, i64 %tmp14.unpack29, 1
-  %tmp14.elt30 = getelementptr inbounds nuw i8, ptr %clone, i64 16
-  %tmp14.unpack31 = load i64, ptr %tmp14.elt30, align 8
-  %tmp1432 = insertvalue %"[c-flat]:Vec<T = char>" %2, i64 %tmp14.unpack31, 2
-  ret %"[c-flat]:Vec<T = char>" %tmp1432
-}
-
 define { ptr, i64 } @"[c-flat]:Vec<T = char>:deref_mut"(ptr %0) {
 entry:
   %fun_call_tmp = call { ptr, i64 } @"[c-flat]:Vec<T = char>:as_mut_slice"(ptr %0)
@@ -601,9 +329,57 @@ entry:
   ret ptr %tmp1
 }
 
-declare {} @c_flush()
+define {} @"[c-flat]:Vec<T = char>:push"(ptr %0, i8 %1) {
+entry:
+  %value = alloca i8, align 1
+  %self = alloca ptr, align 8
+  store ptr %0, ptr %self, align 8
+  store i8 %1, ptr %value, align 1
+  %fun_call_tmp = call {} @"[c-flat]:Vec<T = char>:reserve"(ptr %0, i64 1)
+  %tmp2 = load ptr, ptr %0, align 8
+  %cast = ptrtoint ptr %tmp2 to i64
+  %tmp3.len = getelementptr inbounds nuw i8, ptr %0, i64 8
+  %tmp4 = load i64, ptr %tmp3.len, align 4
+  %tmp.i23 = add i64 %tmp4, %cast
+  %cast8 = inttoptr i64 %tmp.i23 to ptr
+  %fun_call_tmp9 = call {} @"[c-flat]:mem:copy<T = char>"(ptr %cast8, ptr nonnull %value)
+  %tmp10 = load ptr, ptr %self, align 8
+  %tmp10.len = getelementptr inbounds nuw i8, ptr %tmp10, i64 8
+  %tmp11 = load i64, ptr %tmp10.len, align 4
+  %tmp.i = add i64 %tmp11, 1
+  %tmp13.len = getelementptr inbounds nuw i8, ptr %tmp10, i64 8
+  store i64 %tmp.i, ptr %tmp13.len, align 4
+  %tmp14 = load i8, ptr %value, align 1
+  %tmp1528 = insertvalue %"[c-flat]:mem:Manually_Drop<T = char>" poison, i8 %tmp14, 0
+  %fun_call_tmp16 = call {} @"[c-flat]:mem:Manually_Drop<T = char>:drop"(%"[c-flat]:mem:Manually_Drop<T = char>" %tmp1528)
+  %tmp17 = load i8, ptr %value, align 1
+  %fun_call_tmp18 = call {} @"[c-flat]:char:drop"(i8 %tmp17)
+  ret {} zeroinitializer
+}
 
-define {} @"[c-flat]:Vec<T = char>:drop.13"(%"[c-flat]:Vec<T = char>" %0) {
+define {} @"[c-flat]:mem:copy<T = char>"(ptr %0, ptr %1) {
+entry:
+  %fun_call_tmp2 = call {} @c_memcpy(ptr %0, ptr %1, i64 1)
+  ret {} zeroinitializer
+}
+
+define i8 @"[c-flat]:char:clone"(ptr %0) {
+entry:
+  %tmp1 = load i8, ptr %0, align 1
+  ret i8 %tmp1
+}
+
+define {} @"[c-flat]:mem:Manually_Drop<T = char>:drop"(%"[c-flat]:mem:Manually_Drop<T = char>" %0) {
+entry:
+  ret {} zeroinitializer
+}
+
+define {} @"[c-flat]:char:drop"(i8 %0) {
+entry:
+  ret {} zeroinitializer
+}
+
+define {} @"[c-flat]:Vec<T = char>:drop.17"(%"[c-flat]:Vec<T = char>" %0) {
 entry:
   %idx = alloca i64, align 8
   %self = alloca %"[c-flat]:Vec<T = char>", align 8
@@ -632,8 +408,8 @@ cond:                                             ; preds = %then, %entry
   store i64 %storemerge, ptr %idx, align 4
   %fun_call_tmp = call { ptr, i64 } @"[c-flat]:Vec<T = char>:deref"(ptr nonnull %self)
   %len.i = extractvalue { ptr, i64 } %fun_call_tmp, 1
-  %tmp.i18 = icmp ult i64 %storemerge, %len.i
-  br i1 %tmp.i18, label %then, label %else
+  %tmp.i16 = icmp ult i64 %storemerge, %len.i
+  br i1 %tmp.i16, label %then, label %else
 
 else:                                             ; preds = %cond
   %tmp10 = load ptr, ptr %self, align 8
@@ -643,208 +419,192 @@ else:                                             ; preds = %cond
   ret {} zeroinitializer
 }
 
-declare i32 @c_listen(i32, i32)
-
-declare i32 @c_accept(i32)
-
-declare i32 @c_bytes_available(i32)
-
-define {} @"[c-flat]:sleep"(double %0) {
+define i1 @"[c-flat]:bool:clone"(ptr %0) {
 entry:
-  %tmp.i = fmul double %0, 1.000000e+06
-  %cast = fptoui double %tmp.i to i32
-  %fun_call_tmp1 = call i32 @c_usleep(i32 %cast)
-  %fun_call_tmp3 = call {} @"[c-flat]:f64:drop"(double %0)
-  ret {} zeroinitializer
+  %tmp1 = load i1, ptr %0, align 1
+  ret i1 %tmp1
 }
 
-declare i32 @c_usleep(i32)
-
-define {} @"[c-flat]:f64:drop"(double %0) {
+define %"[c-flat]:Result<T = TCP_Listener>" @"[c-flat]:Result<T = TCP_Listener>:err"(%"[c-flat]:Error" %0) {
 entry:
-  ret {} zeroinitializer
+  %err = alloca %"[c-flat]:Error", align 8
+  %1 = extractvalue %"[c-flat]:Error" %0, 0
+  %.elt = extractvalue %"[c-flat]:Vec<T = char>" %1, 0
+  store ptr %.elt, ptr %err, align 8
+  %err.repack2 = getelementptr inbounds nuw i8, ptr %err, i64 8
+  %.elt3 = extractvalue %"[c-flat]:Vec<T = char>" %1, 1
+  store i64 %.elt3, ptr %err.repack2, align 8
+  %err.repack4 = getelementptr inbounds nuw i8, ptr %err, i64 16
+  %.elt5 = extractvalue %"[c-flat]:Vec<T = char>" %1, 2
+  store i64 %.elt5, ptr %err.repack4, align 8
+  %tmp.unpack.unpack = load ptr, ptr %err, align 8
+  %2 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp.unpack.unpack, 0
+  %tmp.unpack.elt7 = getelementptr inbounds nuw i8, ptr %err, i64 8
+  %tmp.unpack.unpack8 = load i64, ptr %tmp.unpack.elt7, align 8
+  %3 = insertvalue %"[c-flat]:Vec<T = char>" %2, i64 %tmp.unpack.unpack8, 1
+  %tmp.unpack.elt9 = getelementptr inbounds nuw i8, ptr %err, i64 16
+  %tmp.unpack.unpack10 = load i64, ptr %tmp.unpack.elt9, align 8
+  %tmp.unpack11 = insertvalue %"[c-flat]:Vec<T = char>" %3, i64 %tmp.unpack.unpack10, 2
+  %tmp6 = insertvalue %"[c-flat]:Error" poison, %"[c-flat]:Vec<T = char>" %tmp.unpack11, 0
+  %tmp_agg1 = insertvalue %"[c-flat]:Result<T = TCP_Listener>" { %"[c-flat]:TCP_Listener" zeroinitializer, %"[c-flat]:Error" undef, i1 undef }, %"[c-flat]:Error" %tmp6, 1
+  %tmp_constructor = insertvalue %"[c-flat]:Result<T = TCP_Listener>" %tmp_agg1, i1 false, 2
+  ret %"[c-flat]:Result<T = TCP_Listener>" %tmp_constructor
 }
 
-define %"[c-flat]:Vec<T = char>" @"[c-flat]:u64:to_string"(ptr %0) {
+define %"[c-flat]:Error" @"[c-flat]:TCP_Listener:c_err"() {
 entry:
-  %tmp426 = alloca i64, align 8
-  %num = alloca i64, align 8
-  %result7 = alloca %"[c-flat]:Vec<T = char>", align 8
-  %tmp1 = alloca i64, align 8
+  %fun_call_tmp = call i32 @c_errno()
+  %fun_call_tmp1 = call ptr @c_strerror(i32 %fun_call_tmp)
+  %fun_call_tmp2 = call %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:from_c_str"(ptr %fun_call_tmp1)
+  %tmp_constructor = insertvalue %"[c-flat]:Error" undef, %"[c-flat]:Vec<T = char>" %fun_call_tmp2, 0
+  ret %"[c-flat]:Error" %tmp_constructor
+}
+
+declare ptr @c_strerror(i32)
+
+declare i32 @c_errno()
+
+define %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:from_c_str"(ptr %0) {
+entry:
+  %fun_call_tmp = call i64 @c_strlen(ptr %0)
+  %1 = insertvalue { ptr, i64 } poison, ptr %0, 0
+  %tmp417 = insertvalue { ptr, i64 } %1, i64 %fun_call_tmp, 1
+  %fun_call_tmp5 = call %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:from"({ ptr, i64 } %tmp417)
+  %fun_call_tmp9 = call {} @"[c-flat]:u64:drop"(i64 %fun_call_tmp)
+  ret %"[c-flat]:Vec<T = char>" %fun_call_tmp5
+}
+
+declare i64 @c_strlen(ptr)
+
+define %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:from"({ ptr, i64 } %0) {
+entry:
+  %result = alloca %"[c-flat]:Vec<T = char>", align 8
+  %slice = alloca { ptr, i64 }, align 8
+  %.elt = extractvalue { ptr, i64 } %0, 0
+  store ptr %.elt, ptr %slice, align 8
+  %slice.repack5 = getelementptr inbounds nuw i8, ptr %slice, i64 8
+  %.elt6 = extractvalue { ptr, i64 } %0, 1
+  store i64 %.elt6, ptr %slice.repack5, align 8
+  %fun_call_tmp = call %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:new"()
+  %fun_call_tmp.elt = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 0
+  store ptr %fun_call_tmp.elt, ptr %result, align 8
+  %result.repack7 = getelementptr inbounds nuw i8, ptr %result, i64 8
+  %fun_call_tmp.elt8 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 1
+  store i64 %fun_call_tmp.elt8, ptr %result.repack7, align 8
+  %result.repack9 = getelementptr inbounds nuw i8, ptr %result, i64 16
+  %fun_call_tmp.elt10 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 2
+  store i64 %fun_call_tmp.elt10, ptr %result.repack9, align 8
+  %tmp.unpack = load ptr, ptr %slice, align 8
+  %1 = insertvalue { ptr, i64 } poison, ptr %tmp.unpack, 0
+  %tmp.elt11 = getelementptr inbounds nuw i8, ptr %slice, i64 8
+  %tmp.unpack12 = load i64, ptr %tmp.elt11, align 8
+  %tmp13 = insertvalue { ptr, i64 } %1, i64 %tmp.unpack12, 1
+  %fun_call_tmp1 = call {} @"[c-flat]:Vec<T = char>:extend_from_slice"(ptr nonnull %result, { ptr, i64 } %tmp13)
+  %tmp2.unpack = load ptr, ptr %result, align 8
+  %2 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp2.unpack, 0
+  %tmp2.elt14 = getelementptr inbounds nuw i8, ptr %result, i64 8
+  %tmp2.unpack15 = load i64, ptr %tmp2.elt14, align 8
+  %3 = insertvalue %"[c-flat]:Vec<T = char>" %2, i64 %tmp2.unpack15, 1
+  %tmp2.elt16 = getelementptr inbounds nuw i8, ptr %result, i64 16
+  %tmp2.unpack17 = load i64, ptr %tmp2.elt16, align 8
+  %tmp218 = insertvalue %"[c-flat]:Vec<T = char>" %3, i64 %tmp2.unpack17, 2
+  ret %"[c-flat]:Vec<T = char>" %tmp218
+}
+
+define {} @"[c-flat]:Vec<T = char>:extend_from_slice"(ptr %0, { ptr, i64 } %1) {
+entry:
+  %idx = alloca i64, align 8
+  %slice = alloca { ptr, i64 }, align 8
   %self = alloca ptr, align 8
   store ptr %0, ptr %self, align 8
-  %tmp = load ptr, ptr %self, align 8
-  store i64 0, ptr %tmp1, align 4
-  %tmp.i73 = load i64, ptr %tmp, align 4
-  %tmp2.i75 = icmp eq i64 %tmp.i73, 0
-  br i1 %tmp2.i75, label %then, label %else
+  %.elt = extractvalue { ptr, i64 } %1, 0
+  store ptr %.elt, ptr %slice, align 8
+  %slice.repack24 = getelementptr inbounds nuw i8, ptr %slice, i64 8
+  %.elt25 = extractvalue { ptr, i64 } %1, 1
+  store i64 %.elt25, ptr %slice.repack24, align 8
+  br label %cond
 
-common.ret:                                       ; preds = %else39, %then
-  %common.ret.op = phi %"[c-flat]:Vec<T = char>" [ %fun_call_tmp1, %then ], [ %tmp4586, %else39 ]
-  ret %"[c-flat]:Vec<T = char>" %common.ret.op
+then:                                             ; preds = %cond
+  %tmp3 = load ptr, ptr %self, align 8
+  %tmp4.unpack = load ptr, ptr %slice, align 8
+  %tmp5 = load i64, ptr %idx, align 4
+  %tmp_index.i = getelementptr i8, ptr %tmp4.unpack, i64 %tmp5
+  %tmp7 = load i8, ptr %tmp_index.i, align 1
+  %fun_call_tmp8 = call {} @"[c-flat]:Vec<T = char>:push"(ptr %tmp3, i8 %tmp7)
+  %tmp.i = add i64 %tmp5, 1
+  br label %cond
+
+cond:                                             ; preds = %then, %entry
+  %storemerge = phi i64 [ 0, %entry ], [ %tmp.i, %then ]
+  store i64 %storemerge, ptr %idx, align 4
+  %tmp1.elt26 = getelementptr inbounds nuw i8, ptr %slice, i64 8
+  %tmp1.unpack27 = load i64, ptr %tmp1.elt26, align 8
+  %tmp.i19 = icmp ult i64 %storemerge, %tmp1.unpack27
+  br i1 %tmp.i19, label %then, label %else
+
+else:                                             ; preds = %cond
+  %tmp11 = load i64, ptr %idx, align 4
+  %fun_call_tmp12 = call {} @"[c-flat]:u64:drop"(i64 %tmp11)
+  ret {} zeroinitializer
+}
+
+define %"[c-flat]:Result<T = TCP_Listener>" @"[c-flat]:Result<T = TCP_Listener>:ok"(%"[c-flat]:TCP_Listener" %0) {
+entry:
+  %value = alloca %"[c-flat]:TCP_Listener", align 8
+  %.elt = extractvalue %"[c-flat]:TCP_Listener" %0, 0
+  store i32 %.elt, ptr %value, align 4
+  %value.repack2 = getelementptr inbounds nuw i8, ptr %value, i64 4
+  %.elt3 = extractvalue %"[c-flat]:TCP_Listener" %0, 1
+  store i32 %.elt3, ptr %value.repack2, align 4
+  %value.repack4 = getelementptr inbounds nuw i8, ptr %value, i64 8
+  %.elt5 = extractvalue %"[c-flat]:TCP_Listener" %0, 2
+  store i32 %.elt5, ptr %value.repack4, align 4
+  %tmp.unpack = load i32, ptr %value, align 4
+  %1 = insertvalue %"[c-flat]:TCP_Listener" poison, i32 %tmp.unpack, 0
+  %tmp.elt6 = getelementptr inbounds nuw i8, ptr %value, i64 4
+  %tmp.unpack7 = load i32, ptr %tmp.elt6, align 4
+  %2 = insertvalue %"[c-flat]:TCP_Listener" %1, i32 %tmp.unpack7, 1
+  %tmp.elt8 = getelementptr inbounds nuw i8, ptr %value, i64 8
+  %tmp.unpack9 = load i32, ptr %tmp.elt8, align 4
+  %tmp10 = insertvalue %"[c-flat]:TCP_Listener" %2, i32 %tmp.unpack9, 2
+  %tmp_agg = insertvalue %"[c-flat]:Result<T = TCP_Listener>" undef, %"[c-flat]:TCP_Listener" %tmp10, 0
+  %tmp_agg1 = insertvalue %"[c-flat]:Result<T = TCP_Listener>" %tmp_agg, %"[c-flat]:Error" zeroinitializer, 1
+  %tmp_constructor = insertvalue %"[c-flat]:Result<T = TCP_Listener>" %tmp_agg1, i1 true, 2
+  ret %"[c-flat]:Result<T = TCP_Listener>" %tmp_constructor
+}
+
+define {} @"[c-flat]:Result<T = TCP_Listener>:drop"(%"[c-flat]:Result<T = TCP_Listener>" %0) {
+entry:
+  %self = alloca %"[c-flat]:Result<T = TCP_Listener>", align 8
+  store %"[c-flat]:Result<T = TCP_Listener>" %0, ptr %self, align 8
+  %self.is_ok = getelementptr inbounds nuw i8, ptr %self, i64 40
+  %tmp = load i1, ptr %self.is_ok, align 1
+  br i1 %tmp, label %then, label %then2
+
+merge:                                            ; preds = %then2, %then
+  ret {} zeroinitializer
 
 then:                                             ; preds = %entry
-  %fun_call_tmp1 = call %"[c-flat]:Vec<T = char>" @"[c-flat]:[char]:to_string"({ ptr, i64 } { ptr @global_string.16, i64 1 })
-  %tmp2 = load i64, ptr %tmp1, align 4
-  %fun_call_tmp3 = call {} @"[c-flat]:u64:drop"(i64 %tmp2)
-  br label %common.ret
+  %tmp1.unpack = load i32, ptr %self, align 4
+  %tmp1.elt14 = getelementptr inbounds nuw i8, ptr %self, i64 4
+  %tmp1.unpack15 = load i32, ptr %tmp1.elt14, align 4
+  %tmp1.elt16 = getelementptr inbounds nuw i8, ptr %self, i64 8
+  %tmp1.unpack17 = load i32, ptr %tmp1.elt16, align 4
+  %fun_call_tmp.i = call {} @"[c-flat]:i32:drop"(i32 %tmp1.unpack17)
+  %fun_call_tmp2.i = call {} @"[c-flat]:i32:drop"(i32 %tmp1.unpack15)
+  %fun_call_tmp4.i = call {} @"[c-flat]:i32:drop"(i32 %tmp1.unpack)
+  br label %merge
 
-else:                                             ; preds = %entry
-  %fun_call_tmp6 = call %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:new"()
-  %fun_call_tmp6.elt = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp6, 0
-  store ptr %fun_call_tmp6.elt, ptr %result7, align 8
-  %result7.repack78 = getelementptr inbounds nuw i8, ptr %result7, i64 8
-  %fun_call_tmp6.elt79 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp6, 1
-  store i64 %fun_call_tmp6.elt79, ptr %result7.repack78, align 8
-  %result7.repack80 = getelementptr inbounds nuw i8, ptr %result7, i64 16
-  %fun_call_tmp6.elt81 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp6, 2
-  store i64 %fun_call_tmp6.elt81, ptr %result7.repack80, align 8
-  %tmp19 = load ptr, ptr %self, align 8
-  %tmp20 = load i64, ptr %tmp19, align 4
-  br label %cond24
-
-then23:                                           ; preds = %cond24
-  %tmp29 = load i64, ptr %num, align 4
-  %tmp.i61 = urem i64 %tmp29, 10
-  %1 = trunc nuw nsw i64 %tmp.i61 to i8
-  %cast = or disjoint i8 %1, 48
-  %fun_call_tmp32 = call {} @"[c-flat]:Vec<T = char>:insert"(ptr nonnull %result7, i64 0, i8 %cast)
-  %tmp.i56 = udiv i64 %tmp29, 10
-  br label %cond24
-
-cond24:                                           ; preds = %then23, %else
-  %storemerge = phi i64 [ %tmp20, %else ], [ %tmp.i56, %then23 ]
-  store i64 %storemerge, ptr %num, align 4
-  store i64 0, ptr %tmp426, align 4
-  %tmp2.i.not = icmp eq i64 %storemerge, 0
-  br i1 %tmp2.i.not, label %else39, label %then23
-
-else39:                                           ; preds = %cond24
-  %tmp45.unpack = load ptr, ptr %result7, align 8
-  %2 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp45.unpack, 0
-  %tmp45.elt82 = getelementptr inbounds nuw i8, ptr %result7, i64 8
-  %tmp45.unpack83 = load i64, ptr %tmp45.elt82, align 8
-  %3 = insertvalue %"[c-flat]:Vec<T = char>" %2, i64 %tmp45.unpack83, 1
-  %tmp45.elt84 = getelementptr inbounds nuw i8, ptr %result7, i64 16
-  %tmp45.unpack85 = load i64, ptr %tmp45.elt84, align 8
-  %tmp4586 = insertvalue %"[c-flat]:Vec<T = char>" %3, i64 %tmp45.unpack85, 2
-  %tmp46 = load i64, ptr %tmp426, align 4
-  %fun_call_tmp47 = call {} @"[c-flat]:u64:drop"(i64 %tmp46)
-  %tmp48 = load i64, ptr %num, align 4
-  %fun_call_tmp49 = call {} @"[c-flat]:u64:drop"(i64 %tmp48)
-  %tmp50 = load i64, ptr %tmp1, align 4
-  %fun_call_tmp51 = call {} @"[c-flat]:u64:drop"(i64 %tmp50)
-  br label %common.ret
-}
-
-define {} @"[c-flat]:Vec<T = char>:insert"(ptr %0, i64 %1, i8 %2) {
-entry:
-  %insert_ptr = alloca ptr, align 8
-  %type_mem_size = alloca i64, align 8
-  %value = alloca i8, align 1
-  %idx = alloca i64, align 8
-  %self = alloca ptr, align 8
-  store ptr %0, ptr %self, align 8
-  store i64 %1, ptr %idx, align 4
-  store i8 %2, ptr %value, align 1
-  store i64 1, ptr %type_mem_size, align 4
-  %fun_call_tmp1 = call {} @"[c-flat]:Vec<T = char>:reserve"(ptr %0, i64 1)
-  %tmp3 = load ptr, ptr %0, align 8
-  %cast = ptrtoint ptr %tmp3 to i64
-  %tmp.i45 = add i64 %1, %cast
-  %cast8 = inttoptr i64 %tmp.i45 to ptr
-  store ptr %cast8, ptr %insert_ptr, align 8
-  %tmp11 = load i64, ptr %type_mem_size, align 4
-  %tmp.i42 = add i64 %tmp.i45, %tmp11
-  %cast13 = inttoptr i64 %tmp.i42 to ptr
-  %tmp14 = load ptr, ptr %self, align 8
-  %tmp14.len = getelementptr inbounds nuw i8, ptr %tmp14, i64 8
-  %tmp15 = load i64, ptr %tmp14.len, align 4
-  %tmp16 = load i64, ptr %idx, align 4
-  %tmp.i48 = sub i64 %tmp15, %tmp16
-  %tmp18 = load ptr, ptr %insert_ptr, align 8
-  %fun_call_tmp19 = call {} @"[c-flat]:mem:copy_range<T = char>"(ptr %cast13, ptr %tmp18, i64 %tmp.i48)
-  %fun_call_tmp21 = call {} @"[c-flat]:mem:copy<T = char>"(ptr %tmp18, ptr nonnull %value)
-  %tmp22 = load ptr, ptr %self, align 8
-  %tmp22.len = getelementptr inbounds nuw i8, ptr %tmp22, i64 8
-  %tmp23 = load i64, ptr %tmp22.len, align 4
-  %tmp.i = add i64 %tmp23, 1
-  %tmp25.len = getelementptr inbounds nuw i8, ptr %tmp22, i64 8
-  store i64 %tmp.i, ptr %tmp25.len, align 4
-  %tmp26 = load i8, ptr %value, align 1
-  %tmp2753 = insertvalue %"[c-flat]:mem:Manually_Drop<T = char>" poison, i8 %tmp26, 0
-  %fun_call_tmp28 = call {} @"[c-flat]:mem:Manually_Drop<T = char>:drop"(%"[c-flat]:mem:Manually_Drop<T = char>" %tmp2753)
-  %tmp31 = load i64, ptr %type_mem_size, align 4
-  %fun_call_tmp32 = call {} @"[c-flat]:u64:drop"(i64 %tmp31)
-  %tmp33 = load i8, ptr %value, align 1
-  %fun_call_tmp34 = call {} @"[c-flat]:char:drop"(i8 %tmp33)
-  %tmp35 = load i64, ptr %idx, align 4
-  %fun_call_tmp36 = call {} @"[c-flat]:u64:drop"(i64 %tmp35)
-  ret {} zeroinitializer
-}
-
-define {} @"[c-flat]:Vec<T = char>:set_len"(ptr %0, i64 %1) {
-entry:
-  %tmp.len = getelementptr inbounds nuw i8, ptr %0, i64 8
-  store i64 %1, ptr %tmp.len, align 4
-  %fun_call_tmp = call {} @"[c-flat]:u64:drop"(i64 %1)
-  ret {} zeroinitializer
-}
-
-declare i32 @c_recv(i32, ptr, i64)
-
-define {} @"[c-flat]:print"({ ptr, i64 } %0) {
-entry:
-  %tmp2 = alloca %"[c-flat]:Vec<T = char>", align 8
-  %tmp1 = alloca %"[c-flat]:Vec<T = char>", align 8
-  %fun_call_tmp = call %"[c-flat]:Vec<T = char>" @"[c-flat]:[char]:to_string"({ ptr, i64 } %0)
-  %fun_call_tmp.elt = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 0
-  store ptr %fun_call_tmp.elt, ptr %tmp1, align 8
-  %tmp1.repack18 = getelementptr inbounds nuw i8, ptr %tmp1, i64 8
-  %fun_call_tmp.elt19 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 1
-  store i64 %fun_call_tmp.elt19, ptr %tmp1.repack18, align 8
-  %tmp1.repack20 = getelementptr inbounds nuw i8, ptr %tmp1, i64 16
-  %fun_call_tmp.elt21 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp, 2
-  store i64 %fun_call_tmp.elt21, ptr %tmp1.repack20, align 8
-  %fun_call_tmp1 = call %"[c-flat]:Vec<T = char>" @"[c-flat]:Vec<T = char>:c_string"(ptr nonnull %tmp1)
-  %fun_call_tmp1.elt = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp1, 0
-  store ptr %fun_call_tmp1.elt, ptr %tmp2, align 8
-  %tmp2.repack22 = getelementptr inbounds nuw i8, ptr %tmp2, i64 8
-  %fun_call_tmp1.elt23 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp1, 1
-  store i64 %fun_call_tmp1.elt23, ptr %tmp2.repack22, align 8
-  %tmp2.repack24 = getelementptr inbounds nuw i8, ptr %tmp2, i64 16
-  %fun_call_tmp1.elt25 = extractvalue %"[c-flat]:Vec<T = char>" %fun_call_tmp1, 2
-  store i64 %fun_call_tmp1.elt25, ptr %tmp2.repack24, align 8
-  %fun_call_tmp2 = call { ptr, i64 } @"[c-flat]:Vec<T = char>:deref_mut"(ptr nonnull %tmp2)
-  %ref.i = extractvalue { ptr, i64 } %fun_call_tmp2, 0
-  %fun_call_tmp4 = call {} @c_printf(ptr %ref.i)
-  %fun_call_tmp5 = call {} @c_flush()
-  %tmp6.unpack = load ptr, ptr %tmp2, align 8
-  %1 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp6.unpack, 0
-  %tmp6.elt26 = getelementptr inbounds nuw i8, ptr %tmp2, i64 8
-  %tmp6.unpack27 = load i64, ptr %tmp6.elt26, align 8
-  %2 = insertvalue %"[c-flat]:Vec<T = char>" %1, i64 %tmp6.unpack27, 1
-  %tmp6.elt28 = getelementptr inbounds nuw i8, ptr %tmp2, i64 16
-  %tmp6.unpack29 = load i64, ptr %tmp6.elt28, align 8
-  %tmp630 = insertvalue %"[c-flat]:Vec<T = char>" %2, i64 %tmp6.unpack29, 2
-  %fun_call_tmp7 = call {} @"[c-flat]:Vec<T = char>:drop.13"(%"[c-flat]:Vec<T = char>" %tmp630)
-  %tmp8.unpack = load ptr, ptr %tmp1, align 8
-  %3 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp8.unpack, 0
-  %tmp8.elt31 = getelementptr inbounds nuw i8, ptr %tmp1, i64 8
-  %tmp8.unpack32 = load i64, ptr %tmp8.elt31, align 8
-  %4 = insertvalue %"[c-flat]:Vec<T = char>" %3, i64 %tmp8.unpack32, 1
-  %tmp8.elt33 = getelementptr inbounds nuw i8, ptr %tmp1, i64 16
-  %tmp8.unpack34 = load i64, ptr %tmp8.elt33, align 8
-  %tmp835 = insertvalue %"[c-flat]:Vec<T = char>" %4, i64 %tmp8.unpack34, 2
-  %fun_call_tmp9 = call {} @"[c-flat]:Vec<T = char>:drop.13"(%"[c-flat]:Vec<T = char>" %tmp835)
-  ret {} zeroinitializer
-}
-
-declare {} @c_printf(ptr)
-
-declare i32 @c_send(i32, ptr, i64)
-
-define {} @"[c-flat]:i32:drop"(i32 %0) {
-entry:
-  ret {} zeroinitializer
+then2:                                            ; preds = %entry
+  %self.err = getelementptr inbounds nuw i8, ptr %self, i64 16
+  %tmp3.unpack.unpack = load ptr, ptr %self.err, align 8
+  %1 = insertvalue %"[c-flat]:Vec<T = char>" poison, ptr %tmp3.unpack.unpack, 0
+  %tmp3.unpack.elt9 = getelementptr inbounds nuw i8, ptr %self, i64 24
+  %tmp3.unpack.unpack10 = load i64, ptr %tmp3.unpack.elt9, align 8
+  %2 = insertvalue %"[c-flat]:Vec<T = char>" %1, i64 %tmp3.unpack.unpack10, 1
+  %tmp3.unpack.elt11 = getelementptr inbounds nuw i8, ptr %self, i64 32
+  %tmp3.unpack.unpack12 = load i64, ptr %tmp3.unpack.elt11, align 8
+  %tmp3.unpack13 = insertvalue %"[c-flat]:Vec<T = char>" %2, i64 %tmp3.unpack.unpack12, 2
+  %fun_call_tmp.i7 = call {} @"[c-flat]:Vec<T = char>:drop.17"(%"[c-flat]:Vec<T = char>" %tmp3.unpack13)
+  br label %merge
 }

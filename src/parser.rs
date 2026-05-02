@@ -1747,7 +1747,7 @@ impl<'fctx> Parser<'fctx> {
             self.index += 1;
             loop {
                 ch = self.cur_char()?;
-                if ch == '\n' {
+                if ch == '\n' || ch == '\0' {
                     break;
                 }
                 self.index += 1;

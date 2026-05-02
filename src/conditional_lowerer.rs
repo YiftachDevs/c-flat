@@ -65,6 +65,8 @@ impl<'ctx> CodeLowerer<'ctx> {
         };
         self.builder.position_at_end(then_block);
         
+        let vars_unmoved_states = self.save_vars_move_state(ir_context.into_fun_context());
+        
         if conditional_chain.kind == Conditional::Loop || conditional_chain.kind == Conditional::While || conditional_chain.kind == Conditional::For {
             let (loop_block, merge_block) = if conditional_chain.kind == Conditional::Loop { (then_block, merge_block) } else { (cond_block.unwrap(), merge_block) };
             let ir_loop = IRLoop { loop_block, merge_block: merge_block, label: conditional_chain.label.clone(), break_var_count, skip_var_count, ctx_type: context_type.clone(), phi_values: Vec::new() };
@@ -136,6 +138,9 @@ impl<'ctx> CodeLowerer<'ctx> {
             _ => panic!()
         };
 
+        let vars_moved_states = self.save_vars_move_state(ir_context.into_fun_context());
+        self.load_vars_move_states(ir_context.into_fun_context(), &vars_unmoved_states, true);
+
         let next_context_type = if let Some((expr_value, _)) = phi_result.get(0) {
             Some(expr_value.type_id)
         } else { None };
@@ -152,6 +157,9 @@ impl<'ctx> CodeLowerer<'ctx> {
             }
             self.builder.build_unconditional_branch(merge_block).unwrap();
         }
+
+        self.load_vars_move_states(ir_context.into_fun_context(), &vars_moved_states, false);
+
         Ok(phi_result)
     }
 

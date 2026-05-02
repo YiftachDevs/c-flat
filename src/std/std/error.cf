@@ -1,0 +1,49 @@
+import std/string.cf;
+
+extern fun c_errno() -> i32;
+extern fun c_strerror(err: i32) -> &char;
+
+struct Error { msg: String }
+
+struct Result<T> { value: T, err: Error, is_ok: bool }
+
+impl<T> Result<T> {
+    fun ok(value: T) -> Self {
+        Self{ value, Error:mem_zero(), true }
+    }
+
+    fun err(err: Error) -> Self {
+        Self{ T:mem_zero(), err, false }
+    }
+
+    fun is_ok(&self) -> bool { self.is_ok }
+    fun is_err(&self) -> bool { !self.is_ok }
+
+    fun unwrap_err(self) -> Error { self.err }
+}
+
+impl<T> Drop for Result<T> {
+    fun drop(self) {
+        if self.is_ok {
+            self.value.drop();
+        } else {
+            self.err.drop();
+        }
+    }
+}
+
+impl Error {
+    fun c_err() -> Self {
+        let c_str = c_strerror(c_errno());
+        Self{ String:from_c_str(c_str) }
+    }
+}
+
+impl<T> Unwrap<T> for Result<T> {
+    fun is_unwrappable(&self) -> bool { self.is_ok() }
+    fun unwrap(self) -> T { self.value }
+    
+    fun wrap_as<T_2>(self) -> T_2 {
+        T_2:err(self.unwrap_err())
+    }
+}

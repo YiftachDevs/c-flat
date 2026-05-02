@@ -71,6 +71,7 @@ trait Copy;
 trait Up_To<T> { fun up_to(self, other: T) -> Range<T>; }
 trait Bitshift { fun shl(self, count: Self) -> Self; fun shr(self, count: Self) -> Self; }
 trait Clone { fun clone(&self) -> Self; }
+trait Unwrap<T> { fun is_unwrappable(&self) -> bool; fun unwrap(self) -> T; fun wrap_as<T_2>(self) -> T_2; }
 
 impl<T: Numeral> Add<T> for T { fun add(self, other: Self) -> Self; }
 impl<T: Numeral> Sub<T> for T { fun sub(self, other: Self) -> Self; }
@@ -238,11 +239,6 @@ impl<T> Option<T> {
 
     fun unwrap(self) -> T { self.value }
 }
-
-// impl<T> Deref<T> for Option<T> {
-//     fun deref(&self) -> &T { &self.value }
-//     fun deref_mut(&mut self) -> &mut T { &mut self.value }
-// }
 
 impl<T> Drop for Option<T> {
     fun drop(self) {

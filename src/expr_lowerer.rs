@@ -75,6 +75,7 @@ impl<'ctx> IRExprResult<'ctx> {
 
 impl<'ctx> CodeLowerer<'ctx> {
     pub fn lower_scope(&mut self, ir_context: &mut IRContext<'ctx>, scope: &Scope, expr_context: &IRExprContext<'ctx>) -> Result<IRExprValueResult<'ctx>, CompilerError> {
+        // let saved_vars = self.save_vars(ir_context.into_fun_context());
         let prev_vars_len = ir_context.into_fun_context().vars.len();
     
         let void_type = self.primitive_type(PrimitiveType::Void)?;
@@ -137,6 +138,8 @@ impl<'ctx> CodeLowerer<'ctx> {
         } else {
             self.drop_vars(ir_context, prev_vars_len, scope.span)?;
         }
+
+        // self.load_vars(ir_context.into_fun_context(), saved_vars);
 
         if let IRExprContext::Value(expected_type) = expr_context {
             scope_result.type_id = self.ensure_type_matches(scope_result.type_id, *expected_type, Some(scope.span), true)?;

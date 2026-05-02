@@ -1,4 +1,5 @@
 import std/helpers.c;
+import std/error.cf;
 
 extern fun c_connect(ip: &char, port: i32) -> i32;
 extern fun c_listen(port: i32, backlog: i32) -> i32;
@@ -7,3 +8,44 @@ extern fun c_send(sock: i32, data: &u8, size: usize) -> i32;
 extern fun c_recv(sock: i32, buf: &u8, size: usize) -> i32;
 extern fun c_close(sock: i32);
 extern fun c_bytes_available(sock: i32) -> i32;
+
+type TCP_Socket_ID = i32;
+
+struct TCP_Listener { port: i32, backlog: i32, socket: TCP_Socket_ID }
+struct TCP_Socket { ip: String, port: i32, socket: TCP_Socket_ID }
+
+impl TCP_Listener {
+    fun listen(port: i32, backlog: i32) -> Result<Self> {
+        let socket = c_listen(port, backlog);
+        if socket == -1 {
+            Result<Self>:err(Error:c_err())
+        } else {
+            Result<Self>:ok(Self{ port, backlog, socket })
+        }
+    }
+
+    fun accept(&self) -> Option<TCP_Socket> {
+        let result = c_accept(self.server);
+        if result == -1 {
+            Option<Self>:none()
+        } else {
+            Option<Self>:ok(result)
+        }
+    }
+}
+
+impl TCP_Socket {
+    fun connect(ip: &str, port: i32) -> Result<Self> {
+        let ip_string = ip.to_string();
+        let socket = c_connect(port, backlog);
+        if socket == -1 {
+            Result<Self>:err(Error:c_err())
+        } else {
+            Result<Self>:ok(Self{ port, backlog, server })
+        }
+    }
+
+    fun send(&self, data: &[u8]) -> Result<()> {
+
+    }
+}

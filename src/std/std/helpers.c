@@ -11,6 +11,15 @@
 #include <unistd.h>
 #include <poll.h>
 #include <sys/ioctl.h>
+#include <errno.h>
+
+int c_errno() {
+    return errno;
+}
+
+char* c_strerror(int err) {
+    return strerror(err);
+}
 
 int c_bytes_available(int sock) {
     int bytes;
@@ -38,6 +47,7 @@ int c_listen(int port, int backlog) {
     addr.sin_addr.s_addr = INADDR_ANY;
     if (bind(sock, (struct sockaddr*)&addr, sizeof(addr)) < 0) return -1;
     if (listen(sock, backlog) < 0) return -1;
+    fcntl(sock, F_SETFL, O_NONBLOCK);
     return sock;
 }
 
@@ -121,6 +131,10 @@ void c_puts(char* c_str) {
 
 void c_printf(char* c_str) {
     printf(c_str);
+}
+
+unsigned long long c_strlen(char* c_str) {
+    return strlen(c_str);
 }
 
 void c_flush() {
