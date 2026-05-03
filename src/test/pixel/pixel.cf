@@ -22,7 +22,7 @@ extern fun crl_init_canvas(width: i32, height: i32);
 extern fun crl_begin_canvas();
 extern fun crl_end_canvas(screen_width: i32, screen_height: i32);
 extern fun crl_draw_texture_rec(handle: i32, src_x: i32, src_y: i32, src_w: i32, src_h: i32, dst_x: i32, dst_y: i32, tint: u32);
-extern fun crl_draw_text(text: &char, x: i32, y: i32, font_size: i32, color: u32);
+extern fun crl_draw_text(text: &char, x: i32, y: i32, color: u32);
 
 extern fun crl_is_mouse_button_down(button: i32) -> bool;
 extern fun crl_is_mouse_button_pressed(button: i32) -> bool;
@@ -44,9 +44,9 @@ mod pixel {
 
     impl Game {
         fun new(mut title: &str, pixel_frame_size: Vec_2<usize>, pixel_size_factor: usize) -> Self {
-            let result = Self{ title.to_string().c_string(), pixel_frame_size, pixel_size_factor, pixel_frame_size * pixel_size_factor, Vec<String>:new() };
+            let result = Self{ title.to_string(), pixel_frame_size, pixel_size_factor, pixel_frame_size * pixel_size_factor, Vec<String>:new() };
             crl_set_config_flags(64); // V-Sync
-            crl_init_window(result.frame_size.x as i32, result.frame_size.y as i32, result.title.as_ref());
+            crl_init_window(result.frame_size.x as i32, result.frame_size.y as i32, result.title.clone().c_string().as_ref());
             crl_init_canvas(pixel_frame_size.x as i32, pixel_frame_size.y as i32);
             result
         }
@@ -76,8 +76,8 @@ mod pixel {
             crl_draw_rectangle(pos.x, pos.y, size.x as i32, size.y as i32, color);
         }
 
-        fun draw_text(&self, text: &str, pos: Vec_2<i32>, font_size: usize, color: Color) {
-            crl_draw_text(text.to_string().c_string().as_ref(), pos.x, pos.y, font_size as i32, color);
+        fun draw_text(&self, text: &str, pos: Vec_2<i32>, color: Color) {
+            crl_draw_text(text.to_string().c_string().as_ref(), pos.x, pos.y, color);
         }
 
         fun should_close(&self) -> bool { crl_window_should_close() }

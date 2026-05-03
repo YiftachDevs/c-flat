@@ -178,7 +178,8 @@ pub enum PostfixOpr {
     Mem, // vec.x
     Sep, // Vec:len(&vec)
     Con, // eg: Vec_2 { 4, 3 }
-    Tmp // (template eg <>)
+    Tmp, // (template eg <>)
+    Que // '?'
 }
 
 #[derive(Eq, PartialEq, Clone, Hash)]
@@ -562,7 +563,10 @@ impl PostfixOpr {
         let expr_result: ExprNode;
         let cur_char = parser.cur_char()?;
         parser.index += 1;
-        let result = if cur_char == '[' {
+        let result = if cur_char == '?' {
+            expr_result = ExprNode { value: ExprNodeEnum::Empty, span: Span::dummy() };
+            PostfixOpr::Que
+        } else if cur_char == '[' {
             expr_result = ExprNode::from_def(parser, true)?;
             parser.ensure_next("]")?;
             PostfixOpr::Idx
@@ -614,7 +618,8 @@ impl ToString for PostfixOpr {
             PostfixOpr::Tmp => "<>",
             PostfixOpr::Con => "{}",
             PostfixOpr::Mem => ".",
-            PostfixOpr::Sep => ":"
+            PostfixOpr::Sep => ":",
+            PostfixOpr::Que => "?"
         }.to_string()
     }
 }
@@ -969,7 +974,8 @@ impl ToString for ExprNode {
                     PostfixOpr::Tmp => format!("{}<{}>", left.to_string(), right.to_string()),
                     PostfixOpr::Con => format!("{} {{ {} }}", left.to_string(), right.to_string()),
                     PostfixOpr::Mem => format!("{}.{}", left.to_string(), right.to_string()),
-                    PostfixOpr::Sep => format!("{}:{}", left.to_string(), right.to_string())
+                    PostfixOpr::Sep => format!("{}:{}", left.to_string(), right.to_string()),
+                    PostfixOpr::Que => format!("{}?", left.to_string())
                 }
             },
             ExprNodeEnum::VarDeclaration(var_box) => format!("let {}", var_box.to_string()),

@@ -282,7 +282,8 @@ pub type IRPhiValues<'ctx> = Vec<(IRExprValueResult<'ctx>, BasicBlock<'ctx>)>;
 pub struct IRFunContext<'ctx> {
     pub fun: IRFunctionId,
     pub vars: IRVariables<'ctx>,
-    pub loop_stack: Vec<IRLoop<'ctx>>
+    pub loop_stack: Vec<IRLoop<'ctx>>,
+    pub is_final_value: bool
 }
 
 pub enum IRContext<'ctx> {

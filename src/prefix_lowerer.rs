@@ -30,7 +30,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             PrefixOpr::Not | PrefixOpr::UMin => {
                 if let IRExprContext::Value(expected_t) = context_type {
                     let expr_result = self.get_value(ir_context, right_expr, &IRExprContext::Value(*expected_t), true)?;
-                    Ok(IRExprResult::Value(self.call_core_trait(ir_context, IRExprResult::Value(expr_result), None, &Self::trait_from_opr(CoreOpr::Prefix(opr)), span)?))
+                    Ok(IRExprResult::Value(self.call_core_trait(ir_context, IRExprResult::Value(expr_result), None, &Vec::new(), &Self::trait_from_opr(CoreOpr::Prefix(opr)), span)?))
                 } else {
                     return Err(err);
                 }
@@ -153,9 +153,9 @@ impl<'ctx> CodeLowerer<'ctx> {
                     let place = IRExprPlaceResult { type_id: *unsized_type, ptr_value: value.llvm_value, owner: None, is_mut: *is_mut };
                     Ok(IRExprResult::Place(place))
                 } else {
-                    let result = if let Ok(result) = self.call_core_trait(ir_context, IRExprResult::Value(value), None, &CoreTraitFun::DerefMut, span) {
+                    let result = if let Ok(result) = self.call_core_trait(ir_context, IRExprResult::Value(value), None, &Vec::new(), &CoreTraitFun::DerefMut, span) {
                         result
-                    } else { self.call_core_trait(ir_context, IRExprResult::Value(value), None, &CoreTraitFun::Deref, span)? };
+                    } else { self.call_core_trait(ir_context, IRExprResult::Value(value), None, &Vec::new(), &CoreTraitFun::Deref, span)? };
                     Ok(IRExprResult::Value(result))
                 }
             },
@@ -169,9 +169,9 @@ impl<'ctx> CodeLowerer<'ctx> {
                     let place = IRExprPlaceResult { type_id: unsized_type, ptr_value: value.llvm_value, owner: None, is_mut: is_mut };
                     Ok(IRExprResult::Place(place))
                 } else {
-                    let result = if let Ok(result) = self.call_core_trait(ir_context, IRExprResult::Place(place.clone()), None, &CoreTraitFun::DerefMut, span) {
+                    let result = if let Ok(result) = self.call_core_trait(ir_context, IRExprResult::Place(place.clone()), None, &Vec::new(), &CoreTraitFun::DerefMut, span) {
                         result
-                    } else { self.call_core_trait(ir_context, IRExprResult::Place(place), None, &CoreTraitFun::Deref, span)? };
+                    } else { self.call_core_trait(ir_context, IRExprResult::Place(place), None, &Vec::new(), &CoreTraitFun::Deref, span)? };
                     Ok(IRExprResult::Value(result))
                 }
             },

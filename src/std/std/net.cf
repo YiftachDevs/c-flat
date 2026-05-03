@@ -25,11 +25,11 @@ impl TCP_Listener {
     }
 
     fun accept(&self) -> Option<TCP_Socket> {
-        let result = c_accept(self.server);
+        let result = c_accept(self.socket);
         if result == -1 {
-            Option<Self>:none()
+            Option<TCP_Socket>:none()
         } else {
-            Option<Self>:ok(result)
+            Option<TCP_Socket>:some(TCP_Socket{ "".to_string(), 0, result })
         }
     }
 }
@@ -37,15 +37,46 @@ impl TCP_Listener {
 impl TCP_Socket {
     fun connect(ip: &str, port: i32) -> Result<Self> {
         let ip_string = ip.to_string();
-        let socket = c_connect(port, backlog);
+        let socket = c_connect(ip_string.clone().as_ref(), port);
         if socket == -1 {
             Result<Self>:err(Error:c_err())
         } else {
-            Result<Self>:ok(Self{ port, backlog, server })
+            Result<Self>:ok(Self{ ip_string, port, socket })
         }
     }
 
     fun send(&self, data: &[u8]) -> Result<()> {
+        let mut idx: usize = 0;
+        while idx < data.len() {
+            let sent_len = c_send(self.socket, (data.as_ref() as usize + idx) as &u8, data.len() - idx);
+            if sent_len == -1 {
+                return Result<()>:err(Error:c_err());
+            }
+            idx += sent_len as usize;
+        }
+        Result<()>:ok(())
+    }
 
+    fun recv(&self, len: usize) -> Result<Vec<u8>> {
+        let mut result = Vec<u8>:with_capacity(len);
+        result.set_len(len);
+        let mut idx: usize = 0;
+        while idx < result.len() {
+            let recv_len = c_recv(self.socket, (result.as_ref() as usize + idx) as &u8, result.len() - idx);
+            if recv_len == -1 {
+                return Result<Vec<u8>>:err(Error:c_err());
+            }
+            idx += recv_len as usize;
+        }
+        Result<Vec<u8>>:ok(result)
+    }
+
+    fun send_text(&self, text: &str) -> Result<()> {
+        self.send(text as &[u8])
+    }
+
+    fun recv_text(&self, len: usize) -> Result<String> {
+        let res = self.recv(len)?;
+        Result<String>:ok(String:from(res.as_slice() as &[char]))
     }
 }

@@ -4,12 +4,32 @@ import std/io.cf;
 import std/time.cf;
 
 fun main() -> i32 {
-    let opt_listener_1 = TCP_Listener:listen(8080, 1);
-    let opt_listener = TCP_Listener:listen(8080, 2);
-    // if opt_listener.is_err() {
-    //     println(&opt_listener.unwrap_err().message);
-    //     return -1;
-    // }
-    // let listener = opt_listener.unwrap();
-    *mem:heap_count() as i32
+    let result = program();
+    let res = if result.is_ok() {
+        0
+    } else {
+        println(&result.unwrap_err().msg);
+        -1
+    };
+    print("heap count: ");
+    println(&(*mem:heap_count()).to_string());
+    res
+}
+
+fun program() -> Result<()> {
+    let listener = TCP_Listener:listen(8080, 1)?;
+    println("Listening...");
+    loop {
+        let opt_client = listener.accept();
+        if opt_client.is_none() {
+            sleep(0.1);
+            skip;
+        }
+        println("Accepted");
+        let client = opt_client.unwrap();
+        let text = client.recv_text(6)?;
+        println(&text);
+        break;
+    }
+    Result<()>:ok(())
 }

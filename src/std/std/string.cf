@@ -22,10 +22,9 @@ impl<T: ToString> ToString for [T] {
 }
 
 impl String {
-    fun c_string(&self) -> Self {
-        let mut result = self.clone();
-        result.push('\0');
-        result
+    fun c_string(mut self) -> Self {
+        self.push('\0');
+        self
     }
 
     fun from_c_str(c_str: &char) -> Self {

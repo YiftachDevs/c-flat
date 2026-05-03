@@ -74,20 +74,36 @@ impl<'ctx> IRExprResult<'ctx> {
 }
 
 impl<'ctx> CodeLowerer<'ctx> {
-    pub fn lower_scope(&mut self, ir_context: &mut IRContext<'ctx>, scope: &Scope, expr_context: &IRExprContext<'ctx>) -> Result<IRExprValueResult<'ctx>, CompilerError> {
+    pub fn lower_scope(&mut self, ir_context: &mut IRContext<'ctx>, scope: &Scope, expr_context: &IRExprContext<'ctx>, is_fun_scope: bool) -> Result<IRExprValueResult<'ctx>, CompilerError> {
         // let saved_vars = self.save_vars(ir_context.into_fun_context());
         let prev_vars_len = ir_context.into_fun_context().vars.len();
-    
+
+        let never_type = self.primitive_type(PrimitiveType::Never)?;
         let void_type = self.primitive_type(PrimitiveType::Void)?;
         let mut scope_result = self.get_type_zero(void_type);
+
+        let prev_is_final_value = ir_context.into_fun_context().is_final_value;
+
+        let mut drop_responsibility_moved = false;
+
+        if scope.statements.is_empty() & is_fun_scope {
+            ir_context.into_fun_context().is_final_value = true;
+        }
 
         for (i, statement) in scope.statements.iter().enumerate() {
             let is_final_statement = i == scope.statements.len() - 1;
             let ctx_t = if is_final_statement { expr_context } else { &IRExprContext::Value(None) }; 
+
+            ir_context.into_fun_context().is_final_value = false;
+            if is_final_statement {
+                ir_context.into_fun_context().is_final_value = prev_is_final_value | is_fun_scope;
+            }
+
             match statement {
                 Statement::Scope(scope) => {
-                    let expr_result = self.lower_scope(ir_context, scope, ctx_t)?;
-                    if is_final_statement || expr_result.type_id == self.primitive_type(PrimitiveType::Never)? {
+                    let expr_result = self.lower_scope(ir_context, scope, ctx_t, false)?;
+                    if is_final_statement || expr_result.type_id == never_type {
+                        drop_responsibility_moved = true;
                         scope_result = expr_result;
                         break;
                     }
@@ -110,7 +126,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                         break;
                     } else {
                         let expr_result = self.get_value(ir_context, expr, &IRExprContext::Value(None), false)?;
-                        if expr_result.type_id == self.primitive_type(PrimitiveType::Never)? {
+                        if expr_result.type_id == never_type {
                             scope_result = expr_result;
                             break;
                         }
@@ -118,13 +134,15 @@ impl<'ctx> CodeLowerer<'ctx> {
                 },
                 Statement::ConditionalChain(conditional_chain) => {
                     let expr_result = self.lower_conditional_chain(ir_context, conditional_chain, ctx_t)?;
-                    if is_final_statement || expr_result.type_id == self.primitive_type(PrimitiveType::Never)? {
+                    if is_final_statement || expr_result.type_id == never_type {
+                        drop_responsibility_moved = true;
                         scope_result = expr_result;
                         break;
                     }
                 },
                 Statement::ControlFlow(control_flow) => {
                     scope_result = self.lower_control_flow(ir_context, control_flow,)?;
+                    drop_responsibility_moved = true;
                     break;
                 },
                 Statement::Const(const_def) => {
@@ -133,9 +151,11 @@ impl<'ctx> CodeLowerer<'ctx> {
             }
         }
 
-        if scope_result.type_id == self.primitive_type(PrimitiveType::Never)? {
+        let name = self.ir_function(ir_context.into_fun_context().fun).ast_def.name.clone();
+
+        if scope_result.type_id == never_type {
             ir_context.into_fun_context().vars.drain(prev_vars_len..);
-        } else {
+        } else if !drop_responsibility_moved {
             self.drop_vars(ir_context, prev_vars_len, scope.span)?;
         }
 
@@ -143,6 +163,17 @@ impl<'ctx> CodeLowerer<'ctx> {
 
         if let IRExprContext::Value(expected_type) = expr_context {
             scope_result.type_id = self.ensure_type_matches(scope_result.type_id, *expected_type, Some(scope.span), true)?;
+        }
+
+        if ir_context.into_fun_context().is_final_value && !drop_responsibility_moved {
+            if scope_result.type_id != never_type {
+                let span = self.ir_function(ir_context.into_fun_context().fun).ast_def.span.clone();
+                let saved_vars = self.save_vars(ir_context.into_fun_context());
+                if name != "drop" {
+                    self.drop_vars(ir_context, 0, span)?;
+                }
+                self.load_vars(ir_context.into_fun_context(), saved_vars);
+            }
         }
         Ok(scope_result)
     }
@@ -188,7 +219,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             let core_scope = self.get_core_scope()?;
             let drop_trait = self.lower_trait(core_scope, "Drop", &Vec::new(), place.type_id, None)?;
             if self.type_impls_trait(place.type_id, drop_trait)? {
-                self.call_core_trait(ir_context, IRExprResult::Place(place), None, &CoreTraitFun::Drop, span)?;
+                self.call_core_trait(ir_context, IRExprResult::Place(place), None, &Vec::new(), &CoreTraitFun::Drop, span)?;
             }
         }
         ir_context.into_fun_context().vars.drain(prev_len..);
@@ -324,7 +355,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 if let IRContext::ImplConstraintContext(cur_impl_id) = ir_context {
                     self.lower_scope_constraint(ir_context, scope, expr_context)?
                 } else {
-                    IRExprResult::Value(self.lower_scope(ir_context, scope, expr_context)?)
+                    IRExprResult::Value(self.lower_scope(ir_context, scope, expr_context, false)?)
                 }
             },
             ExprNodeEnum::Array(arr_expr, opt_size) => {

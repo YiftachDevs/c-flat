@@ -7,18 +7,7 @@ import game.cf;
 
 fun main() -> usize {
     {
-        loop {
-            print("Enter file to read: ");
-            let file_name = readln();
-            let opt_file = File:open(&file_name);
-            if opt_file.is_some() {
-                let file = opt_file.unwrap();
-                println(&file.read_text());
-                break;
-            } else {
-                println("File doesn't exist, try again.");
-            }
-        }
+        game();
     }
     println("game over");
     debug_heap_count();

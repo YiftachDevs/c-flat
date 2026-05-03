@@ -36,7 +36,10 @@ pub enum CoreTraitFun {
     Shl,
     Shr,
     Clone,
-    MemZero
+    MemZero,
+    IsUnwrappable,
+    Unwrap,
+    WrapAs
 }
 
 impl CoreTraitFun {
@@ -69,6 +72,9 @@ impl CoreTraitFun {
             Self::Shl => "Bitshift",
             Self::Shr => "Bitshift",
             Self::Clone => "Clone",
+            Self::IsUnwrappable => "Unwrap",
+            Self::Unwrap => "Unwrap",
+            Self::WrapAs => "Unwrap",
             _ => panic!()
         }
     }
@@ -105,6 +111,9 @@ impl CoreTraitFun {
             Self::Shl => "shl",
             Self::Shr => "shr",
             Self::Clone => "clone",
+            Self::IsUnwrappable => "is_unwrappable",
+            Self::Unwrap => "unwrap",
+            Self::WrapAs => "wrap_as",
             _ => panic!()
         }
     }
@@ -167,11 +176,10 @@ impl<'ctx> CodeLowerer<'ctx> {
         Ok(())
     }
 
-    pub fn call_core_trait(&mut self, ir_context: &mut IRContext<'ctx>, result: IRExprResult<'ctx>, args_expr: Option<&Box<ExprNode>>, core_trait: &CoreTraitFun, span: Span) -> Result<IRExprValueResult<'ctx>, CompilerError>  {
-        
+    pub fn call_core_trait(&mut self, ir_context: &mut IRContext<'ctx>, result: IRExprResult<'ctx>, args_expr: Option<&Box<ExprNode>>, templates_values: &[IRTemplateValue<'ctx>], core_trait: &CoreTraitFun, span: Span) -> Result<IRExprValueResult<'ctx>, CompilerError>  {
         let type_id: usize = result.get_type_id();
         if let Some(trait_impl_id) = self.find_impl_of_core_trait(type_id, core_trait)? {
-            let fun = self.lower_impl_fun(trait_impl_id, core_trait.get_fun_name(), &Vec::new(), Some(span))?;
+            let fun = self.lower_impl_fun(trait_impl_id, core_trait.get_fun_name(), templates_values, Some(span))?;
             let args_expr = if let Some(args_expr) = args_expr { args_expr } else { &Box::new(ExprNode { value: ExprNodeEnum::Empty, span }) };
             let result = self.lower_postfix_opr_invoke(ir_context, IRExprResult::Function(fun, Some(Box::new(result))), args_expr, span)?;
             Ok(result)
@@ -209,7 +217,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             let entry_block = self.llvm_context.append_basic_block(fun_value, "entry");
             let original_block = self.builder.get_insert_block();
             self.builder.position_at_end(entry_block);
-            let mut ir_fun_context = IRFunContext { fun: fun, vars: Vec::new(), loop_stack: Vec::new() };
+            let mut ir_fun_context = IRFunContext { fun: fun, vars: Vec::new(), loop_stack: Vec::new(), is_final_value: false };
             for (i, arg_dec) in self.ir_function(fun).args.iter().enumerate() {
                 let arg_llvm_value = fun_value.get_nth_param(i as u32).unwrap();
                 self.alloc_var(&mut ir_fun_context, arg_dec, Some(arg_llvm_value), Some(self.ir_function(fun).ast_def.args.variables[i].span))?;
@@ -277,7 +285,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             if core_trait == &CoreTraitFun::Drop {
                 for (i, var_dec) in ir_struct.args.iter().enumerate().rev() {
                     let arg = self.builder.build_extract_value(first_value.into_struct_value(), i as u32, "tmp").unwrap();
-                    self.call_core_trait(ir_context, IRExprResult::Value(IRExprValueResult { type_id: var_dec.type_id, llvm_value: arg }),None, &CoreTraitFun::Drop, Span::dummy())?;
+                    self.call_core_trait(ir_context, IRExprResult::Value(IRExprValueResult { type_id: var_dec.type_id, llvm_value: arg }), None, &Vec::new(), &CoreTraitFun::Drop, Span::dummy())?;
                 }
             }
             if core_trait == &CoreTraitFun::Clone {
@@ -286,7 +294,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                     let arg_ptr_value = self.builder.build_struct_gep(self.ir_type(self_type).llvm_type, first_value.into_pointer_value(), i as u32, "tmp").unwrap().into();
                     let arg_place = IRExprPlaceResult { type_id: var_dec.type_id, ptr_value: arg_ptr_value, is_mut: false, owner: None };
                     let cloned_arg = if let Some(impl_id) = self.find_impl_of_core_trait(var_dec.type_id, &CoreTraitFun::Clone)? {
-                        self.call_core_trait(ir_context, IRExprResult::Place(arg_place), None, &CoreTraitFun::Clone, Span::dummy())?
+                        self.call_core_trait(ir_context, IRExprResult::Place(arg_place), None, &Vec::new(), &CoreTraitFun::Clone, Span::dummy())?
                     } else {
                         self.load_place(ir_context, arg_place, Span::dummy())?
                     };
@@ -303,7 +311,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                         Box::new(ExprNode { span: Span::dummy(), value: ExprNodeEnum::PostfixOpr(PostfixOpr::Mem,
                         Box::new(ExprNode{ value: ExprNodeEnum::Name("other".to_string()), span: Span::dummy()}),
                         Box::new(ExprNode{ value: ExprNodeEnum::Name(var_dec.name.clone()), span: Span::dummy()}))}))});
-                    let eq_res = self.call_core_trait(ir_context, IRExprResult::Place(IRExprPlaceResult { type_id: var_dec.type_id, ptr_value: arg_ptr_value, is_mut: false, owner: None }), Some(other_expr_node), &CoreTraitFun::Eq, Span::dummy())?;
+                    let eq_res = self.call_core_trait(ir_context, IRExprResult::Place(IRExprPlaceResult { type_id: var_dec.type_id, ptr_value: arg_ptr_value, is_mut: false, owner: None }), Some(other_expr_node), &Vec::new(), &CoreTraitFun::Eq, Span::dummy())?;
                     result = self.builder.build_and(result.into_int_value(), eq_res.llvm_value.into_int_value(), "tmp").unwrap().into();
                 }
                 return Ok(result);

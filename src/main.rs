@@ -41,8 +41,8 @@ fn main() {
 
 fn run() -> Result<(), CompilerError> {
     let std_folder = PathBuf::from("/home/yiftach/dev/c_flat/src/std".to_string());
-    //let code_folder = PathBuf::from("/home/yiftach/dev/c_flat/src/test".to_string());
-    let code_folder = PathBuf::from("/home/yiftach/dev/c_flat/src/networking test/server".to_string());
+    let code_folder = PathBuf::from("/home/yiftach/dev/c_flat/src/test".to_string());
+    // let code_folder = PathBuf::from("/home/yiftach/dev/c_flat/src/networking test/server".to_string());
 
     let mut file_context = FileContext::new();
     let mut parser: Parser = Parser::new(&mut file_context);

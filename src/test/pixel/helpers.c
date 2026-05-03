@@ -1,14 +1,22 @@
 #include "raylib.h"
+#include <stdio.h>
 
 static Texture2D textures[256];
 static int texture_count = 0;
+
+static Font g_font;
 
 int crl_is_mouse_button_down(int button) { return IsMouseButtonDown(button); }
 int crl_is_mouse_button_pressed(int button) { return IsMouseButtonPressed(button); }
 int crl_get_mouse_x() { return GetMouseX(); }
 int crl_get_mouse_y() { return GetMouseY(); }
 
-void crl_init_window(int w, int h, char* title) {  InitWindow(w, h, title); }
+void crl_init_window(int w, int h, char* title) {
+    SetConfigFlags(FLAG_WINDOW_UNDECORATED);
+    InitWindow(w, h, title);
+    g_font = LoadFontEx("pixel/PixelCode.ttf", 12, 0, 0);
+}
+
 void crl_set_config_flags(unsigned int flags) { SetConfigFlags(flags); }
 int crl_window_should_close() { return WindowShouldClose(); }
 float crl_get_frame_time() { return GetFrameTime(); }
@@ -19,8 +27,8 @@ void crl_draw_rectangle(int x, int y, int w, int h, unsigned int color) { DrawRe
 void crl_begin_drawing() { BeginDrawing(); }
 void crl_end_drawing() { EndDrawing(); }
 
-void crl_draw_text(char* text, int x, int y, int font_size, unsigned int color) {
-    DrawText(text, x, y, font_size, *(Color*)&color);
+void crl_draw_text(char* text, int x, int y, unsigned int color) {
+    DrawTextEx(g_font, text, (Vector2){x, y}, 12, 1, *(Color*)&color);
 }
 
 int crl_load_texture(const char* path) {

@@ -53,7 +53,7 @@ impl<'ctx> CodeLowerer<'ctx> {
             self.builder.build_unconditional_branch(cond_block).unwrap();
             self.builder.position_at_end(cond_block);
             let cond_result = if conditional_chain.kind == Conditional::For {
-                self.call_core_trait(ir_context, IRExprResult::Place(iter_place.clone().unwrap()), None, &CoreTraitFun::HasNext, conditional_chain.cond_expr.as_ref().unwrap().span)?
+                self.call_core_trait(ir_context, IRExprResult::Place(iter_place.clone().unwrap()), None, &Vec::new(), &CoreTraitFun::HasNext, conditional_chain.cond_expr.as_ref().unwrap().span)?
             } else {
                 self.get_value(ir_context, conditional_chain.cond_expr.as_ref().unwrap(), &IRExprContext::Value(Some(bool_type)), true)?
             };
@@ -74,7 +74,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
         let mut phi_result = match &conditional_chain.kind {
             Conditional::If => {
-                let then_result: IRExprValueResult<'_> = self.lower_scope(ir_context, &conditional_chain.then_scope, context_type)?;
+                let then_result: IRExprValueResult<'_> = self.lower_scope(ir_context, &conditional_chain.then_scope, context_type, false)?;
                 let cur_block = self.builder.get_insert_block().unwrap();
                 if then_result.type_id == never_type {
                     if cur_block.get_terminator().is_none() {
@@ -87,7 +87,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 }
             },
             Conditional::Loop => {
-                let then_result: IRExprValueResult<'_> = self.lower_scope(ir_context, &conditional_chain.then_scope, &IRExprContext::Value(None))?;
+                let then_result: IRExprValueResult<'_> = self.lower_scope(ir_context, &conditional_chain.then_scope, &IRExprContext::Value(None), false)?;
                 let cur_block = self.builder.get_insert_block().unwrap();
                 if then_result.type_id != never_type {
                     self.builder.build_unconditional_branch(then_block).unwrap();
@@ -98,7 +98,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 ir_loop.phi_values
             },
             Conditional::While => {
-                let then_result: IRExprValueResult<'_> = self.lower_scope(ir_context, &conditional_chain.then_scope, &IRExprContext::Value(None))?;
+                let then_result: IRExprValueResult<'_> = self.lower_scope(ir_context, &conditional_chain.then_scope, &IRExprContext::Value(None), false)?;
                 let cur_block = self.builder.get_insert_block().unwrap();
                 if then_result.type_id != never_type {
                     self.builder.build_unconditional_branch(cond_block.unwrap()).unwrap();
@@ -111,10 +111,10 @@ impl<'ctx> CodeLowerer<'ctx> {
             Conditional::For => {
                 let prev_len = ir_context.into_fun_context().vars.len();
                 let span =  conditional_chain.cond_expr.as_ref().unwrap().span;
-                let next_value = self.call_core_trait(ir_context, IRExprResult::Place(iter_place.unwrap()), None, &CoreTraitFun::Next, span)?;
+                let next_value = self.call_core_trait(ir_context, IRExprResult::Place(iter_place.unwrap()), None, &Vec::new(), &CoreTraitFun::Next, span)?;
                 let name = conditional_chain.iter_name.as_ref().unwrap().clone();
                 self.alloc_var(ir_context.into_fun_context(), &IRVarDeclaration { name, type_id: next_value.type_id, is_mut: false, is_static: false }, Some(next_value.llvm_value), Some(span))?;
-                let then_result: IRExprValueResult<'_> = self.lower_scope(ir_context, &conditional_chain.then_scope, &IRExprContext::Value(None))?;
+                let then_result: IRExprValueResult<'_> = self.lower_scope(ir_context, &conditional_chain.then_scope, &IRExprContext::Value(None), false)?;
                 self.drop_vars(ir_context, prev_len, conditional_chain.span)?;
                 let cur_block = self.builder.get_insert_block().unwrap();
                 if then_result.type_id != never_type {
@@ -126,7 +126,7 @@ impl<'ctx> CodeLowerer<'ctx> {
                 ir_loop.phi_values
             },
             Conditional::Else => {
-                let then_result: IRExprValueResult<'_> = self.lower_scope(ir_context, &conditional_chain.then_scope, context_type)?;
+                let then_result: IRExprValueResult<'_> = self.lower_scope(ir_context, &conditional_chain.then_scope, context_type, false)?;
                 let cur_block = self.builder.get_insert_block().unwrap();
                 if then_result.type_id != never_type {
                     self.builder.build_unconditional_branch(merge_block).unwrap();

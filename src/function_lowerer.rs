@@ -129,7 +129,7 @@ impl<'ctx> CodeLowerer<'ctx> {
         let original_block = self.builder.get_insert_block();
         self.builder.position_at_end(entry_block);
 
-        let mut ir_fun_context = IRFunContext { fun: fun, vars: Vec::new(), loop_stack: Vec::new() };
+        let mut ir_fun_context = IRFunContext { fun: fun, vars: Vec::new(), loop_stack: Vec::new(), is_final_value: false };
 
         for (i, arg_dec) in ir_fun.args.iter().enumerate() {
             let arg_llvm_value = llvm_value.get_nth_param(i as u32).unwrap();
@@ -137,15 +137,12 @@ impl<'ctx> CodeLowerer<'ctx> {
         }
 
         let mut ir_context = IRContext::FunContext(ir_fun_context);
-        let result = self.lower_scope(&mut ir_context, fun_def.scope.as_ref().unwrap(), &IRExprContext::Value(Some(return_type)))?;
-
+        let result = self.lower_scope(&mut ir_context, fun_def.scope.as_ref().unwrap(), &IRExprContext::Value(Some(return_type)), true)?;
+        
         if result.type_id != self.primitive_type(PrimitiveType::Never)? {
-            if fun_name != "drop" {
-                self.drop_vars(&mut ir_context, 0, fun_def.span)?;
-            }
             self.builder.build_return(Some(&result.llvm_value)).expect("Return build failed");
         }
-        
+
         if let Some(block) = original_block {
             self.builder.position_at_end(block);
         }
@@ -166,6 +163,9 @@ impl<'ctx> CodeLowerer<'ctx> {
 
     pub fn load_vars_move_states(&mut self, ir_fun_context: &mut IRFunContext<'ctx>, move_states: &[bool], override_state: bool) {
         for (i, var) in ir_fun_context.vars.iter_mut().enumerate() {
+            if i >= move_states.len() {
+                continue;
+            }
             var.moved = if override_state {
                 move_states[i]
             } else {

@@ -1,6 +1,6 @@
 use inkwell::values::{BasicMetadataValueEnum, BasicValue, BasicValueEnum};
 
-use crate::{code_lowerer::{CodeLowerer, IRContext, IRExprContext, IRTemplateValue, IRTypeEnum, IRTypeId, PrimitiveType}, core_lowerer::CoreTraitFun, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprPlaceResult, IRExprResult, IRExprValueResult}, parser::{ExprNode, ExprNodeEnum, PostfixOpr, Span}};
+use crate::{code_lowerer::{CodeLowerer, IRContext, IRExprContext, IRTemplateValue, IRTypeEnum, IRTypeId, IRVarDeclaration, PrimitiveType}, core_lowerer::CoreTraitFun, errors::{CompilerError, SemanticError}, expr_lowerer::{IRExprPlaceResult, IRExprResult, IRExprValueResult}, parser::{Conditional, ConditionalChain, ExprNode, ExprNodeEnum, PostfixOpr, Scope, Span, Statement}};
 
 
 
@@ -33,21 +33,51 @@ impl<'ctx> CodeLowerer<'ctx> {
                 let left_expr_result = self.lower_expr(ir_context, left_expr, &IRExprContext::Value(None))?;
                 Ok(self.lower_postfix_opr_index(ir_context, left_expr_result, right_expr, left_expr.span)?)
             },
+            PostfixOpr::Que => {
+                let left_expr_result = self.lower_expr(ir_context, left_expr, &IRExprContext::Value(None))?;
+                Ok(self.lower_postfix_opr_unwrap(ir_context, left_expr_result, left_expr.span)?)
+            }
             _ => panic!()
         }
     }
+
+    fn lower_postfix_opr_unwrap(&mut self, ir_context: &mut IRContext<'ctx>, left_expr_result: IRExprResult<'ctx>, span: Span) -> Result<IRExprResult<'ctx>, CompilerError> {
+        let prev_vars_len = ir_context.into_fun_context().vars.len();
+        let is_unwrappable_result = self.call_core_trait(ir_context, left_expr_result.clone(), None, &Vec::new(), &CoreTraitFun::IsUnwrappable, span)?;
+        let fun_return_type = self.ir_function(ir_context.into_fun_context().fun).return_type;
+        let fun_value = self.ir_function(ir_context.into_fun_context().fun).llvm_value;
+        let then_block = self.llvm_context.append_basic_block(fun_value, "then");
+        let else_block = self.llvm_context.append_basic_block(fun_value, "else");
+        self.builder.build_conditional_branch(is_unwrappable_result.llvm_value.into_int_value(), then_block, else_block).unwrap();
+
+        self.builder.position_at_end(else_block);
+        let wrap_as_result = self.call_core_trait(ir_context, left_expr_result.clone(), None, &[IRTemplateValue::Type(fun_return_type)], &CoreTraitFun::WrapAs, span)?;
+         if ir_context.into_fun_context().vars.len() != prev_vars_len {
+            ir_context.into_fun_context().vars[prev_vars_len].moved = true;
+        }
+        let saved_vars = self.save_vars(ir_context.into_fun_context());
+        self.drop_vars(ir_context, 0, span)?;
+        self.builder.build_return(Some(&wrap_as_result.llvm_value)).expect("Return build failed");
+        self.load_vars(ir_context.into_fun_context(), saved_vars);
+
+        self.builder.position_at_end(then_block);
+        let unwrap_result = self.call_core_trait(ir_context, left_expr_result.clone(), None, &Vec::new(), &CoreTraitFun::Unwrap, span)?;
+
+        Ok(IRExprResult::Value(unwrap_result))
+    }
+
     fn lower_postfix_opr_index(&mut self, ir_context: &mut IRContext<'ctx>, left_expr_result: IRExprResult<'ctx>, right_expr: &Box<ExprNode>, span: Span) -> Result<IRExprResult<'ctx>, CompilerError> {
         let type_id = left_expr_result.get_type_id();
         if let Some(_) = self.find_impl_of_core_trait(type_id, &CoreTraitFun::Index)? {
-            let index_result = if let Ok(index_result) = self.call_core_trait(ir_context, left_expr_result.clone(), Some(right_expr), &CoreTraitFun::IndexMut, span) {
+            let index_result = if let Ok(index_result) = self.call_core_trait(ir_context, left_expr_result.clone(), Some(right_expr), &Vec::new(), &CoreTraitFun::IndexMut, span) {
                 index_result
-            } else { self.call_core_trait(ir_context, left_expr_result, Some(right_expr), &CoreTraitFun::Index, span)? };
+            } else { self.call_core_trait(ir_context, left_expr_result, Some(right_expr), &Vec::new(), &CoreTraitFun::Index, span)? };
             self.deref(ir_context, IRExprResult::Value(index_result), span)
         } else if self.is_derefable(type_id)? {
             let deref_result = self.deref(ir_context, left_expr_result, span)?;
             self.lower_postfix_opr_index(ir_context, deref_result, right_expr, span)
         } else {
-            Ok(IRExprResult::Value(self.call_core_trait(ir_context, left_expr_result, Some(right_expr), &CoreTraitFun::Index, span)?))
+            Ok(IRExprResult::Value(self.call_core_trait(ir_context, left_expr_result, Some(right_expr), &Vec::new(), &CoreTraitFun::Index, span)?))
         }
     }
 
@@ -209,7 +239,13 @@ impl<'ctx> CodeLowerer<'ctx> {
             }
             let fun_call = self.builder.build_call(self.ir_function(fun_id).llvm_value, &llvm_args, "fun_call_tmp").unwrap();
             let ret_value = fun_call.try_as_basic_value().unwrap_basic();
-            Ok(IRExprValueResult { type_id: self.ir_function(fun_id).return_type, llvm_value: ret_value })
+            let type_id = self.ir_function(fun_id).return_type;
+            if let None = self.find_impl_of_core_trait(type_id, &CoreTraitFun::Copy)? {
+                let temp_name = format!("tmp{}", ir_context.into_fun_context().vars.len());
+                let var_dec = IRVarDeclaration { name: temp_name, type_id, is_mut: true, is_static: false };
+                // self.alloc_var(ir_context.into_fun_context(), &var_dec, Some(ret_value), None)?;
+            }
+            Ok(IRExprValueResult { type_id, llvm_value: ret_value })
         } else {
             return Err(self.error(SemanticError::ExpectedFunction, Some(span)));
         }

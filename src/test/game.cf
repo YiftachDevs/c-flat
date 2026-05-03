@@ -90,7 +90,7 @@ fun rand_color() -> pixel:Color {
 }
 
 fun game() {
-    let mut game = pixel:Game:new("My First Game", Vec_2<usize>{ 320, 180 }, 4);
+    let mut game = pixel:Game:new("My First Game", Vec_2<usize>{ 480, 270 }, 4);
 
     let mut player = Player:new(&mut game);
     
@@ -111,7 +111,7 @@ fun game() {
         if game.is_key_down('F') {
             for particle in particles.iter_mut() {
                 particle.new_speed *= 1.01;
-            } 
+            }
         }
 
         player.update(&mut game, &mut particles);
@@ -126,12 +126,9 @@ fun game() {
         for particle in particles.iter_mut() {
             particle.render(&mut game);
         }
-        if game.is_mouse_down(0) {
-            game.draw_text("Mouse Down", Vec_2<i32>{ 10, 10 }, 1, 0xFFFFFFFF);
-        }
+        game.draw_rect(Vec_2<i32>{ 0, 0 }, Vec_2<usize>{ game.pixel_frame_size.x, 11 }, 0xFF555500 );
+        game.draw_text(&game.title, Vec_2<i32>{ 2 + 30, -1 }, 0xFFFFFFFF);
         game.end_draw();
-
-        sleep(1.0 / 60.0);
     }
 
     game.close();
