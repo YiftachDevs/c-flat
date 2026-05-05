@@ -13,6 +13,10 @@
 #include <sys/ioctl.h>
 #include <errno.h>
 
+int c_chdir(char* dir) {
+    return chdir(dir);
+}
+
 int c_errno() {
     return errno;
 }

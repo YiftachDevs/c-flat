@@ -34,6 +34,31 @@ impl String {
     }
 }
 
+impl str {
+    fun format(&self, values: &[&str]) -> String {
+        let mut result = String:new();
+        let mut iter = self.iter();
+        let mut idx: usize = 0;
+        while iter.has_next() {
+            let chr = *iter.next();
+            if chr == '{' & iter.has_next() {
+                let next_chr = *iter.next();
+                if next_chr == '}' & idx < values.len() {
+                    result.extend_from_slice(values[idx]);
+                    idx += 1;
+                    skip;
+                } else if next_chr != '{' {
+                    result.push(chr);
+                    result.push(next_chr);
+                    skip;
+                }
+            }
+            result.push(chr);
+        }
+        result
+    }
+}
+
 trait ToString { fun to_string(&self) -> String; }
 
 impl ToString for str {

@@ -8,14 +8,19 @@ static Font g_font;
 
 int crl_is_mouse_button_down(int button) { return IsMouseButtonDown(button); }
 int crl_is_mouse_button_pressed(int button) { return IsMouseButtonPressed(button); }
+int crl_is_mouse_button_released(int button) { return IsMouseButtonReleased(button); }
 int crl_get_mouse_x() { return GetMouseX(); }
 int crl_get_mouse_y() { return GetMouseY(); }
+Vector2 crl_get_window_position() { return GetWindowPosition(); }
+void crl_set_window_position(int x, int y) { SetWindowPosition(x, y); }
 
 void crl_init_window(int w, int h, char* title) {
     SetConfigFlags(FLAG_WINDOW_UNDECORATED);
     InitWindow(w, h, title);
-    g_font = LoadFontEx("pixel/PixelCode.ttf", 12, 0, 0);
+    g_font = LoadFontEx("pixel/res/PixelCode.ttf", 12, 0, 0);
 }
+
+
 
 void crl_set_config_flags(unsigned int flags) { SetConfigFlags(flags); }
 int crl_window_should_close() { return WindowShouldClose(); }
@@ -28,7 +33,7 @@ void crl_begin_drawing() { BeginDrawing(); }
 void crl_end_drawing() { EndDrawing(); }
 
 void crl_draw_text(char* text, int x, int y, unsigned int color) {
-    DrawTextEx(g_font, text, (Vector2){x, y}, 12, 1, *(Color*)&color);
+    DrawTextEx(g_font, text, (Vector2){x, y}, 12, 0, *(Color*)&color);
 }
 
 int crl_load_texture(const char* path) {

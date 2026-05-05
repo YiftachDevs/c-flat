@@ -649,8 +649,9 @@ impl Literal {
     fn string_from_def(parser: &mut Parser) -> Result<String, CompilerError> {
         let mut result: String = String::new();
         loop {
+            let cur_char = parser.cur_char()?;
             let ch: char = Literal::char_from_def(parser)?;
-            if ch == '\"' {
+            if cur_char == '\"' {
                 break;
             }
             result.push(ch);

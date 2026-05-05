@@ -26,36 +26,65 @@ extern fun crl_draw_text(text: &char, x: i32, y: i32, color: u32);
 
 extern fun crl_is_mouse_button_down(button: i32) -> bool;
 extern fun crl_is_mouse_button_pressed(button: i32) -> bool;
+extern fun crl_is_mouse_button_released(button: i32) -> bool;
 extern fun crl_get_mouse_x() -> i32;
 extern fun crl_get_mouse_y() -> i32;
+
+extern fun crl_get_window_position() -> Vec_2<f32>;
+extern fun crl_set_window_position(x: i32, y: i32);
 
 
 mod pixel {
     type Texture = i32;
     type Color = u32;
 
+    const Title_Bar_Height: usize = 11;
+
     struct Game {
         title: String,
+        pos: Vec_2<i32>,
         pixel_frame_size: Vec_2<usize>,
         pixel_size_factor: usize,
         frame_size: Vec_2<usize>,
-        loaded_textures: Vec<String>
+        loaded_textures: Vec<String>,
+        prev_mouse_pos: Vec_2<i32>,
+        dragging: bool
     }
 
     impl Game {
         fun new(mut title: &str, pixel_frame_size: Vec_2<usize>, pixel_size_factor: usize) -> Self {
-            let result = Self{ title.to_string(), pixel_frame_size, pixel_size_factor, pixel_frame_size * pixel_size_factor, Vec<String>:new() };
+            let mut result = Self{ title.to_string(), Vec_2<i32>{ 100, 100 }, pixel_frame_size, pixel_size_factor, pixel_frame_size * pixel_size_factor, Vec<String>:new(), Vec_2<i32>{ 0, 0 }, false };
             crl_set_config_flags(64); // V-Sync
-            crl_init_window(result.frame_size.x as i32, result.frame_size.y as i32, result.title.clone().c_string().as_ref());
-            crl_init_canvas(pixel_frame_size.x as i32, pixel_frame_size.y as i32);
+            crl_init_window(result.frame_size.x as i32, (result.frame_size.y + Title_Bar_Height * pixel_size_factor) as i32, result.title.clone().c_string().as_ref());
+            crl_init_canvas(pixel_frame_size.x as i32, (pixel_frame_size.y + Title_Bar_Height) as i32);
+            crl_set_window_position(100, 100);
+            result.load_texture("pixel/res/close_icon.bmp");
             result
+        }
+
+        fun update(&mut self) {
+            let mouse_pos = Vec_2<i32>{ crl_get_mouse_x(), crl_get_mouse_y() } + self.pos;
+            
+            if self.dragging {
+                self.pos.x += mouse_pos.x - self.prev_mouse_pos.x;
+                self.pos.y += mouse_pos.y - self.prev_mouse_pos.y;
+                crl_set_window_position(self.pos.x, self.pos.y);
+            }
+            if self.is_mouse_pressed(0) {
+                self.dragging = true;
+            } else if self.is_mouse_released(0) {
+                self.dragging = false;
+            }
+
+            self.prev_mouse_pos = mouse_pos;
         }
 
         fun is_key_down(&self, key: char) -> bool { crl_is_key_down(key) }
 
         fun is_mouse_down(&self, button: i32) -> bool { crl_is_mouse_button_down(button) }
         fun is_mouse_pressed(&self, button: i32) -> bool { crl_is_mouse_button_pressed(button) }
-        fun mouse_pos(&self) -> Vec_2<i32> { Vec_2<i32>{ crl_get_mouse_x() / self.pixel_size_factor as i32, crl_get_mouse_y() / self.pixel_size_factor as i32 } }
+        fun is_mouse_released(&self, button: i32) -> bool { crl_is_mouse_button_released(button) }
+        fun mouse_pos(&self) -> Vec_2<i32> { Vec_2<i32>{ crl_get_mouse_x() / self.pixel_size_factor as i32, crl_get_mouse_y() / self.pixel_size_factor as i32 - Title_Bar_Height as i32 } }
 
         fun load_texture(&mut self, path: &str) -> Texture {
             let idx = self.loaded_textures.len();
@@ -64,27 +93,45 @@ mod pixel {
         }
 
         fun draw_texture(&self, texture: Texture, pos: Vec_2<i32>) {
-            crl_draw_texture(texture, pos.x, pos.y, 0xFFFFFFFF);
+            crl_draw_texture(texture, pos.x, pos.y + Title_Bar_Height as i32, 0xFFFFFFFF);
         }
 
         fun draw_animation_texture(&self, texture: Texture, pos: Vec_2<i32>, index: Vec_2<usize>, size: Vec_2<usize>) {
             let src_pos = Vec_2<usize>{ index.x * size.x, index.y * size.y }.as<i32>();
-            crl_draw_texture_rec(texture, src_pos.x, src_pos.y, size.x as i32, size.y as i32, pos.x, pos.y, 0xFFFFFFFF);
+            crl_draw_texture_rec(texture, src_pos.x, src_pos.y, size.x as i32, size.y as i32, pos.x, pos.y + Title_Bar_Height as i32, 0xFFFFFFFF);
         }
 
         fun draw_rect(&self, pos: Vec_2<i32>, size: Vec_2<usize>, color: Color) {
-            crl_draw_rectangle(pos.x, pos.y, size.x as i32, size.y as i32, color);
+            crl_draw_rectangle(pos.x, pos.y + Title_Bar_Height as i32, size.x as i32, size.y as i32, color);
         }
 
-        fun draw_text(&self, text: &str, pos: Vec_2<i32>, color: Color) {
-            crl_draw_text(text.to_string().c_string().as_ref(), pos.x, pos.y, color);
+        fun draw_text(&self, text: &str, pos: Vec_2<i32>, center: bool, color: Color) {
+            let x_offset = if center { text.len() as i32 * -3 } else { 0 };
+            crl_draw_text(text.to_string().c_string().as_ref(), pos.x + x_offset, pos.y + Title_Bar_Height as i32, color);
         }
 
         fun should_close(&self) -> bool { crl_window_should_close() }
 
-        fun begin_draw(&self) { crl_begin_canvas(); }
-        fun clear_background(&self) { crl_clear_background(0xFF000000); }
-        fun end_draw(&self) { crl_end_canvas(self.frame_size.x as i32, self.frame_size.y as i32); }
+        fun begin_draw(&self) {
+            crl_begin_canvas();
+        }
+
+        fun clear_background(&self) { crl_clear_background(0xFF101010); }
+
+        fun draw_icon(&self, pos: Vec_2<i32>, color: Color) {
+            self.draw_rect(Vec_2<i32>{ pos.x - 2, pos.y - 1 - Title_Bar_Height as i32}, Vec_2<usize>{ 5, 3 }, color);
+            self.draw_rect(Vec_2<i32>{ pos.x - 1, pos.y - 2 - Title_Bar_Height as i32}, Vec_2<usize>{ 3, 5 }, color);
+        }
+
+        fun end_draw(&self) {
+            self.draw_rect(Vec_2<i32>{ 0, -Title_Bar_Height as i32 }, Vec_2<usize>{ self.pixel_frame_size.x, Title_Bar_Height }, 0xFF000000 );
+            // self.draw_texture(0, Vec_2<i32>{ self.pixel_frame_size.x as i32 - 10, 1 - Title_Bar_Height as i32});
+            self.draw_icon(Vec_2<i32>{ self.pixel_frame_size.x as i32 - 6, 5 }, 0xFFFF00A5);
+            self.draw_icon(Vec_2<i32>{ self.pixel_frame_size.x as i32 - 6 * 3, 5 }, 0xFF00A5FF);
+            self.draw_icon(Vec_2<i32>{ self.pixel_frame_size.x as i32 - 6 * 5, 5 }, 0xFFA5FF00);
+            self.draw_text(&self.title, Vec_2<i32>{ self.pixel_frame_size.x as i32 / 2, -1 - Title_Bar_Height as i32 }, true, 0xFFFFFFFF);
+            crl_end_canvas(self.frame_size.x as i32, (self.frame_size.y + Title_Bar_Height * self.pixel_size_factor) as i32);
+        }
 
         fun close(&self) { crl_close_window(); }
     }

@@ -90,7 +90,7 @@ fun rand_color() -> pixel:Color {
 }
 
 fun game() {
-    let mut game = pixel:Game:new("My First Game", Vec_2<usize>{ 480, 270 }, 4);
+    let mut game = pixel:Game:new("C Flat Compiler", Vec_2<usize>{ 320, 180 }, 3);
 
     let mut player = Player:new(&mut game);
     
@@ -100,6 +100,8 @@ fun game() {
     }
 
     while !game.should_close() {
+        game.update();
+        
         if game.is_mouse_pressed(0) {
             particles.push(Particle:spawn_at(game.mouse_pos().as<f64>(), rand_color()))
         }
@@ -126,8 +128,6 @@ fun game() {
         for particle in particles.iter_mut() {
             particle.render(&mut game);
         }
-        game.draw_rect(Vec_2<i32>{ 0, 0 }, Vec_2<usize>{ game.pixel_frame_size.x, 11 }, 0xFF555500 );
-        game.draw_text(&game.title, Vec_2<i32>{ 2 + 30, -1 }, 0xFFFFFFFF);
         game.end_draw();
     }
 
